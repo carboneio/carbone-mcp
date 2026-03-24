@@ -1,0 +1,64 @@
+import { CarboneClient } from '../carbone/client.js';
+
+export type TransportMode = 'stdio' | 'http';
+
+export interface ServerConfig {
+  carboneApiKey: string | undefined;
+  carboneBaseUrl: string;
+  timeout: number;
+  transport: TransportMode;
+  port: number;
+  mcpPath: string;
+  maxBodyBytes: number;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number, name: string): number {
+  if (value === undefined) return fallback;
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid ${name} value "${value}". Must be a positive integer.`);
+  }
+  return n;
+}
+
+export function loadConfig(): ServerConfig {
+  const apiKey = process.env['CARBONE_API_KEY'] || undefined;
+  const baseUrl = process.env['CARBONE_BASE_URL'] ?? CarboneClient.CLOUD_API_URL;
+  const transport = (process.env['MCP_TRANSPORT'] ?? 'stdio') as TransportMode;
+
+  if (transport !== 'stdio' && transport !== 'http') {
+    throw new Error(`Invalid MCP_TRANSPORT value "${transport}". Must be "stdio" or "http".`);
+  }
+
+  // API key is only required in stdio mode when targeting the Carbone cloud API.
+  // - On-premise deployments (custom CARBONE_BASE_URL) run without authentication.
+  // - In HTTP mode, each client can supply its own key via the Authorization: Bearer header,
+  //   so a server-level key is optional.
+  if (!apiKey && baseUrl === CarboneClient.CLOUD_API_URL && transport === 'stdio') {
+    throw new Error(
+      'CARBONE_API_KEY environment variable is required for the Carbone cloud API.\n' +
+      'Get your API key from: https://account.carbone.io\n' +
+      'For on-premise deployments, set CARBONE_BASE_URL to your server URL.\n' +
+      'For HTTP mode, you can omit CARBONE_API_KEY and pass keys per-request via Authorization: Bearer.'
+    );
+  }
+
+  const mcpPath = process.env['MCP_PATH'] ?? '/';
+  if (!mcpPath.startsWith('/')) {
+    throw new Error(`Invalid MCP_PATH value "${mcpPath}". Must start with "/".`);
+  }
+  if (mcpPath === '/health') {
+    throw new Error('Invalid MCP_PATH value "/health". This path is reserved for the health check endpoint.');
+  }
+
+  return {
+    carboneApiKey: apiKey,
+    carboneBaseUrl: baseUrl,
+    // Carbone API maximum timeout is 60 seconds
+    timeout: parsePositiveInt(process.env['CARBONE_TIMEOUT'], 60_000, 'CARBONE_TIMEOUT'),
+    transport,
+    port: parsePositiveInt(process.env['MCP_PORT'], 3000, 'MCP_PORT'),
+    mcpPath,
+    maxBodyBytes: parsePositiveInt(process.env['MCP_MAX_BODY_BYTES'], 10 * 1024 * 1024, 'MCP_MAX_BODY_BYTES'),
+  };
+}

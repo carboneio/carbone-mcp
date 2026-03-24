@@ -1,0 +1,14 @@
+services:
+  carbone-mcp:
+    build: .
+    image: carbone-mcp:latest
+    ports:
+      - 3000:3000
+    environment:
+      - CARBONE_API_KEY=${CARBONE_API_KEY:-}
+      - CARBONE_BASE_URL=${CARBONE_BASE_URL:-https://api.carbone.io}
+      - CARBONE_TIMEOUT=${CARBONE_TIMEOUT:-60000}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=3000
+      - MCP_PATH=/
+    restart: unless-stopped
