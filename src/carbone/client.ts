@@ -21,6 +21,8 @@ export interface CarboneClientConfig {
 export interface CallOptions {
   /** Carbone API key for this specific call. Overrides the constructor-level apiKey. */
   apiKey?: string;
+  /** Skip the API key requirement check. Use for public endpoints that do not require authentication. */
+  skipAuthCheck?: boolean;
 }
 
 export type OutputFormat = string | { formatName: string; formatOptions?: Record<string, unknown> };
@@ -280,7 +282,7 @@ export class CarboneClient {
    * OpenAPI: { success, code, message, version } — flat, no data wrapper
    */
   async getStatus(options?: CallOptions): Promise<ApiStatus> {
-    const response = await this.request('/status', { method: 'GET' }, options);
+    const response = await this.request('/status', { method: 'GET' }, { ...options, skipAuthCheck: true });
     const json = await response.json() as { version: string; message: string };
     return { version: json.version, message: json.message };
   }
@@ -295,7 +297,7 @@ export class CarboneClient {
    */
   private resolveKey(callOptions?: CallOptions): string | undefined {
     const key = callOptions?.apiKey ?? this.apiKey;
-    if (!key && this.baseUrl === CarboneClient.CLOUD_API_URL) {
+    if (!key && this.baseUrl === CarboneClient.CLOUD_API_URL && !callOptions?.skipAuthCheck) {
       throw new CarboneAuthError(
         'No API key provided. Set CARBONE_API_KEY environment variable or pass apiKey in call options.'
       );
