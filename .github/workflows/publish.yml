@@ -8,6 +8,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
     permissions:
       id-token: write # Required for npm provenance and MCP Registry DNS auth
       contents: read
