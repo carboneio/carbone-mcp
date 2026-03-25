@@ -3,6 +3,7 @@ name: Publish
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: # Allow manual runs from the GitHub Actions UI
 
 jobs:
   publish:
