@@ -27,7 +27,6 @@
   "packages": [
     {
       "registryType": "npm",
-      "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "carbone-mcp",
       "version": "1.0.1",
       "transport": {
