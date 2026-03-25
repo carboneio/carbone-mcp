@@ -1,25 +1,48 @@
-name: Publish Package
+name: Publish
 
 on:
   push:
-    tags:
-      - 'v*'
-
-permissions:
-  id-token: write  # Required for OIDC
-  contents: read
+    tags: ["v*"]
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for npm provenance and MCP Registry DNS auth
+      contents: read
+
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
       - run: npm ci
-      - run: npm run build --if-present
+
       - run: npm test
-      - run: npm publish
+
+      - run: npm run build
+
+      # Sync server.json version with the git tag (strips the leading "v")
+      - name: Set version in server.json
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          jq --arg v "$VERSION" '.version = $v | .packages[].version = $v' server.json > server.tmp && mv server.tmp server.json
+
+      # Publish to npm using Trusted Publisher (OIDC — no NPM_TOKEN secret needed)
+      - name: Publish to npm
+        run: npm publish --provenance
+
+      # Publish to MCP Registry using DNS authentication for the io.carbone namespace.
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login dns --domain carbone.io --private-key "${{ secrets.MCP_PRIVATE_KEY }}"
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

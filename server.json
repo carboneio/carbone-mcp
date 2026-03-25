@@ -1,0 +1,101 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.carbone/carbone-mcp",
+  "title": "Carbone MCP",
+  "description": "Generate PDF/DOCX/XLSX/PPTX from templates+JSON. Convert Office/HTML/MD to PDF. Universal templating",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "icons": [{
+    "mimeType": "image/svg+xml",
+    "src": "https://raw.githubusercontent.com/carboneio/carbone/refs/heads/master/doc/carbone_icon_large.svg"
+  }],
+  "repository": {
+    "url": "https://github.com/carboneio/carbone-mcp",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.carbone.io",
+      "description": "Requires a Carbone API key passed as a Bearer token in the Authorization header. Get yours at https://account.carbone.io",
+      "authentication": {
+        "type": "header",
+        "header": "Authorization"
+      }
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "carbone-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CARBONE_API_KEY",
+          "description": "Your Carbone API key from https://account.carbone.io. Required when using the Carbone cloud API. If CARBONE_BASE_URL points to an on-premise server, authentication is not required and this can be left empty.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "CARBONE_BASE_URL",
+          "description": "Custom Carbone API base URL for on-premise deployments. Defaults to https://api.carbone.io. When set to a custom URL, CARBONE_API_KEY is not required.",
+          "default": "https://api.carbone.io",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "registryBaseUrl": "https://registry.hub.docker.com",
+      "identifier": "carbone/carbone-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CARBONE_API_KEY",
+          "description": "Your Carbone API key from https://account.carbone.io. Required when using the Carbone cloud API. If CARBONE_BASE_URL points to an on-premise server, authentication is not required and this can be left empty.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "CARBONE_BASE_URL",
+          "description": "Custom Carbone API base URL for on-premise deployments. Defaults to https://api.carbone.io. When set to a custom URL, CARBONE_API_KEY is not required.",
+          "default": "https://api.carbone.io",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "registryBaseUrl": "https://ghcr.io",
+      "identifier": "carboneio/carbone-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CARBONE_API_KEY",
+          "description": "Your Carbone API key from https://account.carbone.io. Required when using the Carbone cloud API. If CARBONE_BASE_URL points to an on-premise server, authentication is not required and this can be left empty.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "CARBONE_BASE_URL",
+          "description": "Custom Carbone API base URL for on-premise deployments. Defaults to https://api.carbone.io. When set to a custom URL, CARBONE_API_KEY is not required.",
+          "default": "https://api.carbone.io",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

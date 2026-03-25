@@ -24,3 +24,4 @@ Thumbs.db
 *.log
 npm-debug.log*
 carbone-mcp-specification.md
+*.pem
