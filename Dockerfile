@@ -23,6 +23,7 @@ COPY --chown=node:node --from=builder /app/dist ./dist
 LABEL io.modelcontextprotocol.server.name="io.carbone/carbone-mcp"
 
 ENV NODE_ENV=production
+ENV MCP_TRANSPORT=http
 ENV MCP_PORT=3000
 ENV MCP_PATH=/
 
