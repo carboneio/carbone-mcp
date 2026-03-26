@@ -223,21 +223,30 @@ node dist/index.js
 ## Available Tools
 
 ### Document Operations
-- **`convert_document`** — Convert documents between 100+ formats without storing a template
-- **`render_document`** — Generate documents from templates by merging with JSON data
+
+| Tool | Description | Docs |
+|---|---|---|
+| `convert_document` | Convert documents between 100+ formats without storing a template | [→](https://carbone.io/documentation/developer/http-api/convert-reports.html) |
+| `render_document` | Generate documents from templates by merging with JSON data | [→](https://carbone.io/documentation/developer/http-api/generate-reports.html) |
 
 ### Template Management
-- **`list_templates`** — Browse your template library with filtering by category or search (tags are returned per template but not filterable server-side)
-- **`list_categories`** — List all template categories in your account
-- **`list_tags`** — List all tags used across your templates
-- **`upload_template`** — Store reusable templates with versioning, categorization, and metadata
-- **`update_template_metadata`** — Rename, categorize, tag, deploy, or expire template versions
-- **`delete_template`** — Soft-delete templates (marked for removal, gone after ~24h)
-- **`download_template`** — Download original template files (DOCX, XLSX, PDF, etc.)
+
+| Tool | Description | Docs |
+|---|---|---|
+| `list_templates` | Browse your template library with filtering by category or search (tags are returned per template but not filterable server-side) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-templates) |
+| `list_categories` | List all template categories in your account | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-categories) |
+| `list_tags` | List all tags used across your templates | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-tags) |
+| `upload_template` | Store reusable templates with versioning, categorization, and metadata | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#upload-a-template) |
+| `update_template_metadata` | Rename, categorize, tag, deploy, or expire template versions | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#patch-a-template) |
+| `delete_template` | Soft-delete templates (marked for removal, gone after ~24h) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#delete-a-template) |
+| `download_template` | Download original template files (DOCX, XLSX, PDF, etc.) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#download-a-template) |
 
 ### Discovery
-- **`get_api_status`** — Check Carbone API health and current version
-- **`get_capabilities`** — View all supported formats, features, and examples
+
+| Tool | Description | Docs |
+|---|---|---|
+| `get_api_status` | Check Carbone API health and current version | |
+| `get_capabilities` | View all supported formats, features, and examples | |
 
 📖 **[Full API Reference →](./docs/API.md)** — Detailed parameters, schemas, and examples
 
