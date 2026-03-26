@@ -145,7 +145,7 @@ export async function startHttpServer(options: {
         .replace(/[^\x20-\x7E]/g, '');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.on('finish', () => {
         process.stderr.write(
@@ -162,15 +162,15 @@ export async function startHttpServer(options: {
         }
 
         // ── Public static files ───────────────────────────────────────────────
-        if (req.method === 'GET' && staticFiles.has(pathname)) {
+        if ((req.method === 'GET' || req.method === 'HEAD') && staticFiles.has(pathname)) {
           const file = staticFiles.get(pathname)!;
           res.writeHead(200, { 'Content-Type': file.mime });
-          res.end(file.content);
+          res.end(req.method === 'HEAD' ? undefined : file.content);
           return;
         }
 
         // ── Health check ──────────────────────────────────────────────────────
-        if (req.method === 'GET' && pathname === '/health') {
+        if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/health') {
           if (!healthCachePromise) {
             healthCachePromise = buildHealthBody(client, version);
             healthCachePromise.then(body => {
@@ -186,7 +186,7 @@ export async function startHttpServer(options: {
             setTimeout(() => { healthCachePromise = undefined; }, HEALTH_CACHE_TTL_MS).unref();
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(await healthCachePromise));
+          res.end(req.method === 'HEAD' ? undefined : JSON.stringify(await healthCachePromise));
           return;
         }
 
