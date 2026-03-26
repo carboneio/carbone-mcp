@@ -2,9 +2,6 @@
   "$schema": "https://glama.ai/mcp/schemas/connector.json",
   "maintainers": [
     {
-      "email": "steeve@carbone.io"
-    },
-    {
       "email": "contact@carbone.io"
     }
   ]

@@ -18,6 +18,7 @@ async function main() {
     apiKey: config.carboneApiKey,
     baseUrl: config.carboneBaseUrl,
     timeout: config.timeout,
+    transport: config.transport,
   });
 
   if (config.transport === 'http') {

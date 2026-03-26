@@ -1,4 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { readFile, readdir } from 'node:fs/promises';
+import { resolve, join, extname } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { CarboneClient } from '../carbone/client.js';
@@ -100,6 +102,25 @@ export async function startHttpServer(options: {
 }): Promise<void> {
   const { client, version, port, mcpPath, maxBodyBytes } = options;
 
+  // ── .well-known files — loaded once at startup into memory ───────────────
+  const WELL_KNOWN_MIME: Record<string, string> = {
+    '.json': 'application/json',
+    '.txt':  'text/plain',
+    '.xml':  'application/xml',
+  };
+  const wellKnownFiles = new Map<string, { content: Buffer; mime: string }>();
+  try {
+    const wellKnownDir = resolve(process.cwd(), '.well-known');
+    const entries = await readdir(wellKnownDir, { recursive: false });
+    await Promise.all(
+      entries.map(async (entry) => {
+        const content = await readFile(join(wellKnownDir, entry));
+        const mime = WELL_KNOWN_MIME[extname(entry)] ?? 'application/octet-stream';
+        wellKnownFiles.set(`/.well-known/${entry}`, { content, mime });
+      })
+    );
+  } catch { /* .well-known directory is optional */ }
+
   // ── Health check cache — refreshed at most once every 30 s ───────────────
   // Storing the promise (not the result) prevents concurrent requests from
   // each triggering a backend call while the first one is still in-flight.
@@ -131,6 +152,19 @@ export async function startHttpServer(options: {
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
           res.end();
+          return;
+        }
+
+        // ── .well-known static files ──────────────────────────────────────────
+        if (req.method === 'GET' && pathname.startsWith('/.well-known/')) {
+          const file = wellKnownFiles.get(pathname);
+          if (file) {
+            res.writeHead(200, { 'Content-Type': file.mime });
+            res.end(file.content);
+          } else {
+            res.writeHead(404);
+            res.end();
+          }
           return;
         }
 

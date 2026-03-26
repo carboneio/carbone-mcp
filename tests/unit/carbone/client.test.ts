@@ -119,6 +119,30 @@ describe('CarboneClient', () => {
       ).rejects.toBeInstanceOf(CarboneAuthError);
     });
 
+    test('error message defaults to stdio when transport is not specified', async () => {
+      const statelessClient = new CarboneClient({});
+
+      await expect(
+        statelessClient.convertDocument({ template: 'abc', convertTo: 'pdf' })
+      ).rejects.toThrow('Set the CARBONE_API_KEY environment variable');
+    });
+
+    test('error message in stdio transport mentions CARBONE_API_KEY env var', async () => {
+      const statelessClient = new CarboneClient({ transport: 'stdio' });
+
+      await expect(
+        statelessClient.convertDocument({ template: 'abc', convertTo: 'pdf' })
+      ).rejects.toThrow('Set the CARBONE_API_KEY environment variable');
+    });
+
+    test('error message in http transport mentions Bearer token', async () => {
+      const statelessClient = new CarboneClient({ transport: 'http' });
+
+      await expect(
+        statelessClient.convertDocument({ template: 'abc', convertTo: 'pdf' })
+      ).rejects.toThrow('Authorization: Bearer');
+    });
+
     test('stateless client succeeds when apiKey is provided per-call', async () => {
       const statelessClient = new CarboneClient({ baseUrl: CarboneClient.CLOUD_API_URL });
 

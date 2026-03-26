@@ -12,6 +12,7 @@ export interface CarboneClientConfig {
   apiKey?: string;
   baseUrl?: string;
   timeout?: number;
+  transport?: 'stdio' | 'http';
 }
 
 /**
@@ -33,12 +34,14 @@ export class CarboneClient {
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly timeout: number;
+  private readonly transport: 'stdio' | 'http';
 
   constructor(config: CarboneClientConfig) {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl ?? 'https://api.carbone.io';
     // Carbone API maximum timeout is 60 seconds
     this.timeout = config.timeout ?? 60000;
+    this.transport = config.transport ?? 'stdio';
   }
 
   /**
@@ -299,7 +302,9 @@ export class CarboneClient {
     const key = callOptions?.apiKey ?? this.apiKey;
     if (!key && this.baseUrl === CarboneClient.CLOUD_API_URL && !callOptions?.skipAuthCheck) {
       throw new CarboneAuthError(
-        'No API key provided. Set CARBONE_API_KEY environment variable or pass apiKey in call options.'
+        this.transport === 'http'
+          ? 'No API key provided. Pass your Carbone API key as a Bearer token in the Authorization header: Authorization: Bearer <your-key>. Get yours at https://account.carbone.io'
+          : 'No API key provided. Set the CARBONE_API_KEY environment variable. Get yours at https://account.carbone.io'
       );
     }
     return key || undefined;
