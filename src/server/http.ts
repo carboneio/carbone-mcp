@@ -102,24 +102,30 @@ export async function startHttpServer(options: {
 }): Promise<void> {
   const { client, version, port, mcpPath, maxBodyBytes } = options;
 
-  // ── .well-known files — loaded once at startup into memory ───────────────
-  const WELL_KNOWN_MIME: Record<string, string> = {
+  // ── Public static files — loaded once at startup into memory ────────────
+  // All files under <cwd>/public/ are served as static assets.
+  // Loading at startup (not per-request) prevents path traversal attacks
+  // and avoids disk I/O on each request.
+  const STATIC_MIME: Record<string, string> = {
     '.json': 'application/json',
     '.txt':  'text/plain',
     '.xml':  'application/xml',
+    '.html': 'text/html',
   };
-  const wellKnownFiles = new Map<string, { content: Buffer; mime: string }>();
+  const staticFiles = new Map<string, { content: Buffer; mime: string }>();
   try {
-    const wellKnownDir = resolve(process.cwd(), '.well-known');
-    const entries = await readdir(wellKnownDir, { recursive: false });
+    const publicDir = resolve(process.cwd(), 'public');
+    const entries = await readdir(publicDir, { recursive: true });
     await Promise.all(
       entries.map(async (entry) => {
-        const content = await readFile(join(wellKnownDir, entry));
-        const mime = WELL_KNOWN_MIME[extname(entry)] ?? 'application/octet-stream';
-        wellKnownFiles.set(`/.well-known/${entry}`, { content, mime });
+        const filePath = join(publicDir, entry);
+        const content = await readFile(filePath);
+        const mime = STATIC_MIME[extname(entry)] ?? 'application/octet-stream';
+        // Normalize path separators to forward slashes (Windows compat)
+        staticFiles.set('/' + entry.toString().replace(/\\/g, '/'), { content, mime });
       })
     );
-  } catch { /* .well-known directory is optional */ }
+  } catch { /* public directory is optional */ }
 
   // ── Health check cache — refreshed at most once every 30 s ───────────────
   // Storing the promise (not the result) prevents concurrent requests from
@@ -155,16 +161,11 @@ export async function startHttpServer(options: {
           return;
         }
 
-        // ── .well-known static files ──────────────────────────────────────────
-        if (req.method === 'GET' && pathname.startsWith('/.well-known/')) {
-          const file = wellKnownFiles.get(pathname);
-          if (file) {
-            res.writeHead(200, { 'Content-Type': file.mime });
-            res.end(file.content);
-          } else {
-            res.writeHead(404);
-            res.end();
-          }
+        // ── Public static files ───────────────────────────────────────────────
+        if (req.method === 'GET' && staticFiles.has(pathname)) {
+          const file = staticFiles.get(pathname)!;
+          res.writeHead(200, { 'Content-Type': file.mime });
+          res.end(file.content);
           return;
         }
 
