@@ -1,134 +1,28 @@
 # Carbone MCP Server
 
 [![npm version](https://img.shields.io/npm/v/carbone-mcp.svg)](https://www.npmjs.com/package/carbone-mcp)
+[![MCP Registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.carbone%252Fcarbone-mcp%2Fversions%2Flatest&query=%24.server.version&label=MCP%20Registry&logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io)
 
 > **Official Carbone MCP server** — Turn AI assistants into document automation experts. Generate professional PDFs, invoices, reports, and more using natural language.
 
 Give Claude, ChatGPT, and other AI assistants the power to:
-- Convert between 100+ document formats instantly
-- Generate documents from templates with JSON data
-- Manage template libraries with versioning
-- Fill PDF forms programmatically
-- Create batch documents (invoices, certificates, letters)
-
----
-
-## Features
-
 - 🔄 **Document Conversion** — 100+ format combinations (PDF, DOCX, XLSX, PNG, HTML, CSV…)
 - 📄 **Template Engine** — Generate documents from JSON data with `{d.field}` tags
 - 📚 **Template Library** — Upload, version, categorize, and manage reusable templates
-- 🎨 **PDF Customization** — Watermarks, passwords, encryption, multiple converter engines
+- 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines
 - 🌍 **Localization** — Multi-language support, currency conversion, timezone handling
 - ⚡ **Batch Generation** — Create hundreds of documents in one request
 
 ---
 
-## Requirements
-
-- **Node.js 18+** (Node 24 recommended)
-- A **Carbone API key** — get one free at [account.carbone.io](https://account.carbone.io)
-
----
-
-## Quick Start
-
-### Option 1: Using npx (Recommended — No Installation)
-
-```bash
-export CARBONE_API_KEY=your_api_key_here
-npx -y carbone-mcp
-```
-
-### Option 2: Building from Source
-
-<details>
-<summary>Show build instructions</summary>
-
-```bash
-git clone https://github.com/carboneio/carbone-mcp
-cd carbone-mcp
-npm install && npm run build
-CARBONE_API_KEY=your_key node dist/index.js
-```
-
-</details>
-
----
-
 ## Installation
 
-### Claude Desktop
+Get your free API key at [account.carbone.io](https://account.carbone.io).
 
-**1. Edit the config file**
+### stdio — Claude Desktop, VS Code, Cursor, Claude Code, and more
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "carbone": {
-      "command": "npx",
-      "args": ["-y", "carbone-mcp"],
-      "env": {
-        "CARBONE_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-<details>
-<summary>Alternative: local build config</summary>
-
-```json
-{
-  "mcpServers": {
-    "carbone": {
-      "command": "/path/to/node",
-      "args": ["/absolute/path/to/carbone-mcp/dist/index.js"],
-      "env": {
-        "CARBONE_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-</details>
-
-**2. Restart Claude Desktop**
-
-Try asking: *"What can Carbone do?"* or *"Convert this file to PDF: /path/to/document.docx"*
-
----
-
-### VS Code (Cline / Copilot)
-
-Add to your VS Code settings or create `.vscode/mcp.json`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "carbone": {
-        "command": "npx",
-        "args": ["-y", "carbone-mcp"],
-        "env": {
-          "CARBONE_API_KEY": "your_api_key_here"
-        }
-      }
-    }
-  }
-}
-```
-
-### Cursor
-
-Add to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
+All stdio-compatible MCP clients use the same config:
 
 ```json
 {
@@ -144,28 +38,24 @@ Add to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
 }
 ```
 
+| Client | Config file |
+|---|---|
+| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Cursor (global) | `~/.cursor/mcp.json` |
+| Cursor (project) | `.cursor/mcp.json` |
+| Claude Code | `claude mcp add carbone-mcp -e CARBONE_API_KEY=your_key -- npx -y carbone-mcp` |
+
+> **VS Code** uses `{ "mcp": { "servers": { ... } } }` instead of `{ "mcpServers": { ... } }` — the inner config block is identical.
+
+After adding the config, restart your client and try: *"What can Carbone do?"*
+
 ---
 
-### Remote HTTP (mcp.carbone.io)
+### HTTP — mcp.carbone.io (no local installation)
 
-Connect directly to the hosted Carbone MCP endpoint — no local installation needed.
+Connect directly to the hosted endpoint. Supported by VS Code, Cursor, Claude Code, and other clients that support streamable HTTP transport.
 
-**Claude Desktop:**
-```json
-{
-  "mcpServers": {
-    "carbone": {
-      "type": "streamable-http",
-      "url": "https://mcp.carbone.io",
-      "headers": {
-        "Authorization": "Bearer your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-**VS Code / Cursor:**
 ```json
 {
   "mcp": {
@@ -180,6 +70,59 @@ Connect directly to the hosted Carbone MCP endpoint — no local installation ne
     }
   }
 }
+```
+
+> **Authentication:** The HTTP endpoint currently requires a Carbone API key passed as a Bearer token in the `Authorization` header. OAuth2 support (for Claude Desktop, Mistral, ChatGPT, Gemini, and other clients) is planned for a future release.
+>
+> **Cursor** uses `{ "mcpServers": { ... } }` instead of `{ "mcp": { "servers": { ... } } }` — the inner config block is identical.
+>
+> **Claude Desktop** does not support HTTP Bearer token authentication — use the stdio option above instead.
+
+---
+
+### Docker — self-hosted HTTP server
+
+```bash
+docker run -d -p 3000:3000 \
+  -e CARBONE_API_KEY=your_api_key_here \
+  carbone/carbone-mcp
+```
+
+Connect your MCP client to `http://your-host:3000` using the HTTP config above (replace the URL).
+
+**Docker Compose** — see [compose.yml](./compose.yml):
+```bash
+CARBONE_API_KEY=your_key docker compose up -d
+```
+
+**Claude Desktop with Docker (stdio)** — Claude Desktop does not support HTTP transport; use the stdio mode instead:
+
+```json
+{
+  "mcpServers": {
+    "carbone": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-e", "CARBONE_API_KEY=your_api_key_here",
+               "-e", "MCP_TRANSPORT=stdio",
+               "carbone/carbone-mcp"]
+    }
+  }
+}
+```
+
+### On-Premise — self-hosted Carbone instance
+
+If you run [Carbone on-premise](https://carbone.io/pricing.html), point the MCP server at your instance — no API key required:
+
+```bash
+# Docker (HTTP)
+docker run -d -p 3000:3000 \
+  -e CARBONE_BASE_URL=https://your-carbone-server.com \
+  carbone/carbone-mcp
+
+# stdio
+CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 ```
 
 ---
@@ -200,21 +143,6 @@ Connect directly to the hosted Carbone MCP endpoint — no local installation ne
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
 | `MCP_MAX_BODY_BYTES` | `10485760` | Maximum request body size in bytes (10 MB default) |
-
-**On-premise example (no API key needed):**
-```bash
-CARBONE_BASE_URL=https://your-carbone-server.com \
-node dist/index.js
-```
-
-**Self-hosted HTTP mode example:**
-```bash
-CARBONE_API_KEY=your_key \
-CARBONE_BASE_URL=https://your-carbone-server.com \
-MCP_TRANSPORT=http \
-MCP_PORT=3000 \
-node dist/index.js
-```
 
 </details>
 
@@ -376,6 +304,9 @@ The `carbone` field shows backend connectivity:
 
 ## Security
 
+⚠️ **Prompt Injection**
+Connecting an AI assistant to any external service carries inherent risks. A malicious document or template could contain instructions that trick the AI into performing unintended actions (e.g. exfiltrating data, deleting templates). Always review what your AI client is about to do before confirming tool calls.
+
 ⚠️ **API Key Protection**
 - Never commit `CARBONE_API_KEY` to version control
 - Use environment variables or a secret manager
@@ -389,89 +320,7 @@ The `carbone` field shows backend connectivity:
 ⚠️ **Data Privacy**
 - Carbone does not store your document data after rendering
 - Use `CARBONE_BASE_URL` to point to a self-hosted instance for maximum control
-- See [Privacy Policy](https://carbone.io/privacy) for details
-
----
-
-## Development
-
-```bash
-npm run dev          # Run with tsx (no build needed)
-npm run build        # Compile TypeScript → dist/
-npm test             # Run unit tests
-npm run test:watch   # Watch mode
-npm run test:integration  # Real API tests (requires CARBONE_TEST_API_KEY)
-npm run test:coverage     # Coverage report
-```
-
----
-
-## Docker Deployment
-
-### Build image
-
-```bash
-docker build -t carbone-mcp:latest .
-```
-
-### Run as stdio (for AI clients)
-
-```bash
-docker run -i --rm \
-  -e CARBONE_API_KEY=your_key_here \
-  carbone-mcp:latest
-```
-
-### Claude Desktop config (Docker stdio)
-
-```json
-{
-  "mcpServers": {
-    "carbone": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm",
-               "-e", "CARBONE_API_KEY=your_key_here",
-               "carbone-mcp:latest"]
-    }
-  }
-}
-```
-
-### Run as HTTP server
-
-```bash
-docker run -d \
-  -p 3000:3000 \
-  -e CARBONE_API_KEY=your_key_here \
-  -e MCP_TRANSPORT=http \
-  -e MCP_PORT=3000 \
-  carbone-mcp:latest
-```
-
-### Docker Compose (HTTP mode)
-
-```yaml
-services:
-  carbone-mcp:
-    image: carbone-mcp:latest
-    ports:
-      - 3000:3000
-    environment:
-      - CARBONE_API_KEY=${CARBONE_API_KEY:-}
-      - CARBONE_BASE_URL=${CARBONE_BASE_URL:-https://api.carbone.io}
-      - CARBONE_TIMEOUT=${CARBONE_TIMEOUT:-60000}
-      - MCP_TRANSPORT=http
-      - MCP_PORT=3000
-      - MCP_PATH=/
-    restart: unless-stopped
-```
-
-Start it:
-```bash
-CARBONE_API_KEY=your_key docker compose up -d
-```
-
-Then connect your AI client to `http://your-server:3000`.
+- See [Privacy Policy](https://carbone.io/company/privacy-policy.html) for details
 
 ---
 
@@ -520,21 +369,26 @@ We welcome contributions:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Development
+
+```bash
+npm run dev          # Run with tsx (no build needed)
+npm run build        # Compile TypeScript → dist/
+npm test             # Run unit tests
+npm run test:watch   # Watch mode
+npm run test:integration  # Real API tests (requires CARBONE_TEST_API_KEY)
+npm run test:coverage     # Coverage report
+```
+
+---
+
 ## Support
 
 - 📚 **Documentation:** [carbone.io/documentation](https://carbone.io/documentation)
 - 🐛 **Bug Reports:** [GitHub Issues](https://github.com/carboneio/carbone-mcp/issues)
 - 💬 **Live Chat:** [carbone.io](https://carbone.io) (bottom-right widget)
 - 📧 **Enterprise:** contact@carbone.io
-
----
-
-## Links
-
-- [Carbone API documentation](https://carbone.io/documentation/developer/http-api/introduction.html)
-- [OpenAPI specification](https://carbone.io/file/carbone.OpenAPI.yml)
-- [MCP specification](https://modelcontextprotocol.io)
-- [Full API Reference](./docs/API.md)
+- 📋 **OpenAPI specification:** [carbone.OpenAPI.yml](https://carbone.io/file/carbone.OpenAPI.yml)
 
 ---
 
