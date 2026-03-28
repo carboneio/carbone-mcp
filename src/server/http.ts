@@ -137,7 +137,13 @@ export async function startHttpServer(options: {
   const httpServer = createServer(
     async (req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse) => {
       const start = Date.now();
-      const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+      let pathname: string;
+      try {
+        pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+      } catch {
+        res.writeHead(400).end('Bad Request');
+        return;
+      }
       // X-Forwarded-For is set by reverse proxies (Cloudflare, nginx…); fall back to socket address.
       // Sanitize to prevent log injection — keep only printable ASCII characters.
       const clientIp = ((req.headers['x-forwarded-for'] as string | undefined)
