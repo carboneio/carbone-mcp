@@ -12,7 +12,7 @@ Give Claude, ChatGPT, and other AI assistants the power to:
 - 📚 **Template Library** — Upload, version, categorize, and manage reusable templates
 - 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines
 - 🌍 **Localization** — Multi-language support, currency conversion, timezone handling
-- ⚡ **Batch Generation** — Create hundreds of documents in one request
+- ⚡ **Batch Generation** — Create hundreds of documents in one request (async via webhook)
 
 ---
 
