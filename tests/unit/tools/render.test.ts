@@ -124,6 +124,47 @@ describe('handleRenderDocument', () => {
     );
   });
 
+  test('returns text content with Carbone message for async (webhook) render', async () => {
+    const client = {
+      renderDocument: vi.fn().mockResolvedValue({ async: true, message: 'A render ID will be sent to your callback URL' }),
+    } as unknown as CarboneClient;
+
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', data: {}, webhookUrl: 'https://example.com/webhook' },
+      client
+    );
+
+    expect(result.content[0].type).toBe('text');
+    if (result.content[0].type === 'text') {
+      expect(result.content[0].text).toBe('A render ID will be sent to your callback URL');
+    }
+    expect(result.isError).toBeUndefined();
+  });
+
+  test('passes webhookUrl and webhookHeaders through to client', async () => {
+    const client = {
+      renderDocument: vi.fn().mockResolvedValue({ async: true, message: 'Queued' }),
+    } as unknown as CarboneClient;
+
+    await handleRenderDocument(
+      {
+        templateId: 'tpl1',
+        data: {},
+        webhookUrl: 'https://example.com/webhook',
+        webhookHeaders: { authorization: 'my-secret', 'custom-id': '12345' },
+      },
+      client
+    );
+
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webhookUrl: 'https://example.com/webhook',
+        webhookHeaders: { authorization: 'my-secret', 'custom-id': '12345' },
+      }),
+      undefined
+    );
+  });
+
   test('returns isError on client error', async () => {
     const client = {
       renderDocument: vi.fn().mockRejectedValue(new CarboneError('Render failed', 422)),

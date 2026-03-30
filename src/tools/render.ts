@@ -11,7 +11,9 @@ export const renderDocumentDescription =
   'Two modes: (1) pass templateId to use a previously uploaded template; ' +
   '(2) pass template (file path, URL, or base64) to upload and render in a single request without storing a template. ' +
   'Supports output format conversion, multilingual rendering, currency conversion, ' +
-  'batch generation, and advanced PDF options (watermark, password, PDF/A).';
+  'batch generation, and advanced PDF options (watermark, password, PDF/A). ' +
+  'Async mode: pass webhookUrl to render asynchronously — Carbone will POST the renderId to your URL when the document is ready. ' +
+  'Async mode is required when using batch generation (batchSplitBy).';
 
 export const renderDocumentSchema = {
   templateId: z
@@ -240,6 +242,30 @@ export const renderDocumentSchema = {
       'Examples: "invoice-{d.id}.pdf", "{d.client.name}-{d.date}.docx". ' +
       'Must be used together with batchSplitBy.'
     ),
+
+  webhookUrl: z
+    .url()
+    .optional()
+    .describe(
+      'Webhook URL to enable asynchronous rendering. ' +
+      'When provided, Carbone returns immediately and POSTs { "success": true, "data": { "renderId": "..." } } to this URL when the document is ready. ' +
+      'The default render timeout is extended to 5 minutes on Carbone Cloud (vs 60 s for synchronous requests). ' +
+      'Download the document with GET /render/:renderId once the webhook is received. ' +
+      'Required when using batchSplitBy (batch generation is always asynchronous). ' +
+      'Example: "https://your-server.com/carbone-webhook".'
+    ),
+
+  webhookHeaders: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Custom headers Carbone will include when POSTing to your webhookUrl. ' +
+      'Pass plain header names as keys — the prefix "carbone-webhook-header-" is added automatically before sending to Carbone, ' +
+      'and Carbone forwards the original header names to your webhook endpoint. ' +
+      'Example: { "authorization": "my-secret", "custom-id": "12345", "custom-name": "Jane Doe" } — ' +
+      'Carbone will call your URL with headers: authorization: my-secret, custom-id: 12345, custom-name: Jane Doe. ' +
+      'Requires webhookUrl to be set.'
+    ),
 };
 
 export async function handleRenderDocument(
@@ -263,6 +289,8 @@ export async function handleRenderDocument(
     batchSplitBy?: string;
     batchOutput?: string;
     batchReportName?: string;
+    webhookUrl?: string;
+    webhookHeaders?: Record<string, string>;
   },
   client: CarboneClient,
   options?: CallOptions
@@ -278,6 +306,10 @@ export async function handleRenderDocument(
   try {
     const template = args.template ? await resolveFileInput(args.template) : undefined;
     const result = await client.renderDocument({ ...args, template }, options);
+
+    if ('async' in result) {
+      return { content: [{ type: 'text' as const, text: result.message }] };
+    }
 
     const format = args.convertTo ?? result.filename.split('.').pop() ?? 'pdf';
     const content = toToolContent(result.buffer, result.filename, format);

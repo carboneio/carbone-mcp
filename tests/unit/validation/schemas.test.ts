@@ -142,6 +142,46 @@ describe('RenderDocumentSchema', () => {
       RenderDocumentSchema.parse({ templateId: 'tpl1', template: 'base64==', data: {} })
     ).toThrow();
   });
+
+  test('accepts a valid webhookUrl', () => {
+    const result = RenderDocumentSchema.parse({
+      templateId: 'tpl1',
+      data: {},
+      webhookUrl: 'https://example.com/webhook',
+    });
+    expect(result.webhookUrl).toBe('https://example.com/webhook');
+  });
+
+  test('rejects an invalid webhookUrl', () => {
+    expect(() =>
+      RenderDocumentSchema.parse({ templateId: 'tpl1', data: {}, webhookUrl: 'not-a-url' })
+    ).toThrow();
+  });
+
+  test('webhookUrl is optional', () => {
+    const result = RenderDocumentSchema.parse({ templateId: 'tpl1', data: {} });
+    expect(result.webhookUrl).toBeUndefined();
+  });
+
+  test('accepts webhookHeaders as a string record', () => {
+    const result = RenderDocumentSchema.parse({
+      templateId: 'tpl1',
+      data: {},
+      webhookUrl: 'https://example.com/webhook',
+      webhookHeaders: { authorization: 'my-secret', 'custom-id': '12345' },
+    });
+    expect(result.webhookHeaders).toEqual({ authorization: 'my-secret', 'custom-id': '12345' });
+  });
+
+  test('rejects webhookHeaders with non-string values', () => {
+    expect(() =>
+      RenderDocumentSchema.parse({
+        templateId: 'tpl1',
+        data: {},
+        webhookHeaders: { authorization: 123 },
+      })
+    ).toThrow();
+  });
 });
 
 describe('UploadTemplateSchema', () => {

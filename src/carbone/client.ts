@@ -101,7 +101,9 @@ export class CarboneClient {
     batchSplitBy?: string;
     batchOutput?: string;
     batchReportName?: string;
-  }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string }> {
+    webhookUrl?: string;
+    webhookHeaders?: Record<string, string>;
+  }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string }> {
     const body: Record<string, unknown> = { data: params.data };
     if (params.template)                   body['template']       = params.template;
     if (params.convertTo)                  body['convertTo']      = params.convertTo;
@@ -121,15 +123,31 @@ export class CarboneClient {
     if (params.batchOutput)                body['batchOutput']    = params.batchOutput;
     if (params.batchReportName)            body['batchReportName'] = params.batchReportName;
 
+    const isAsync = !!params.webhookUrl;
     const endpoint = params.template
-      ? '/render/template?download=true'
-      : `/render/${params.templateId}?download=true`;
+      ? `/render/template${isAsync ? '' : '?download=true'}`
+      : `/render/${params.templateId}${isAsync ? '' : '?download=true'}`;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (params.webhookUrl) {
+      headers['carbone-webhook-url'] = params.webhookUrl;
+      if (params.webhookHeaders) {
+        for (const [name, value] of Object.entries(params.webhookHeaders)) {
+          headers[`carbone-webhook-header-${name}`] = value;
+        }
+      }
+    }
 
     const response = await this.request(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     }, options);
+
+    if (isAsync) {
+      const json = await response.json() as { success: boolean; message: string };
+      return { async: true, message: json.message };
+    }
 
     return this.handleBinaryResponse(response);
   }

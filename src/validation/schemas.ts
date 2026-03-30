@@ -55,6 +55,8 @@ export const RenderDocumentSchema = z.object({
   batchSplitBy: z.string().optional(),
   batchOutput: z.string().optional(),
   batchReportName: z.string().optional(),
+  webhookUrl: z.string().url().optional(),
+  webhookHeaders: z.record(z.string(), z.string()).optional(),
 }).refine(
   (d) => (d.templateId != null) !== (d.template != null),
   { message: 'Provide either templateId or template, not both', path: ['templateId'] }

@@ -423,6 +423,88 @@ describe('CarboneClient', () => {
       expect(body.batchOutput).toBe('zip');
       expect(body.batchReportName).toBe('invoice-{d.id}.pdf');
     });
+
+    test('uses /render/{templateId} without ?download=true when webhookUrl is provided', async () => {
+      const spy = mockFetch({ _json: { success: true, message: 'Render queued' } });
+
+      await client.renderDocument({
+        templateId: 'tpl123',
+        data: {},
+        webhookUrl: 'https://example.com/webhook',
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        'https://api.carbone.io/render/tpl123',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    test('uses /render/template without ?download=true for inline template with webhookUrl', async () => {
+      const spy = mockFetch({ _json: { success: true, message: 'Render queued' } });
+
+      await client.renderDocument({
+        template: 'base64abc==',
+        data: {},
+        webhookUrl: 'https://example.com/webhook',
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        'https://api.carbone.io/render/template',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    test('sends carbone-webhook-url header when webhookUrl is provided', async () => {
+      const spy = mockFetch({ _json: { success: true, message: 'Render queued' } });
+
+      await client.renderDocument({
+        templateId: 'tpl1',
+        data: {},
+        webhookUrl: 'https://example.com/webhook',
+      });
+
+      const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(headers['carbone-webhook-url']).toBe('https://example.com/webhook');
+    });
+
+    test('sends carbone-webhook-header-* headers when webhookHeaders are provided', async () => {
+      const spy = mockFetch({ _json: { success: true, message: 'Render queued' } });
+
+      await client.renderDocument({
+        templateId: 'tpl1',
+        data: {},
+        webhookUrl: 'https://example.com/webhook',
+        webhookHeaders: { authorization: 'my-secret', 'custom-id': '12345' },
+      });
+
+      const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(headers['carbone-webhook-header-authorization']).toBe('my-secret');
+      expect(headers['carbone-webhook-header-custom-id']).toBe('12345');
+    });
+
+    test('does not send carbone-webhook-url header for synchronous render', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({ templateId: 'tpl1', data: {} });
+
+      const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(headers['carbone-webhook-url']).toBeUndefined();
+    });
+
+    test('returns { async: true, message } when webhookUrl is provided', async () => {
+      mockFetch({ _json: { success: true, message: 'A render ID will be sent to your callback URL' } });
+
+      const result = await client.renderDocument({
+        templateId: 'tpl1',
+        data: {},
+        webhookUrl: 'https://example.com/webhook',
+      });
+
+      expect(result).toEqual({ async: true, message: 'A render ID will be sent to your callback URL' });
+    });
   });
 
   // ── uploadTemplate ──────────────────────────────────────────────────────────
