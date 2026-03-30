@@ -26,10 +26,20 @@
     "node": ">=18.0.0"
   },
   "keywords": [
-    "mcp", "claude", "anthropic", "chatgpt",
-    "document-generation", "template-engine", "invoice-generation",
-    "docx-to-pdf", "html-to-pdf", "office-to-pdf",
-    "pdf-forms", "batch-generation", "json-to-pdf", "md-to-pdf"
+    "mcp",
+    "claude",
+    "anthropic",
+    "chatgpt",
+    "document-generation",
+    "template-engine",
+    "invoice-generation",
+    "docx-to-pdf",
+    "html-to-pdf",
+    "office-to-pdf",
+    "pdf-forms",
+    "batch-generation",
+    "json-to-pdf",
+    "md-to-pdf"
   ],
   "author": "carboneio",
   "license": "Apache-2.0",
@@ -43,14 +53,14 @@
   "homepage": "https://carbone.io",
   "mcpName": "io.carbone/carbone-mcp",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
   }
 }

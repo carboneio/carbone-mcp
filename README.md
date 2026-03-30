@@ -142,7 +142,7 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` (default, for AI clients) or `http` (for self-hosted deployments) |
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
-| `MCP_MAX_BODY_BYTES` | `10485760` | Maximum request body size in bytes (10 MB default) |
+| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size in bytes (60 MB default, matching Carbone Cloud limit) |
 
 </details>
 

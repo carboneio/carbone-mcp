@@ -59,6 +59,6 @@ export function loadConfig(): ServerConfig {
     transport,
     port: parsePositiveInt(process.env['MCP_PORT'], 3000, 'MCP_PORT'),
     mcpPath,
-    maxBodyBytes: parsePositiveInt(process.env['MCP_MAX_BODY_BYTES'], 10 * 1024 * 1024, 'MCP_MAX_BODY_BYTES'),
+    maxBodyBytes: parsePositiveInt(process.env['MCP_MAX_BODY_BYTES'], 60 * 1024 * 1024, 'MCP_MAX_BODY_BYTES'),
   };
 }

@@ -177,7 +177,7 @@ describe('loadConfig', () => {
 
     test('uses fallback when MCP_MAX_BODY_BYTES is not set', () => {
       stubStdio();
-      expect(loadConfig().maxBodyBytes).toBe(10 * 1024 * 1024);
+      expect(loadConfig().maxBodyBytes).toBe(60 * 1024 * 1024);
     });
 
     test('parses a valid MCP_MAX_BODY_BYTES', () => {
@@ -200,7 +200,7 @@ describe('loadConfig', () => {
         transport: 'stdio',
         port: 3000,
         mcpPath: '/',
-        maxBodyBytes: 10 * 1024 * 1024,
+        maxBodyBytes: 60 * 1024 * 1024,
       });
     });
 
