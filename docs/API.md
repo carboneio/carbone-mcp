@@ -303,7 +303,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "1.0.0" },
+  "mcp":    { "version": "1.1.0" },
   "carbone": { "version": "4.x.x" }
 }
 ```

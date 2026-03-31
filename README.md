@@ -84,6 +84,7 @@ Connect directly to the hosted endpoint. Supported by VS Code, Cursor, Claude Co
 
 ```bash
 docker run -d -p 3000:3000 \
+  -e MCP_TRANSPORT=http \
   -e CARBONE_API_KEY=your_api_key_here \
   carbone/carbone-mcp
 ```
@@ -290,7 +291,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp":    { "version": "1.0.0" },
+  "mcp":    { "version": "1.1.0" },
   "carbone": { "version": "4.x.x" }
 }
 ```
@@ -384,7 +385,9 @@ npm run test:coverage     # Coverage report
 
 ## Support
 
-- 📚 **Documentation:** [carbone.io/documentation](https://carbone.io/documentation)
+- 🤖 **MCP Documentation:** [carbone.io/documentation/developer/ai/mcp.html](https://carbone.io/documentation/developer/ai/mcp.html)
+- 📚 **API Documentation:** [carbone.io/documentation/developer/http-api/introduction.html](https://carbone.io/documentation/developer/http-api/introduction.html)
+- 📚 **Templating Documentation:** [carbone.io/documentation/design/overview/getting-started.html](https://carbone.io/documentation/design/overview/getting-started.html)
 - 🐛 **Bug Reports:** [GitHub Issues](https://github.com/carboneio/carbone-mcp/issues)
 - 💬 **Live Chat:** [carbone.io](https://carbone.io) (bottom-right widget)
 - 📧 **Enterprise:** contact@carbone.io
