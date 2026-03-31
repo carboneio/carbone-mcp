@@ -66,6 +66,12 @@ const CAPABILITIES_TEXT = `# Carbone — Document Generation & Conversion
 
 ---
 
+## Common Use Cases
+
+Invoice, Quote/Proposal, Purchase order, Pay slip, Delivery note, Offer letter, Employment contract, Certificate (completion/training), Monthly/quarterly report, Product catalog, Lab/medical report, Subscription receipt, Marketing brochure, Terms of service, Privacy policy, Newsletter, Company presentation
+
+---
+
 ## 1. Document Conversion (no template needed)
 
 Use \`convert_document\` to convert between formats instantly. No template required.
@@ -98,20 +104,23 @@ Full conversion matrix: https://carbone.io/documentation/developer/http-api/gene
 
 ## 2. Template-Based Generation
 
+> **Authoring from scratch?** LLMs can write HTML documents or templates directly:
+> - **HTML or Markdown with Carbone tags** → use as a template with \`render_document\`. Strongly recommended: load \`carbone.skill\` (see Documentation) as the reference for Universal Carbone Templating syntax and validate all tag structures before rendering.
+> - **Plain HTML or Markdown (no Carbone tags)** → static document, use \`convert_document\` to produce PDF, DOCX, etc.
+> - **DOCX / XLSX / PPTX editing** → if the LLM supports editing Office files, Carbone tags can be injected directly into existing DOCX, XLSX, or PPTX files to create or update templates. The same \`carbone.skill\` syntax applies.
+
 Two modes — choose based on whether you need to reuse the template:
 
 **Mode A — Stored template (reusable):**
 1. Design a template in Word / Excel / LibreOffice / HTML / Markdown with \`{d.field}\` tags
 2. Upload it with \`upload_template\` → get a Template ID
-3. Call \`render_document\` with \`templateId\` and your JSON data
+3. Call \`render_document\` with \`templateId\`, your JSON data, and \`outputType\` (e.g. \`"pdf"\`)
 
 **Mode B — Inline template (one-shot, no storage):**
-1. Call \`render_document\` with \`template\` (file path, URL, or base64) and your JSON data
+1. Call \`render_document\` with \`template\` (file path, URL, or base64), your JSON data, and \`outputType\`
 2. The template is uploaded and rendered in a single request — no Template ID is returned
 
-> **Note:** This MCP server is not designed to help you design templates or author Carbone tag syntax.
-> The examples below are for quick reference only. For complete syntax, formatters, and best practices,
-> refer to the documentation links at the bottom of this document.
+**Output format:** \`outputType\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
 **Template data tags (quick reference):**
 - \`{d.customer.name}\`            — simple field access
@@ -124,7 +133,15 @@ Two modes — choose based on whether you need to reuse the template:
 - \`{d.status:ifEQ(active):show(Yes):elseShow(No)}\` — conditional (inline value)
 - \`{d.show:ifEQ(true):showBegin}\` … \`{d.show:ifEQ(true):showEnd}\` — conditional block
 
+> For the full syntax reference — all formatters, conditions, loops, and translations — load \`carbone.skill\` (see Documentation).
+
+**Async rendering** (single document, non-blocking):
+- Pass a \`webhookUrl\` in the \`render_document\` call to render asynchronously (timeout: **5 minutes**, vs 1 minute for synchronous).
+- Carbone will POST the generated document (or an error payload) to your URL when done.
+- The \`render_document\` call returns immediately with a render ID; no document content is returned inline.
+
 **Batch generation** (one request → hundreds of documents):
+- **Batch rendering is always asynchronous** — you MUST provide a \`webhookUrl\` (same 5-minute timeout applies).
 - Set \`batchSplitBy\` to the array path driving the batch (e.g. \`"d.invoices"\`)
 - Set \`batchOutput\` to \`"zip"\` to receive all documents in a single ZIP archive
 - Set \`batchReportName\` to name each file (e.g. \`"invoice-{d.id}.pdf"\`)
@@ -150,7 +167,13 @@ Archive:   ZIP (batch output — use with batchSplitBy)
 - Template tags syntax:  https://carbone.io/documentation/design/overview/getting-started.html
 - HTML templates guide:  https://carbone.io/documentation/design/template-formats/html.html
 - Markdown templates:    https://carbone.io/documentation/design/template-formats/markdown.html
+- MCP server docs:       https://carbone.io/documentation/developer/mcp/introduction.html
 - Changelog:             https://carbone.io/changelog.html
+
+**Carbone Skills (AI deep knowledge):**
+For deep knowledge of Carbone's templating syntax, formatters, and best practices, load the Carbone Skill:
+- Skills ZIP (for AI tools): https://carbone.io/file/carbone.skill
+- Skills documentation:      https://carbone.io/documentation/developer/ai/skills.html
 `;
 
 export function handleGetCapabilities() {
