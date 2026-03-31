@@ -343,6 +343,7 @@ Items:
 - [Template syntax](https://carbone.io/documentation/developer/introduction.html)
 - [HTML templates guide](https://carbone.io/documentation/design/template-formats/html.html)
 - [Markdown templates guide](https://carbone.io/documentation/design/template-formats/markdown.html)
+- [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html) — Universal Carbone Templating syntax reference for AI tools ([download .skill](https://carbone.io/file/carbone.skill))
 
 ---
 
