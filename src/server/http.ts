@@ -41,8 +41,9 @@ export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unkno
 
 export function extractBearerToken(req: IncomingMessage): string | undefined {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return undefined;
-  const token = header.slice(7).trim();
+  if (!header) return undefined;
+  const lower = header.toLowerCase();
+  const token = lower.startsWith('bearer ') ? header.slice(7).trim() : header.trim();
   return token || undefined;
 }
 

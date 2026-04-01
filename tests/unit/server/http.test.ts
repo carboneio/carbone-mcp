@@ -36,21 +36,27 @@ describe('extractBearerToken', () => {
     expect(extractBearerToken(makeReq())).toBeUndefined();
   });
 
-  test('returns undefined when Authorization does not start with "Bearer "', () => {
-    expect(extractBearerToken(makeReq({ authorization: 'Basic dXNlcjpwYXNz' }))).toBeUndefined();
-    expect(extractBearerToken(makeReq({ authorization: 'Token abc' }))).toBeUndefined();
+  test('is case-insensitive for the Bearer prefix', () => {
+    expect(extractBearerToken(makeReq({ authorization: 'bearer my-secret-key' }))).toBe('my-secret-key');
+    expect(extractBearerToken(makeReq({ authorization: 'BEARER my-secret-key' }))).toBe('my-secret-key');
+    expect(extractBearerToken(makeReq({ authorization: 'Bearer my-secret-key' }))).toBe('my-secret-key');
+  });
+
+  test('returns the raw value when no Bearer prefix is present', () => {
+    expect(extractBearerToken(makeReq({ authorization: 'my-api-key' }))).toBe('my-api-key');
   });
 
   test('returns undefined when the token after "Bearer " is empty', () => {
     expect(extractBearerToken(makeReq({ authorization: 'Bearer ' }))).toBeUndefined();
   });
 
-  test('returns undefined when the token is only whitespace', () => {
-    expect(extractBearerToken(makeReq({ authorization: 'Bearer   ' }))).toBeUndefined();
+  test('returns undefined when the header is only whitespace', () => {
+    expect(extractBearerToken(makeReq({ authorization: '   ' }))).toBeUndefined();
   });
 
   test('trims surrounding whitespace from the token', () => {
     expect(extractBearerToken(makeReq({ authorization: 'Bearer   my-key  ' }))).toBe('my-key');
+    expect(extractBearerToken(makeReq({ authorization: '  my-key  ' }))).toBe('my-key');
   });
 });
 

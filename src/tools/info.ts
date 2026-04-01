@@ -18,7 +18,7 @@ export async function handleGetApiStatus(client: CarboneClient, options?: CallOp
       content: [
         {
           type: 'text' as const,
-          text: `Carbone API is online.\nVersion: ${status.version}\nMessage: ${status.message}`,
+          text: `Carbone API: online (v${status.version})\nMessage: ${status.message}`,
         },
       ],
     };

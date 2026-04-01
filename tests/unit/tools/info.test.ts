@@ -7,14 +7,16 @@ const client = {
 } as unknown as CarboneClient;
 
 describe('handleGetApiStatus', () => {
-  test('returns version and message on success', async () => {
+  test('returns API version and message on success', async () => {
     vi.mocked(client.getStatus).mockResolvedValueOnce({ version: '4.22.9', message: 'OK' });
 
     const result = await handleGetApiStatus(client);
+    const text = (result.content[0] as { type: 'text'; text: string }).text;
 
     expect(result.content[0].type).toBe('text');
-    expect((result.content[0] as { type: 'text'; text: string }).text).toContain('4.22.9');
-    expect((result.content[0] as { type: 'text'; text: string }).text).toContain('OK');
+    expect(text).toContain('4.22.9');
+    expect(text).toContain('online');
+    expect(text).toContain('OK');
   });
 
   test('returns isError on failure', async () => {
@@ -64,6 +66,29 @@ describe('handleGetCapabilities', () => {
     const { text } = result(handleGetCapabilities());
 
     expect(text).toContain('carbone.io');
+    expect(text).toContain('carbone.skill');
+    expect(text).toContain('mcp/introduction');
+  });
+
+  test('documents webhookUrl for async and batch rendering', () => {
+    const { text } = result(handleGetCapabilities());
+
+    expect(text).toContain('webhookUrl');
+    expect(text).toContain('asynchronous');
+    expect(text).toContain('5 minute');
+  });
+
+  test('documents outputType parameter', () => {
+    const { text } = result(handleGetCapabilities());
+
+    expect(text).toContain('outputType');
+  });
+
+  test('mentions LLM authoring capabilities', () => {
+    const { text } = result(handleGetCapabilities());
+
+    expect(text).toContain('carbone.skill');
+    expect(text).toContain('DOCX / XLSX / PPTX');
   });
 });
 
