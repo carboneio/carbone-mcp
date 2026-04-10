@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.1.1] — 2026-04-10
+
+### Added
+
+- `get_capabilities` — async/webhook rendering documentation, `outputType` parameter, Common Use Cases, LLM authoring guidance (HTML, Office files), and Carbone Skill reference (GitHub repo + download)
+- `get_capabilities` — MCP server documentation link
+- HTTP server — `Authorization` header now accepted without `Bearer` prefix; `Bearer` matching is case-insensitive
+
+### Changed
+
+- `get_api_status` — response format simplified
+- Carbone Skill download URL points to GitHub Releases
+- `vitest`, `@vitest/coverage-v8` upgraded to 4.1.4; `@types/node` to 25.6.0
+
+---
+
 ## [1.1.0] — 2026-03-31
 
 ### Added
@@ -63,6 +79,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.1.1]: https://github.com/carboneio/carbone-mcp/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/carboneio/carbone-mcp/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/carboneio/carbone-mcp/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/carboneio/carbone-mcp/releases/tag/v1.0.0

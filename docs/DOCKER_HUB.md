@@ -34,7 +34,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "1.1.0" },
+  "mcp": { "version": "1.1.1" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -111,6 +111,7 @@ Claude Desktop does not support HTTP Bearer token authentication. Use stdio tran
 | `MCP_TRANSPORT` | `http` | Transport mode: `http` (default) or `stdio`. |
 | `MCP_PORT` | `3000` | HTTP server port. |
 | `MCP_PATH` | `/` | HTTP endpoint path. |
+| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB). Returns HTTP 413 when exceeded. |
 
 ---
 
@@ -148,7 +149,7 @@ docker run -d \
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `1.1.0` | Specific version |
+| `1.1.1` | Specific version |
 | `1.1` | Latest patch of 1.1 |
 | `1` | Latest minor of v1 |
 

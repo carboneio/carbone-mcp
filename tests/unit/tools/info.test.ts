@@ -78,10 +78,10 @@ describe('handleGetCapabilities', () => {
     expect(text).toContain('5 minute');
   });
 
-  test('documents outputType parameter', () => {
+  test('documents convertTo parameter for output format', () => {
     const { text } = result(handleGetCapabilities());
 
-    expect(text).toContain('outputType');
+    expect(text).toContain('convertTo');
   });
 
   test('mentions LLM authoring capabilities', () => {

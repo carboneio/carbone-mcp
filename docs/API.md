@@ -124,7 +124,16 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 | `currencyRates` | object | Exchange rates: `{ "EUR": 1, "USD": 1.08 }` |
 | `hardRefresh` | boolean | Recompute TOC and pagination after render (requires `convertTo`) |
 
+### Async & webhook
+
+| Parameter | Type | Description |
+|---|---|---|
+| `webhookUrl` | string | URL to POST the result to when rendering completes (enables async mode, 5-minute timeout) |
+| `webhookHeaders` | object | Additional headers sent with the webhook POST (e.g. auth headers) |
+
 ### Batch generation
+
+> **Batch rendering is always asynchronous** — `webhookUrl` is required.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -288,7 +297,7 @@ MCP_TRANSPORT=http MCP_PORT=3000 node dist/index.js
 |---|---|---|
 | `MCP_PORT` | `3000` | Listening port |
 | `MCP_PATH` | `/` | MCP endpoint path. Cannot be `/health` (reserved). |
-| `MCP_MAX_BODY_BYTES` | `10485760` | Maximum request body size (10 MB). Returns HTTP 413 when exceeded. |
+| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB, matches Carbone Cloud limit). Returns HTTP 413 when exceeded. |
 
 ---
 
@@ -303,7 +312,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "1.1.0" },
+  "mcp":    { "version": "1.1.1" },
   "carbone": { "version": "4.x.x" }
 }
 ```

@@ -114,13 +114,13 @@ Two modes — choose based on whether you need to reuse the template:
 **Mode A — Stored template (reusable):**
 1. Design a template in Word / Excel / LibreOffice / HTML / Markdown with \`{d.field}\` tags
 2. Upload it with \`upload_template\` → get a Template ID
-3. Call \`render_document\` with \`templateId\`, your JSON data, and \`outputType\` (e.g. \`"pdf"\`)
+3. Call \`render_document\` with \`templateId\`, your JSON data, and \`convertTo\` (e.g. \`"pdf"\`)
 
 **Mode B — Inline template (one-shot, no storage):**
-1. Call \`render_document\` with \`template\` (file path, URL, or base64), your JSON data, and \`outputType\`
+1. Call \`render_document\` with \`template\` (file path, URL, or base64), your JSON data, and \`convertTo\`
 2. The template is uploaded and rendered in a single request — no Template ID is returned
 
-**Output format:** \`outputType\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
+**Output format:** \`convertTo\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
 **Template data tags (quick reference):**
 - \`{d.customer.name}\`            — simple field access
@@ -172,8 +172,9 @@ Archive:   ZIP (batch output — use with batchSplitBy)
 
 **Carbone Skills (AI deep knowledge):**
 For deep knowledge of Carbone's templating syntax, formatters, and best practices, load the Carbone Skill:
-- Skills ZIP (for AI tools): https://carbone.io/file/carbone.skill
+- Skills ZIP (for AI tools): https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill
 - Skills documentation:      https://carbone.io/documentation/developer/ai/skills.html
+- GitHub repository:         https://github.com/carboneio/carbone-skill
 `;
 
 export function handleGetCapabilities() {

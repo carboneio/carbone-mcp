@@ -291,7 +291,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp":    { "version": "1.1.0" },
+  "mcp":    { "version": "1.1.1" },
   "carbone": { "version": "4.x.x" }
 }
 ```
@@ -340,10 +340,10 @@ Items:
 ```
 
 **Guides & best practices:**
+- [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html) — Universal Carbone Templating syntax reference for AI tools ([download .skill](https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill) · [GitHub](https://github.com/carboneio/carbone-skill))
 - [Template syntax](https://carbone.io/documentation/developer/introduction.html)
 - [HTML templates guide](https://carbone.io/documentation/design/template-formats/html.html)
 - [Markdown templates guide](https://carbone.io/documentation/design/template-formats/markdown.html)
-- [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html) — Universal Carbone Templating syntax reference for AI tools ([download .skill](https://carbone.io/file/carbone.skill))
 
 ---
 
