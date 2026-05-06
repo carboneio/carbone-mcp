@@ -34,7 +34,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "1.1.1" },
+  "mcp": { "version": "1.1.2" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -149,7 +149,7 @@ docker run -d \
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `1.1.1` | Specific version |
+| `1.1.2` | Specific version |
 | `1.1` | Latest patch of 1.1 |
 | `1` | Latest minor of v1 |
 

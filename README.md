@@ -291,7 +291,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp":    { "version": "1.1.1" },
+  "mcp":    { "version": "1.1.2" },
   "carbone": { "version": "4.x.x" }
 }
 ```

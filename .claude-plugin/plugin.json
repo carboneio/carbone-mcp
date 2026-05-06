@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "carbone-mcp",
+  "version": "1.1.2",
+  "description": "Turn AI assistants into document automation experts. Generate PDFs, invoices, reports, certificates and more from templates and JSON data. Convert between 100+ formats. Manage template libraries with versioning and metadata.",
+  "author": {
+    "name": "Carbone",
+    "email": "support@carbone.io",
+    "url": "https://carbone.io"
+  },
+  "homepage": "https://carbone.io/documentation/developer/mcp/introduction.html",
+  "repository": "https://github.com/carboneio/carbone-mcp",
+  "license": "Apache-2.0",
+  "keywords": ["pdf", "document", "template", "invoice", "report", "conversion", "carbone"],
+  "mcpServers": {
+    "carbone": {
+      "command": "npx",
+      "args": ["-y", "carbone-mcp"],
+      "env": {
+        "CARBONE_API_KEY": "${user_config.api_key}"
+      }
+    }
+  },
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "Carbone API Key",
+      "description": "Your API key from account.carbone.io",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "dependencies": [
+    { "name": "carbone", "marketplace": "carbone-skill" }
+  ]
+}

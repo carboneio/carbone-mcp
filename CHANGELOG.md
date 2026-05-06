@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.1.2] — 2026-05-06
+
+### Added
+
+- Claude Code plugin support (`.claude-plugin/plugin.json`) — install via `/plugin install carboneio/carbone-mcp`. Prompts for API key at install time (stored in system keychain). Automatically installs the `carbone-skill` dependency for full templating syntax support.
+
+### Changed
+
+- `vitest` and `@vitest/coverage-v8` upgraded from 4.1.4 to 4.1.5
+- `typescript` upgraded from 6.0.2 to 6.0.3
+- `zod` upgraded from 4.3.6 to 4.4.3
+
+---
+
 ## [1.1.1] — 2026-04-10
 
 ### Added
@@ -79,6 +93,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.1.2]: https://github.com/carboneio/carbone-mcp/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/carboneio/carbone-mcp/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/carboneio/carbone-mcp/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/carboneio/carbone-mcp/compare/v1.0.0...v1.0.1
