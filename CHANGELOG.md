@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `.env.example` — environment variable reference file with all supported variables and defaults
+- `compose.yml` — `MCP_PORT` now controls both the host and container port mapping (default: `3000`)
+
+---
+
 ## [1.1.2] — 2026-05-06
 
 ### Added
@@ -12,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- All `package.json` dependency versions pinned to exact versions (no `^`)
 - `vitest` and `@vitest/coverage-v8` upgraded from 4.1.4 to 4.1.5
 - `typescript` upgraded from 6.0.2 to 6.0.3
 - `zod` upgraded from 4.3.6 to 4.4.3
