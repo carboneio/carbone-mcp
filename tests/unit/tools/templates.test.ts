@@ -27,7 +27,7 @@ describe('handleListTemplates', () => {
 
   test('returns JSON list of templates', async () => {
     const templates = [{ id: 'abc', versionId: 'sha256abc', name: 'Invoice' }];
-    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce(templates);
+    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce({ templates, hasMore: false });
 
     const result = await handleListTemplates({}, mockClient);
 
@@ -37,8 +37,57 @@ describe('handleListTemplates', () => {
     }
   });
 
+  test('appends next-page instruction when hasMore is true', async () => {
+    const templates = [{ id: 'abc', versionId: 'sha256abc', name: 'Invoice' }];
+    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce({ templates, hasMore: true, nextCursor: 'cursor123' });
+
+    const result = await handleListTemplates({}, mockClient);
+
+    expect(result.content[0].type).toBe('text');
+    if (result.content[0].type === 'text') {
+      expect(result.content[0].text).toContain('cursor="cursor123"');
+    }
+  });
+
+  test('does not append pagination hint when hasMore is false', async () => {
+    const templates = [{ id: 'abc', versionId: 'sha256abc', name: 'Invoice' }];
+    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce({ templates, hasMore: false });
+
+    const result = await handleListTemplates({}, mockClient);
+
+    expect(result.content[0].type).toBe('text');
+    if (result.content[0].type === 'text') {
+      expect(result.content[0].text).not.toContain('cursor');
+    }
+  });
+
+  test('second page uses cursor from first response and returns no pagination hint', async () => {
+    const page1 = [{ id: 'abc', versionId: 'sha256abc', name: 'Invoice' }];
+    const page2 = [{ id: 'def', versionId: 'sha256def', name: 'Contract' }];
+    vi.mocked(mockClient.listTemplates)
+      .mockResolvedValueOnce({ templates: page1, hasMore: true,  nextCursor: 'cursor123' })
+      .mockResolvedValueOnce({ templates: page2, hasMore: false });
+
+    const result1 = await handleListTemplates({}, mockClient);
+    expect(result1.content[0].type).toBe('text');
+    if (result1.content[0].type === 'text') {
+      expect(result1.content[0].text).toContain('cursor="cursor123"');
+    }
+
+    const result2 = await handleListTemplates({ cursor: 'cursor123' }, mockClient);
+    expect(vi.mocked(mockClient.listTemplates)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: 'cursor123' }),
+      undefined
+    );
+    expect(result2.content[0].type).toBe('text');
+    if (result2.content[0].type === 'text') {
+      expect(result2.content[0].text).not.toContain('cursor=');
+      expect(JSON.parse(result2.content[0].text)).toEqual(page2);
+    }
+  });
+
   test('passes all filters to client', async () => {
-    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce([]);
+    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce({ templates: [], hasMore: false });
 
     await handleListTemplates(
       { category: 'invoices', search: 'inv', limit: 5, cursor: 'abc', origin: 0, includeVersions: true },
@@ -52,7 +101,7 @@ describe('handleListTemplates', () => {
   });
 
   test('returns "No templates found." when list is empty', async () => {
-    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce([]);
+    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce({ templates: [], hasMore: false });
 
     const result = await handleListTemplates({}, mockClient);
 
@@ -63,7 +112,7 @@ describe('handleListTemplates', () => {
   });
 
   test('forwards options to client.listTemplates', async () => {
-    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce([]);
+    vi.mocked(mockClient.listTemplates).mockResolvedValueOnce({ templates: [], hasMore: false });
 
     await handleListTemplates({}, mockClient, { apiKey: 'custom-key' });
 

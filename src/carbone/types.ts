@@ -29,6 +29,12 @@ export interface TemplateListItem {
   origin?: number;
 }
 
+export interface TemplateListResponse {
+  templates:  TemplateListItem[];
+  hasMore:    boolean;
+  nextCursor?: string;
+}
+
 export interface ApiStatus {
   version: string;
   message: string;

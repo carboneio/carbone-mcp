@@ -6,10 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+---
+
+## [1.1.3] — 2026-05-12
+
 ### Added
 
 - `.env.example` — environment variable reference file with all supported variables and defaults
 - `compose.yml` — `MCP_PORT` now controls both the host and container port mapping (default: `3000`)
+- `list_templates` — pagination now fully supported: `hasMore` and `nextCursor` are read from the API response and surfaced to the LLM with a clear next-page instruction
+
+### Fixed
+
+- `list_templates` — `hasMore` and `nextCursor` fields from the API response were previously discarded; the LLM had no way to detect or navigate beyond the first page of results
 
 ---
 
@@ -103,6 +112,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.1.3]: https://github.com/carboneio/carbone-mcp/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/carboneio/carbone-mcp/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/carboneio/carbone-mcp/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/carboneio/carbone-mcp/compare/v1.0.1...v1.1.0

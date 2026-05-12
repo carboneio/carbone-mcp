@@ -5,7 +5,7 @@ import {
   CarboneRateLimitError,
   CarboneValidationError,
 } from './errors.js';
-import type { ApiStatus, TemplateListItem, UploadTemplateResult } from './types.js';
+import type { ApiStatus, TemplateListItem, TemplateListResponse, UploadTemplateResult } from './types.js';
 
 export interface CarboneClientConfig {
   /** API key for the Carbone API. Optional when using per-call options (e.g. HTTP mode). */
@@ -255,7 +255,7 @@ export class CarboneClient {
     search?:          string;
     limit?:           number;
     cursor?:          string;
-  }, options?: CallOptions): Promise<TemplateListItem[]> {
+  }, options?: CallOptions): Promise<TemplateListResponse> {
     const query = new URLSearchParams();
     if (params?.id)                            query.set('id',              params.id);
     if (params?.versionId)                     query.set('versionId',       params.versionId);
@@ -269,8 +269,8 @@ export class CarboneClient {
     const url = `/templates${query.size ? `?${query}` : ''}`;
     const response = await this.request(url, { method: 'GET' }, options);
 
-    const json = await response.json() as { data: TemplateListItem[] };
-    return json.data;
+    const json = await response.json() as { data: TemplateListItem[], hasMore: boolean, nextCursor?: string };
+    return { templates: json.data, hasMore: json.hasMore ?? false, nextCursor: json.nextCursor };
   }
 
   /**

@@ -68,15 +68,18 @@ export async function handleListTemplates(
   options?: CallOptions
 ) {
   try {
-    const templates = await client.listTemplates(args, options);
+    const { templates, hasMore, nextCursor } = await client.listTemplates(args, options);
 
     if (templates.length === 0) {
       return { content: [{ type: 'text' as const, text: 'No templates found.' }] };
     }
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(templates, null, 2) }],
-    };
+    let text = JSON.stringify(templates, null, 2);
+    if (hasMore && nextCursor) {
+      text += `\n\nMore results available. Call list_templates again with cursor="${nextCursor}" to fetch the next page.`;
+    }
+
+    return { content: [{ type: 'text' as const, text }] };
   } catch (error) {
     return {
       isError: true,

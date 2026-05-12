@@ -614,16 +614,26 @@ describe('CarboneClient', () => {
 
   describe('listTemplates', () => {
     test('sends GET to /templates without params', async () => {
-      const spy = mockFetch({ _json: { data: [{ id: '1', name: 'T1' }] } });
+      const spy = mockFetch({ _json: { data: [{ id: '1', name: 'T1' }], hasMore: false } });
 
       const result = await client.listTemplates();
 
       expect(spy).toHaveBeenCalledWith('https://api.carbone.io/templates', expect.any(Object));
-      expect(result).toHaveLength(1);
+      expect(result.templates).toHaveLength(1);
+      expect(result.hasMore).toBe(false);
+    });
+
+    test('exposes hasMore and nextCursor from API response', async () => {
+      mockFetch({ _json: { data: [{ id: '1', name: 'T1' }], hasMore: true, nextCursor: 'cursor123' } });
+
+      const result = await client.listTemplates();
+
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe('cursor123');
     });
 
     test('includes query params when provided', async () => {
-      const spy = mockFetch({ _json: { data: [] } });
+      const spy = mockFetch({ _json: { data: [], hasMore: false } });
 
       await client.listTemplates({ category: 'invoices', search: 'acme', limit: 10 });
 
