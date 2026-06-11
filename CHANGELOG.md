@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.1.4] — 2026-05-12
+
+### Changed
+
+- `@types/node` upgraded from 25.6.0 to 25.9.3
+- `@vitest/coverage-v8` upgraded from 4.1.5 to 4.1.8
+- `vitest` upgraded from 4.1.5 to 4.1.8
+- `tsx` upgraded from 4.21.0 to 4.22.4
+- Apache-2.0 LICENSE text replaced with canonical SPDX wording (fixes GitHub license detection)
+- `get_capabilities` — Carbone Skill platform list replaced with a reference to the Agent Skills standard (agentskills.io), covering all compatible AI assistants without listing specific tools
+
+---
+
 ## [1.1.3] — 2026-05-12
 
 ### Added
@@ -112,6 +125,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.1.4]: https://github.com/carboneio/carbone-mcp/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/carboneio/carbone-mcp/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/carboneio/carbone-mcp/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/carboneio/carbone-mcp/compare/v1.1.0...v1.1.1

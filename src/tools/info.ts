@@ -170,11 +170,12 @@ Archive:   ZIP (batch output — use with batchSplitBy)
 - MCP server docs:       https://carbone.io/documentation/developer/mcp/introduction.html
 - Changelog:             https://carbone.io/changelog.html
 
-**Carbone Skills (AI deep knowledge):**
-For deep knowledge of Carbone's templating syntax, formatters, and best practices, load the Carbone Skill:
-- Skills ZIP (for AI tools): https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill
-- Skills documentation:      https://carbone.io/documentation/developer/ai/skills.html
-- GitHub repository:         https://github.com/carboneio/carbone-skill
+**Carbone Skill (AI deep knowledge):**
+For deep knowledge of Carbone's templating syntax, formatters, and best practices, load the Carbone Skill.
+Compatible with any AI assistant that supports the Agent Skills standard (agentskills.io):
+- Skill file (ZIP):     https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill
+- Skill documentation:  https://carbone.io/documentation/developer/ai/skills.html
+- GitHub repository:    https://github.com/carboneio/carbone-skill
 `;
 
 export function handleGetCapabilities() {
