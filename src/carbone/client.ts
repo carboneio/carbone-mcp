@@ -457,7 +457,7 @@ export class CarboneClient {
       case 400:
         if (message.includes('convertTo')) {
           return new CarboneValidationError(
-            'Invalid output format. See the conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type'
+            'Invalid output format. See the conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.md'
           );
         }
         return new CarboneValidationError(message);

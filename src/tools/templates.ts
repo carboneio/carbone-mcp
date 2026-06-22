@@ -128,7 +128,7 @@ export const uploadTemplateSchema = {
       'The template file. Accepts a local file path (e.g. /home/user/invoice.docx), ' +
       'a URL (https://example.com/template.docx), or a base64-encoded string. ' +
       'Supported formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown (MD), PDF, and more. ' +
-      'Full list: https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type'
+      'Full list: https://carbone.io/documentation/developer/http-api/generate-reports.md'
     ),
   name: z
     .string()

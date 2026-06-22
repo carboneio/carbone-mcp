@@ -106,7 +106,7 @@ Use \`convert_document\` to convert between formats instantly. No template requi
 - PDF/A compliance: \`{ "SelectPdfVersion": 1 }\`
 - Page range: \`{ "PageRange": "1-3" }\`
 
-Full conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type
+Full conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.md
 
 ---
 
@@ -170,19 +170,23 @@ Archive:   ZIP (batch output — use with batchSplitBy)
 
 ## Documentation
 
-- API reference:         https://carbone.io/documentation/developer/http-api/introduction.html
+All Carbone docs are LLM-friendly: replace \`.html\` with \`.md\` on any documentation URL for the Markdown
+version, or load the whole corpus at once via the llms.txt files below.
+- llms.txt (doc index):  https://carbone.io/llms.txt
+- llms-full.txt (full):  https://carbone.io/llms-full.txt
+- API reference:         https://carbone.io/documentation/developer/http-api/introduction.md
 - OpenAPI spec:          https://carbone.io/file/carbone.OpenAPI.yml
-- Template tags syntax:  https://carbone.io/documentation/design/overview/getting-started.html
-- HTML templates guide:  https://carbone.io/documentation/design/template-formats/html.html
-- Markdown templates:    https://carbone.io/documentation/design/template-formats/markdown.html
-- MCP server docs:       https://carbone.io/documentation/developer/mcp/introduction.html
-- Changelog:             https://carbone.io/changelog.html
+- Template tags syntax:  https://carbone.io/documentation/design/overview/getting-started.md
+- HTML templates guide:  https://carbone.io/documentation/design/template-formats/html.md
+- Markdown templates:    https://carbone.io/documentation/design/template-formats/markdown.md
+- MCP server docs:       https://carbone.io/documentation/developer/ai/mcp.md
+- Changelog:             https://carbone.io/changelog.md
 
 **Carbone Skill (AI deep knowledge):**
 For deep knowledge of Carbone's templating syntax, formatters, and best practices, load the Carbone Skill.
 Compatible with any AI assistant that supports the Agent Skills standard (agentskills.io):
 - Skill file (ZIP):     https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill
-- Skill documentation:  https://carbone.io/documentation/developer/ai/skills.html
+- Skill documentation:  https://carbone.io/documentation/developer/ai/skills.md
 - GitHub repository:    https://github.com/carboneio/carbone-skill
 `;
 

@@ -68,7 +68,10 @@ describe('handleGetCapabilities', () => {
 
     expect(text).toContain('carbone.io');
     expect(text).toContain('carbone.skill');
-    expect(text).toContain('mcp/introduction');
+    expect(text).toContain('developer/ai/mcp.md');
+    // Docs are referenced as Markdown (.md), not .html, to cut fetch token cost.
+    expect(text).toContain('llms.txt');
+    expect(text).not.toMatch(/carbone\.io\/[^\s)]+\.html/);
   });
 
   test('documents webhookUrl for async and batch rendering', () => {

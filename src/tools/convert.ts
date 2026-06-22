@@ -34,7 +34,7 @@ export const convertDocumentSchema = {
       '(3) Base64-encoded string — the raw file content encoded as base64. ' +
       'Supported input formats include: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, XML, IDML, ' +
       'Markdown (MD), PDF, TXT, CSV, PNG, JPG, SVG, and more. ' +
-      'Full conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type'
+      'Full conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.md'
     ),
 
   convertTo: z

@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * Supported output formats.
  * Always verify the full list against the official Carbone conversion matrix:
- * https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type
+ * https://carbone.io/documentation/developer/http-api/generate-reports.md
  *
  * These constants are shared by the tool input schemas (src/tools/*) and the
  * validation schemas (src/validation/schemas.ts). They live in their own module
