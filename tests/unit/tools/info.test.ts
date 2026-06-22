@@ -17,6 +17,7 @@ describe('handleGetApiStatus', () => {
     expect(text).toContain('4.22.9');
     expect(text).toContain('online');
     expect(text).toContain('OK');
+    expect(result.structuredContent).toEqual({ version: '4.22.9', message: 'OK' });
   });
 
   test('returns isError on failure', async () => {

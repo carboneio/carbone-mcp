@@ -22,11 +22,12 @@ function mockFetch(overrides: Partial<Response> & { _json?: unknown; _arrayBuffe
   } as unknown as Response);
 }
 
-function mockFetchError(status: number, body: unknown) {
+function mockFetchError(status: number, body: unknown, headers?: HeadersInit) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
     ok: false,
     status,
     statusText: 'Error',
+    headers: new Headers(headers),
     json: async () => body,
   } as unknown as Response);
 }
@@ -160,6 +161,62 @@ describe('CarboneClient', () => {
         expect.any(String),
         expect.objectContaining({
           headers: expect.objectContaining({ Authorization: 'Bearer runtime-key' }),
+        })
+      );
+    });
+
+    test('requireClientAuth (HTTP): rejects a request with no per-call key even when a server key is set', async () => {
+      const serverKeyClient = new CarboneClient({
+        apiKey: 'operator-key',
+        transport: 'http',
+        requireClientAuth: true,
+      });
+
+      await expect(
+        serverKeyClient.convertDocument({ template: 'abc', convertTo: 'pdf' })
+      ).rejects.toBeInstanceOf(CarboneAuthError);
+    });
+
+    test('requireClientAuth (HTTP): allows a request that provides a per-call key', async () => {
+      const serverKeyClient = new CarboneClient({
+        apiKey: 'operator-key',
+        transport: 'http',
+        requireClientAuth: true,
+      });
+
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await serverKeyClient.convertDocument({ template: 'abc', convertTo: 'pdf' }, { apiKey: 'client-key' });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer client-key' }),
+        })
+      );
+    });
+
+    test('requireClientAuth has no effect in stdio mode (server key is used)', async () => {
+      const stdioClient = new CarboneClient({
+        apiKey: 'env-key',
+        transport: 'stdio',
+        requireClientAuth: true,
+      });
+
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await stdioClient.convertDocument({ template: 'abc', convertTo: 'pdf' });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer env-key' }),
         })
       );
     });
@@ -735,6 +792,31 @@ describe('CarboneClient', () => {
       await expect(
         client.convertDocument({ template: 'x', convertTo: 'pdf' })
       ).rejects.toBeInstanceOf(CarboneRateLimitError);
+    });
+
+    test('429 without Retry-After header → retryAfterSeconds is undefined', async () => {
+      mockFetchError(429, {});
+      const err = await client.convertDocument({ template: 'x', convertTo: 'pdf' }).catch((e) => e);
+      expect(err).toBeInstanceOf(CarboneRateLimitError);
+      expect(err.retryAfterSeconds).toBeUndefined();
+    });
+
+    test('429 with numeric Retry-After header → parses seconds', async () => {
+      mockFetchError(429, {}, { 'retry-after': '30' });
+      const err = await client.convertDocument({ template: 'x', convertTo: 'pdf' }).catch((e) => e);
+      expect(err).toBeInstanceOf(CarboneRateLimitError);
+      expect(err.retryAfterSeconds).toBe(30);
+      expect(err.message).toContain('30');
+    });
+
+    test('429 with HTTP-date Retry-After header → parses remaining seconds', async () => {
+      const tenSecondsFromNow = new Date(Date.now() + 10_000).toUTCString();
+      mockFetchError(429, {}, { 'retry-after': tenSecondsFromNow });
+      const err = await client.convertDocument({ template: 'x', convertTo: 'pdf' }).catch((e) => e);
+      expect(err).toBeInstanceOf(CarboneRateLimitError);
+      // Allow a little slack for clock/rounding (8–10s)
+      expect(err.retryAfterSeconds).toBeGreaterThanOrEqual(8);
+      expect(err.retryAfterSeconds).toBeLessThanOrEqual(10);
     });
 
     test('throws CarboneError on 500 — includes API error message', async () => {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import type { UploadTemplateResult } from '../carbone/types.js';
 import { resolveFileInput, toToolContent } from '../utils/file.js';
+import { saveOrReject, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
 // ─── list_templates ──────────────────────────────────────────────────────────
@@ -13,7 +14,14 @@ export const listTemplatesDescription =
   'Filter by Template ID, Version ID, category, or upload origin. ' +
   'Use includeVersions to see the full version history of each template. ' +
   'Supports cursor-based pagination for large collections. ' +
-  'Note: filtering by tags is not supported by the Carbone API — use list_tags to discover tags, then filter results manually.';
+  'Note: filtering by tags is not supported by the Carbone API — use list_tags to discover tags, then filter results manually. ' +
+  'Note: templates uploaded with versioning disabled appear with id = null and are identified only by their versionId — pass that versionId where a Template ID is expected (e.g. delete_template, download_template).';
+
+export const listTemplatesOutputSchema = {
+  templates: z.array(z.record(z.string(), z.unknown())).describe('The matching templates (all fields).'),
+  hasMore: z.boolean().describe('Whether more results are available via the cursor.'),
+  nextCursor: z.string().optional().describe('Cursor to pass to the next list_templates call.'),
+};
 
 export const listTemplatesSchema = {
   id: z
@@ -44,9 +52,10 @@ export const listTemplatesSchema = {
   limit: z
     .number()
     .int()
-    .positive()
+    .min(1)
+    .max(100)
     .optional()
-    .describe('Maximum number of results to return (default: 100).'),
+    .describe('Maximum number of results to return. Must be between 1 and 100 (Carbone API limit). Default: 100.'),
   cursor: z
     .string()
     .optional()
@@ -70,16 +79,19 @@ export async function handleListTemplates(
   try {
     const { templates, hasMore, nextCursor } = await client.listTemplates(args, options);
 
+    const structuredContent = { templates, hasMore, ...(nextCursor ? { nextCursor } : {}) };
+
     if (templates.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No templates found.' }] };
+      return { content: [{ type: 'text' as const, text: 'No templates found.' }], structuredContent };
     }
 
-    let text = JSON.stringify(templates, null, 2);
+    // Compact JSON (no indentation) keeps every field while cutting token cost.
+    let text = JSON.stringify(templates);
     if (hasMore && nextCursor) {
       text += `\n\nMore results available. Call list_templates again with cursor="${nextCursor}" to fetch the next page.`;
     }
 
-    return { content: [{ type: 'text' as const, text }] };
+    return { content: [{ type: 'text' as const, text }], structuredContent };
   } catch (error) {
     return {
       isError: true,
@@ -98,6 +110,15 @@ export const uploadTemplateDescription =
   'Supports versioning: multiple versions can live under a single stable Template ID, ' +
   'with deployedAt controlling which version is active. ' +
   'Accepted formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown, PDF, and more.';
+
+export const uploadTemplateOutputSchema = {
+  id: z.string().optional().describe('Stable Template ID (when versioning is enabled).'),
+  versionId: z.string().optional().describe('Version ID (SHA-256) of this uploaded version.'),
+  templateId: z.string().optional().describe('Template ID returned in legacy/non-versioned mode.'),
+  name: z.string().describe('Template display name.'),
+  type: z.string().optional().describe('Detected template file type.'),
+  size: z.number().optional().describe('Template size in bytes.'),
+};
 
 export const uploadTemplateSchema = {
   template: z
@@ -189,26 +210,31 @@ export async function handleUploadTemplate(
     expireAt?:   number;
   },
   client: CarboneClient,
-  options?: CallOptions
+  options?: CallOptions,
+  fileCtx?: FileContext
 ) {
   try {
-    const template = await resolveFileInput(args.template);
+    const template = await resolveFileInput(args.template, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes });
     const result: UploadTemplateResult = await client.uploadTemplate({ ...args, template }, options);
 
     // The API returns different shapes depending on whether versioning is enabled
     const lines: string[] = ['Template uploaded successfully!', ''];
+    const structuredContent: Record<string, unknown> = { name: args.name };
     if ('id' in result) {
       lines.push(`Template ID : ${result.id}`);
       lines.push(`Version ID  : ${result.versionId}`);
-      if (result.type) lines.push(`Type        : ${result.type}`);
-      if (result.size) lines.push(`Size        : ${result.size} bytes`);
+      structuredContent['id'] = result.id;
+      structuredContent['versionId'] = result.versionId;
+      if (result.type) { lines.push(`Type        : ${result.type}`); structuredContent['type'] = result.type; }
+      if (result.size) { lines.push(`Size        : ${result.size} bytes`); structuredContent['size'] = result.size; }
     } else {
       // Legacy / versioning disabled response
       lines.push(`Template ID : ${result.templateId}`);
+      structuredContent['templateId'] = result.templateId;
     }
     lines.push(`Name        : ${args.name}`);
 
-    return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+    return { content: [{ type: 'text' as const, text: lines.join('\n') }], structuredContent };
   } catch (error) {
     return {
       isError: true,
@@ -336,6 +362,10 @@ export const listCategoriesDescription =
 
 export const listCategoriesSchema = {};
 
+export const listCategoriesOutputSchema = {
+  categories: z.array(z.string()).describe('Template category names in use.'),
+};
+
 export async function handleListCategories(
   _args: Record<string, never>,
   client: CarboneClient,
@@ -345,11 +375,12 @@ export async function handleListCategories(
     const categories = await client.getCategories(options);
 
     if (categories.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No categories found.' }] };
+      return { content: [{ type: 'text' as const, text: 'No categories found.' }], structuredContent: { categories: [] } };
     }
 
     return {
-      content: [{ type: 'text' as const, text: JSON.stringify(categories, null, 2) }],
+      content: [{ type: 'text' as const, text: JSON.stringify(categories) }],
+      structuredContent: { categories },
     };
   } catch (error) {
     return {
@@ -371,6 +402,10 @@ export const listTagsDescription =
 
 export const listTagsSchema = {};
 
+export const listTagsOutputSchema = {
+  tags: z.array(z.string()).describe('Template tag names in use.'),
+};
+
 export async function handleListTags(
   _args: Record<string, never>,
   client: CarboneClient,
@@ -380,11 +415,12 @@ export async function handleListTags(
     const tags = await client.getTags(options);
 
     if (tags.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No tags found.' }] };
+      return { content: [{ type: 'text' as const, text: 'No tags found.' }], structuredContent: { tags: [] } };
     }
 
     return {
-      content: [{ type: 'text' as const, text: JSON.stringify(tags, null, 2) }],
+      content: [{ type: 'text' as const, text: JSON.stringify(tags) }],
+      structuredContent: { tags },
     };
   } catch (error) {
     return {
@@ -413,17 +449,38 @@ export const downloadTemplateSchema = {
       'Version ID — downloads that exact version regardless of deployment status. ' +
       'Both formats are returned by upload_template and list_templates.'
     ),
+  outputPath: z
+    .string()
+    .optional()
+    .describe(
+      'Optional local file path to save the template file to (e.g. "/home/user/template.docx" or "~/template.docx"). ' +
+      'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
+      'the file inline. Local (stdio) mode only; rejected in HTTP mode.'
+    ),
+  asAttachment: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, return the template as a downloadable file attachment (base64 resource) instead of inline ' +
+      'text/image. Useful in HTTP mode where outputPath is unavailable. Default: false. Ignored when outputPath is set.'
+    ),
 };
 
 export async function handleDownloadTemplate(
-  args: { templateId: string },
+  args: { templateId: string; outputPath?: string; asAttachment?: boolean },
   client: CarboneClient,
-  options?: CallOptions
+  options?: CallOptions,
+  fileCtx?: FileContext
 ) {
   try {
     const result = await client.downloadTemplate(args.templateId, options);
     const ext = result.filename.split('.').pop() ?? 'bin';
-    const content = toToolContent(result.buffer, result.filename, ext);
+
+    if (args.outputPath) {
+      return saveOrReject({ buffer: result.buffer, format: ext, outputPath: args.outputPath, allowFileOutput: fileCtx?.allowFileOutput ?? false });
+    }
+
+    const content = toToolContent(result.buffer, result.filename, ext, args.asAttachment);
     return { content: [content] };
   } catch (error) {
     return {

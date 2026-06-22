@@ -1,4 +1,4 @@
-import type { CarboneClient } from '../carbone/client.js';
+import type { CarboneClient, CallOptions } from '../carbone/client.js';
 
 export const CATEGORIES_URI = 'carbone://categories';
 
@@ -9,16 +9,17 @@ export const categoriesResourceDescription =
 
 export async function readCategoriesResource(
   uri: URL,
-  client: CarboneClient
+  client: CarboneClient,
+  options?: CallOptions
 ) {
-  const categories = await client.getCategories();
+  const categories = await client.getCategories(options);
 
   return {
     contents: [
       {
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(categories, null, 2),
+        text: JSON.stringify(categories),
       },
     ],
   };

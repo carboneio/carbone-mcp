@@ -87,4 +87,15 @@ describe('CarboneRateLimitError', () => {
   test('is instanceof CarboneError', () => {
     expect(new CarboneRateLimitError()).toBeInstanceOf(CarboneError);
   });
+
+  test('retryAfterSeconds is undefined by default', () => {
+    expect(new CarboneRateLimitError().retryAfterSeconds).toBeUndefined();
+  });
+
+  test('includes retry-after delay in message when provided', () => {
+    const error = new CarboneRateLimitError(30);
+    expect(error.retryAfterSeconds).toBe(30);
+    expect(error.message).toContain('30');
+    expect(error.statusCode).toBe(429);
+  });
 });

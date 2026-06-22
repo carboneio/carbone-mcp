@@ -39,6 +39,12 @@ describe('formatError', () => {
     expect(result).toContain('Rate limit exceeded');
   });
 
+  test('formats CarboneRateLimitError with a retry-after delay', () => {
+    const result = formatError(new CarboneRateLimitError(45));
+    expect(result).toContain('Rate limit exceeded');
+    expect(result).toContain('45');
+  });
+
   test('formats CarboneError with 5xx status', () => {
     const result = formatError(new CarboneError('Service down', 503));
     expect(result).toContain('Carbone service error');

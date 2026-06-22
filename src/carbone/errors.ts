@@ -31,8 +31,17 @@ export class CarboneNotFoundError extends CarboneError {
 }
 
 export class CarboneRateLimitError extends CarboneError {
-  constructor() {
-    super('Rate limit exceeded. Please try again later.', 429);
+  /**
+   * @param retryAfterSeconds Number of seconds to wait before retrying,
+   *   parsed from the `Retry-After` response header when the API provides it.
+   */
+  constructor(public readonly retryAfterSeconds?: number) {
+    super(
+      retryAfterSeconds !== undefined
+        ? `Rate limit exceeded. Please try again in ${retryAfterSeconds} second(s).`
+        : 'Rate limit exceeded. Please try again later.',
+      429
+    );
     this.name = 'CarboneRateLimitError';
   }
 }

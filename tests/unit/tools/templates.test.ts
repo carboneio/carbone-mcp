@@ -5,6 +5,11 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   return { ...actual, resolveFileInput: vi.fn() };
 });
 
+vi.mock('../../../src/tools/output.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/tools/output.js')>();
+  return { ...actual, saveOrReject: vi.fn() };
+});
+
 import {
   handleListTemplates,
   handleListCategories,
@@ -15,6 +20,7 @@ import {
   handleDownloadTemplate,
 } from '../../../src/tools/templates.js';
 import { resolveFileInput } from '../../../src/utils/file.js';
+import { saveOrReject } from '../../../src/tools/output.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
 import { CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
 
@@ -35,6 +41,7 @@ describe('handleListTemplates', () => {
     if (result.content[0].type === 'text') {
       expect(JSON.parse(result.content[0].text)).toEqual(templates);
     }
+    expect(result.structuredContent).toEqual({ templates, hasMore: false });
   });
 
   test('appends next-page instruction when hasMore is true', async () => {
@@ -109,6 +116,7 @@ describe('handleListTemplates', () => {
     if (result.content[0].type === 'text') {
       expect(result.content[0].text).toBe('No templates found.');
     }
+    expect(result.structuredContent).toEqual({ templates: [], hasMore: false });
   });
 
   test('forwards options to client.listTemplates', async () => {
@@ -150,7 +158,7 @@ describe('handleUploadTemplate', () => {
     const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 1024 });
     await handleUploadTemplate({ template: '/path/invoice.docx', name: 'Invoice' }, client);
 
-    expect(resolveFileInput).toHaveBeenCalledWith('/path/invoice.docx');
+    expect(resolveFileInput).toHaveBeenCalledWith('/path/invoice.docx', { isCloud: undefined });
     expect(vi.mocked(client.uploadTemplate)).toHaveBeenCalledWith(
       expect.objectContaining({ template: 'resolved-base64==' }),
       undefined
@@ -171,6 +179,9 @@ describe('handleUploadTemplate', () => {
       expect(result.content[0].text).toContain('sha256abc');
       expect(result.content[0].text).toContain('Invoice Template');
     }
+    expect(result.structuredContent).toEqual({
+      name: 'Invoice Template', id: 'tpl1', versionId: 'sha256abc', type: 'docx', size: 2048,
+    });
   });
 
   test('formats legacy response with templateId only', async () => {
@@ -185,6 +196,7 @@ describe('handleUploadTemplate', () => {
     if (result.content[0].type === 'text') {
       expect(result.content[0].text).toContain('sha256legacy');
     }
+    expect(result.structuredContent).toEqual({ name: 'Legacy Template', templateId: 'sha256legacy' });
   });
 
   test('passes all optional fields to client', async () => {
@@ -344,6 +356,7 @@ describe('handleListCategories', () => {
     if (result.content[0].type === 'text') {
       expect(JSON.parse(result.content[0].text)).toEqual(['invoices', 'legal', 'hr']);
     }
+    expect(result.structuredContent).toEqual({ categories: ['invoices', 'legal', 'hr'] });
   });
 
   test('returns "No categories found." when list is empty', async () => {
@@ -354,6 +367,7 @@ describe('handleListCategories', () => {
     if (result.content[0].type === 'text') {
       expect(result.content[0].text).toBe('No categories found.');
     }
+    expect(result.structuredContent).toEqual({ categories: [] });
   });
 
   test('returns isError on client error', async () => {
@@ -382,6 +396,7 @@ describe('handleListTags', () => {
     if (result.content[0].type === 'text') {
       expect(JSON.parse(result.content[0].text)).toEqual(['sales', 'billing', 'v2']);
     }
+    expect(result.structuredContent).toEqual({ tags: ['sales', 'billing', 'v2'] });
   });
 
   test('returns "No tags found." when list is empty', async () => {
@@ -392,6 +407,7 @@ describe('handleListTags', () => {
     if (result.content[0].type === 'text') {
       expect(result.content[0].text).toBe('No tags found.');
     }
+    expect(result.structuredContent).toEqual({ tags: [] });
   });
 
   test('returns isError on client error', async () => {
@@ -428,6 +444,21 @@ describe('handleDownloadTemplate', () => {
     const result = await handleDownloadTemplate({ templateId: 'tpl1' }, client);
 
     expect(result.content[0].type).toBe('resource');
+  });
+
+  test('delegates to saveOrReject when outputPath is provided', async () => {
+    vi.mocked(saveOrReject).mockResolvedValue({ content: [{ type: 'text', text: 'saved to /tpl.docx' }] });
+    const client = makeClient('invoice.docx');
+
+    const result = await handleDownloadTemplate(
+      { templateId: 'tpl1', outputPath: '/tpl.docx' },
+      client,
+      undefined,
+      { allowFileOutput: true, maxFileBytes: 100 }
+    );
+
+    expect(saveOrReject).toHaveBeenCalledWith(expect.objectContaining({ outputPath: '/tpl.docx', format: 'docx', allowFileOutput: true }));
+    expect((result.content[0] as { text: string }).text).toBe('saved to /tpl.docx');
   });
 
   test('returns EmbeddedResource for PDF download', async () => {

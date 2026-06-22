@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { CarboneClient } from '../../src/carbone/client.js';
+import { readTemplateByIdResource, completeTemplateId } from '../../src/resources/templates.js';
 
 /**
  * Integration tests — require a real Carbone API key.
@@ -81,16 +82,32 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
     expect(result.buffer.length).toBeGreaterThan(0);
   });
 
+  test('POST /render/template — converts to PDF with object-form convertTo + formatOptions', async () => {
+    const result = await client.convertDocument({
+      template: HTML_TEMPLATE,
+      convertTo: { formatName: 'pdf', formatOptions: { Watermarks: [{ text: 'DRAFT', opacity: 0.2 }] } },
+      converter: 'C',
+    });
+
+    expect(result.buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
   // ── List ────────────────────────────────────────────────────────────────────
 
   test('GET /templates — returns an array of template objects', async () => {
-    const templates = await client.listTemplates();
+    const { templates } = await client.listTemplates();
     expect(Array.isArray(templates)).toBe(true);
   });
 
   test('GET /templates — respects limit param', async () => {
-    const templates = await client.listTemplates({ limit: 2 });
+    const { templates } = await client.listTemplates({ limit: 2 });
     expect(templates.length).toBeLessThanOrEqual(2);
+  });
+
+  test('GET /templates — returns pagination metadata (hasMore boolean)', async () => {
+    const res = await client.listTemplates({ limit: 1 });
+    expect(Array.isArray(res.templates)).toBe(true);
+    expect(typeof res.hasMore).toBe('boolean');
   });
 
   test('GET /templates/categories — returns an array of strings', async () => {
@@ -159,7 +176,7 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
     const { id: templateId } = uploaded as { id: string };
 
     try {
-      const results = await client.listTemplates({ category: 'e2e-filter-test' });
+      const { templates: results } = await client.listTemplates({ category: 'e2e-filter-test' });
       expect(Array.isArray(results)).toBe(true);
       expect(results.length).toBeGreaterThan(0);
       results.forEach((t) => expect(t.category).toBe('e2e-filter-test'));
@@ -178,9 +195,35 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
     const { id: templateId } = uploaded as { id: string };
 
     try {
-      const results = await client.listTemplates({ search: uniqueName });
+      const { templates: results } = await client.listTemplates({ search: uniqueName });
       expect(Array.isArray(results)).toBe(true);
       expect(results.some((t) => t.name === uniqueName)).toBe(true);
+    } finally {
+      await client.deleteTemplate(templateId);
+    }
+  });
+
+  // ── Resource: carbone://templates/{id} + completion ─────────────────────────
+
+  test('resource: readTemplateByIdResource fetches a template by ID; completion returns an array', async () => {
+    const uploaded = await client.uploadTemplate({
+      template: HTML_TEMPLATE,
+      name: `E2E-ById-${Date.now()}`,
+      versioning: true,
+    });
+    const { id: templateId } = uploaded as { id: string };
+
+    try {
+      const res = await readTemplateByIdResource(
+        new URL(`carbone://templates/${templateId}`),
+        templateId,
+        client
+      );
+      const templates = JSON.parse((res.contents[0] as { text: string }).text) as { id?: string }[];
+      expect(templates.some((t) => t.id === templateId)).toBe(true);
+
+      const completions = await completeTemplateId(templateId, client);
+      expect(Array.isArray(completions)).toBe(true);
     } finally {
       await client.deleteTemplate(templateId);
     }

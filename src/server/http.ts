@@ -14,6 +14,7 @@ interface AuthInfo {
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
+import { serverInfo, SERVER_INSTRUCTIONS } from './serverInfo.js';
 
 export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -100,8 +101,9 @@ export async function startHttpServer(options: {
   port: number;
   mcpPath: string;
   maxBodyBytes: number;
+  maxFileBytes: number;
 }): Promise<void> {
-  const { client, version, port, mcpPath, maxBodyBytes } = options;
+  const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes } = options;
 
   // ── Public static files — loaded once at startup into memory ────────────
   // All files under <cwd>/public/ are served as static assets.
@@ -112,6 +114,8 @@ export async function startHttpServer(options: {
     '.txt':  'text/plain',
     '.xml':  'application/xml',
     '.html': 'text/html',
+    '.svg':  'image/svg+xml',
+    '.png':  'image/png',
   };
   const staticFiles = new Map<string, { content: Buffer; mime: string }>();
   try {
@@ -207,8 +211,9 @@ export async function startHttpServer(options: {
             req.auth = { token, clientId: '', scopes: [] };
           }
 
-          const mcpServer = new McpServer({ name: 'carbone-mcp', version });
-          registerTools(mcpServer, client);
+          const mcpServer = new McpServer(serverInfo(version), { instructions: SERVER_INSTRUCTIONS });
+          // HTTP clients are remote, so writing outputPath to the server's disk is disallowed.
+          registerTools(mcpServer, client, { allowFileOutput: false, maxFileBytes });
           registerResources(mcpServer, client);
 
           const transport = new StreamableHTTPServerTransport({

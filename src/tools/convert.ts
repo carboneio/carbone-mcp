@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
-import { OUTPUT_FORMATS, CONVERTERS } from '../validation/schemas.js';
+import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
 import { resolveFileInput, toToolContent } from '../utils/file.js';
+import { saveOrReject, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
 export const convertDocumentToolName = 'convert_document';
@@ -77,18 +78,43 @@ export const convertDocumentSchema = {
       '"C" — Chromium: best for HTML, CSS, JavaScript — full browser rendering. ' +
       'If omitted, LibreOffice is used by default.'
     ),
+
+  outputPath: z
+    .string()
+    .optional()
+    .describe(
+      'Optional local file path to save the converted document to (e.g. "/home/user/out.pdf" or "~/out.pdf"). ' +
+      'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
+      'the document inline — ideal for large files. Local (stdio) mode only; rejected in HTTP mode.'
+    ),
+
+  asAttachment: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, return the document as a downloadable file attachment (base64 resource) instead of inline ' +
+      'text/image. Use when the user wants to download or save the file rather than read its content inline — ' +
+      'especially in HTTP mode where outputPath is unavailable. Default: false (text inline, images viewable, ' +
+      'other binaries as resources). Ignored when outputPath is set.'
+    ),
 };
 
 export async function handleConvertDocument(
-  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O' },
+  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O'; outputPath?: string; asAttachment?: boolean },
   client: CarboneClient,
-  options?: CallOptions
+  options?: CallOptions,
+  fileCtx?: FileContext
 ) {
   try {
-    const { file, ...rest } = args;
-    const result = await client.convertDocument({ ...rest, template: await resolveFileInput(file) }, options);
+    const { file, outputPath, asAttachment, ...rest } = args;
+    const template = await resolveFileInput(file, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes });
+    const result = await client.convertDocument({ ...rest, template }, options);
 
-    const content = toToolContent(result.buffer, result.filename, args.convertTo);
+    if (outputPath) {
+      return saveOrReject({ buffer: result.buffer, format: args.convertTo, outputPath, allowFileOutput: fileCtx?.allowFileOutput ?? false });
+    }
+
+    const content = toToolContent(result.buffer, result.filename, args.convertTo, asAttachment);
     return { content: [content] };
   } catch (error) {
     return {

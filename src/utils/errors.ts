@@ -32,7 +32,9 @@ export function formatError(error: unknown): string {
   }
 
   if (error instanceof CarboneRateLimitError) {
-    return 'Rate limit exceeded. Please wait a moment and try again.';
+    return error.retryAfterSeconds !== undefined
+      ? `Rate limit exceeded. Please wait ${error.retryAfterSeconds} second(s) and try again.`
+      : 'Rate limit exceeded. Please wait a moment and try again.';
   }
 
   if (error instanceof CarboneError) {

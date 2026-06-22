@@ -1,4 +1,4 @@
-import type { CarboneClient } from '../carbone/client.js';
+import type { CarboneClient, CallOptions } from '../carbone/client.js';
 
 export const STATUS_URI = 'carbone://status';
 
@@ -7,16 +7,17 @@ export const statusResourceDescription =
 
 export async function readStatusResource(
   uri: URL,
-  client: CarboneClient
+  client: CarboneClient,
+  options?: CallOptions
 ) {
-  const status = await client.getStatus();
+  const status = await client.getStatus(options);
 
   return {
     contents: [
       {
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(status, null, 2),
+        text: JSON.stringify(status),
       },
     ],
   };

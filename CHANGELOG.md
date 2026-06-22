@@ -8,6 +8,32 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.2.0] — 2026-06-22
+
+### Added
+
+- `outputPath` on `convert_document`, `render_document`, and `download_template` (stdio mode) — save the output to a local file instead of returning it inline
+- Structured tool output (`outputSchema` + `structuredContent`) for `list_templates`, `list_categories`, `list_tags`, `upload_template`, and `get_api_status`, plus tool titles and behavior annotations (read-only / destructive / idempotent hints)
+- Server logo, description, and usage instructions advertised at initialization
+- `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` — reject HTTP requests without a Bearer key instead of falling back to the server-level `CARBONE_API_KEY`
+- `CARBONE_MAX_FILE_BYTES` — size guard for resolved input files (default 100 MB); `cdr` output format and `idml` / `epub` / `cdr` MIME types
+- `Retry-After` now surfaced on 429 rate-limit errors
+- `carbone://templates/{id}` resource template — fetch one template (with version history) by Template ID or Version ID, with Template ID autocompletion (MCP completions)
+
+### Fixed
+
+- HTTP multi-tenant: resources (`carbone://templates`, `carbone://categories`, `carbone://tags`) now forward the per-request API key instead of failing authentication
+- URL-based file inputs could hang indefinitely — downloads now time out
+- `list_templates` — `limit` is now validated against the Carbone maximum (1–100) and rejected client-side instead of producing a failed API call
+- `carbone://templates` resource — description no longer advertises query-string filters (unsupported on MCP resources); filtering/search/pagination is directed to the `list_templates` tool
+
+### Changed
+
+- `list_templates`, `list_categories`, `list_tags`, and the `carbone://` resources now return compact JSON (lower token cost)
+- Authentication error messages are transport-aware (Bearer token vs environment variable)
+
+---
+
 ## [1.1.4] — 2026-05-12
 
 ### Changed
@@ -125,6 +151,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.2.0]: https://github.com/carboneio/carbone-mcp/compare/v1.1.4...v1.2.0
 [1.1.4]: https://github.com/carboneio/carbone-mcp/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/carboneio/carbone-mcp/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/carboneio/carbone-mcp/compare/v1.1.1...v1.1.2

@@ -1,4 +1,4 @@
-import type { CarboneClient } from '../carbone/client.js';
+import type { CarboneClient, CallOptions } from '../carbone/client.js';
 
 export const TAGS_URI = 'carbone://tags';
 
@@ -10,16 +10,17 @@ export const tagsResourceDescription =
 
 export async function readTagsResource(
   uri: URL,
-  client: CarboneClient
+  client: CarboneClient,
+  options?: CallOptions
 ) {
-  const tags = await client.getTags();
+  const tags = await client.getTags(options);
 
   return {
     contents: [
       {
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(tags, null, 2),
+        text: JSON.stringify(tags),
       },
     ],
   };

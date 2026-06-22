@@ -13,6 +13,12 @@ export interface CarboneClientConfig {
   baseUrl?: string;
   timeout?: number;
   transport?: 'stdio' | 'http';
+  /**
+   * HTTP only: when true, a request without a per-call key (Bearer token) is rejected
+   * instead of falling back to the constructor-level apiKey. Prevents anonymous clients
+   * from silently spending the operator's key in multi-tenant deployments.
+   */
+  requireClientAuth?: boolean;
 }
 
 /**
@@ -28,6 +34,21 @@ export interface CallOptions {
 
 export type OutputFormat = string | { formatName: string; formatOptions?: Record<string, unknown> };
 
+/**
+ * Parse an HTTP `Retry-After` header into a number of seconds.
+ * Accepts both forms allowed by the spec: a delta in seconds ("120")
+ * or an HTTP-date ("Wed, 21 Oct 2025 07:28:00 GMT"). Returns undefined
+ * when the header is absent or unparseable.
+ */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
+  const dateMs = Date.parse(value);
+  if (!Number.isNaN(dateMs)) return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+  return undefined;
+}
+
 export class CarboneClient {
   static readonly CLOUD_API_URL = 'https://api.carbone.io';
 
@@ -35,13 +56,20 @@ export class CarboneClient {
   private readonly baseUrl: string;
   private readonly timeout: number;
   private readonly transport: 'stdio' | 'http';
+  private readonly requireClientAuth: boolean;
 
   constructor(config: CarboneClientConfig) {
     this.apiKey = config.apiKey;
-    this.baseUrl = config.baseUrl ?? 'https://api.carbone.io';
+    this.baseUrl = config.baseUrl ?? CarboneClient.CLOUD_API_URL;
     // Carbone API maximum timeout is 60 seconds
     this.timeout = config.timeout ?? 60000;
     this.transport = config.transport ?? 'stdio';
+    this.requireClientAuth = config.requireClientAuth ?? false;
+  }
+
+  /** True when this client targets the Carbone cloud API (its size limits are enforced by Carbone). */
+  get isCloud(): boolean {
+    return this.baseUrl === CarboneClient.CLOUD_API_URL;
   }
 
   /**
@@ -317,13 +345,21 @@ export class CarboneClient {
    * on-premise deployments (custom baseUrl) run without authentication.
    */
   private resolveKey(callOptions?: CallOptions): string | undefined {
-    const key = callOptions?.apiKey ?? this.apiKey;
-    if (!key && this.baseUrl === CarboneClient.CLOUD_API_URL && !callOptions?.skipAuthCheck) {
-      throw new CarboneAuthError(
-        this.transport === 'http'
-          ? 'No API key provided. Pass your Carbone API key as a Bearer token in the Authorization header: Authorization: Bearer <your-key>. Get yours at https://account.carbone.io'
-          : 'No API key provided. Set the CARBONE_API_KEY environment variable. Get yours at https://account.carbone.io'
-      );
+    const perCallKey = callOptions?.apiKey;
+    const key = perCallKey ?? this.apiKey;
+
+    if (!callOptions?.skipAuthCheck) {
+      // Reject (rather than fall back to the server key) when the operator requires a
+      // per-request key in multi-tenant HTTP mode — even if a constructor-level key is set.
+      const missingRequiredClientKey = this.requireClientAuth && this.transport === 'http' && !perCallKey;
+      const missingCloudKey = !key && this.baseUrl === CarboneClient.CLOUD_API_URL;
+      if (missingRequiredClientKey || missingCloudKey) {
+        throw new CarboneAuthError(
+          this.transport === 'http'
+            ? 'No API key provided. Pass your Carbone API key as a Bearer token in the Authorization header: Authorization: Bearer <your-key>. Get yours at https://account.carbone.io'
+            : 'No API key provided. Set the CARBONE_API_KEY environment variable. Get yours at https://account.carbone.io'
+        );
+      }
     }
     return key || undefined;
   }
@@ -412,7 +448,7 @@ export class CarboneClient {
         );
 
       case 429:
-        return new CarboneRateLimitError();
+        return new CarboneRateLimitError(parseRetryAfter(response.headers.get('retry-after')));
 
       case 500:
       case 502:

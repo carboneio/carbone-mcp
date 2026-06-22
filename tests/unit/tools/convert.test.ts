@@ -5,8 +5,14 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   return { ...actual, resolveFileInput: vi.fn() };
 });
 
+vi.mock('../../../src/tools/output.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/tools/output.js')>();
+  return { ...actual, saveOrReject: vi.fn() };
+});
+
 import { handleConvertDocument } from '../../../src/tools/convert.js';
 import { resolveFileInput } from '../../../src/utils/file.js';
+import { saveOrReject } from '../../../src/tools/output.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
 import { CarboneError } from '../../../src/carbone/errors.js';
 
@@ -31,11 +37,26 @@ describe('handleConvertDocument', () => {
     const client = makeClient();
     await handleConvertDocument({ file: '/path/to/doc.docx', convertTo: 'pdf' }, client);
 
-    expect(resolveFileInput).toHaveBeenCalledWith('/path/to/doc.docx');
+    expect(resolveFileInput).toHaveBeenCalledWith('/path/to/doc.docx', { isCloud: undefined });
     expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
       expect.objectContaining({ template: 'resolved-base64==' }),
       undefined
     );
+  });
+
+  test('delegates to saveOrReject when outputPath is provided', async () => {
+    vi.mocked(saveOrReject).mockResolvedValue({ content: [{ type: 'text', text: 'saved to /out.pdf' }] });
+    const client = makeClient();
+
+    const result = await handleConvertDocument(
+      { file: '/in.docx', convertTo: 'pdf', outputPath: '/out.pdf' },
+      client,
+      undefined,
+      { allowFileOutput: true, maxFileBytes: 100 }
+    );
+
+    expect(saveOrReject).toHaveBeenCalledWith(expect.objectContaining({ outputPath: '/out.pdf', format: 'pdf', allowFileOutput: true }));
+    expect((result.content[0] as { text: string }).text).toBe('saved to /out.pdf');
   });
 
   test('does not pass "file" field to client', async () => {

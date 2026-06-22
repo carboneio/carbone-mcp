@@ -22,3 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+        env:
+          # Integration (e2e) tests run only when this secret is present; otherwise they self-skip.
+          # Add it in repo Settings → Secrets and variables → Actions. Optionally also CARBONE_TEST_BASE_URL.
+          CARBONE_TEST_API_KEY: ${{ secrets.CARBONE_TEST_API_KEY }}

@@ -10,6 +10,8 @@ export interface ServerConfig {
   port: number;
   mcpPath: string;
   maxBodyBytes: number;
+  maxFileBytes: number;
+  requireClientAuth: boolean;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, name: string): number {
@@ -19,6 +21,14 @@ function parsePositiveInt(value: string | undefined, fallback: number, name: str
     throw new Error(`Invalid ${name} value "${value}". Must be a positive integer.`);
   }
   return n;
+}
+
+function parseBool(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (value === undefined || value === '') return fallback;
+  if (value !== 'true' && value !== 'false') {
+    throw new Error(`Invalid ${name} value "${value}". Must be "true" or "false".`);
+  }
+  return value === 'true';
 }
 
 export function loadConfig(): ServerConfig {
@@ -60,5 +70,9 @@ export function loadConfig(): ServerConfig {
     port: parsePositiveInt(process.env['MCP_PORT'], 3000, 'MCP_PORT'),
     mcpPath,
     maxBodyBytes: parsePositiveInt(process.env['MCP_MAX_BODY_BYTES'], 60 * 1024 * 1024, 'MCP_MAX_BODY_BYTES'),
+    maxFileBytes: parsePositiveInt(process.env['CARBONE_MAX_FILE_BYTES'], 100 * 1024 * 1024, 'CARBONE_MAX_FILE_BYTES'),
+    // HTTP only: when true, a request without an Authorization: Bearer key is rejected
+    // instead of falling back to the server-level CARBONE_API_KEY.
+    requireClientAuth: parseBool(process.env['CARBONE_REQUIRE_CLIENT_AUTH_HEADER'], false, 'CARBONE_REQUIRE_CLIENT_AUTH_HEADER'),
   };
 }

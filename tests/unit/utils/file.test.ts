@@ -1,12 +1,19 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { getMimeType, toToolContent, resolveFileInput } from '../../../src/utils/file.js';
+import { getMimeType, toToolContent, resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 
 // Mock node:fs/promises at the top level so vi.mock hoisting works correctly
 vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
+  stat: vi.fn(),
+  writeFile: vi.fn(),
 }));
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
+
+/** Default stat stub (small file) so size-limit checks pass unless a test overrides it. */
+function stubStatSize(size: number) {
+  vi.mocked(stat).mockResolvedValueOnce({ size } as unknown as Awaited<ReturnType<typeof stat>>);
+}
 
 describe('getMimeType', () => {
   test('returns correct MIME type for common formats', () => {
@@ -49,6 +56,12 @@ describe('getMimeType', () => {
     expect(getMimeType({ formatName: 'png' })).toBe('image/png');
   });
 
+  test('returns correct MIME type for idml, epub, and cdr', () => {
+    expect(getMimeType('idml')).toBe('application/vnd.adobe.indesign-idml-package');
+    expect(getMimeType('epub')).toBe('application/epub+zip');
+    expect(getMimeType('cdr')).toBe('application/vnd.corel-draw');
+  });
+
   test('returns octet-stream for unknown formats', () => {
     expect(getMimeType('unknown')).toBe('application/octet-stream');
   });
@@ -61,6 +74,20 @@ describe('toToolContent', () => {
     const result = toToolContent(buf, 'file.html', 'html');
     expect(result.type).toBe('text');
     if (result.type === 'text') expect(result.text).toBe('hello world');
+  });
+
+  test('asAttachment=true forces an EmbeddedResource for a text format', () => {
+    const result = toToolContent(buf, 'file.html', 'html', true);
+    expect(result.type).toBe('resource');
+    if (result.type === 'resource') {
+      expect(result.resource.mimeType).toBe('text/html');
+      expect(result.resource.blob).toBe(buf.toString('base64'));
+      expect(result.resource.uri).toBe('file://file.html');
+    }
+  });
+
+  test('asAttachment=true forces an EmbeddedResource for an image format', () => {
+    expect(toToolContent(buf, 'file.png', 'png', true).type).toBe('resource');
   });
 
   test('returns TextContent for CSV', () => {
@@ -232,6 +259,7 @@ describe('resolveFileInput', () => {
 
   test('reads a local absolute path', async () => {
     const fileContent = Buffer.from('local file');
+    stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
 
     const result = await resolveFileInput('/absolute/path/to/file.docx');
@@ -241,6 +269,7 @@ describe('resolveFileInput', () => {
 
   test('reads a local relative path (./)', async () => {
     const fileContent = Buffer.from('relative file');
+    stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
 
     const result = await resolveFileInput('./template.docx');
@@ -249,6 +278,7 @@ describe('resolveFileInput', () => {
 
   test('expands ~ to home directory', async () => {
     const fileContent = Buffer.from('home file');
+    stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
     const home = process.env['HOME'] ?? process.env['USERPROFILE'] ?? '~';
 
@@ -259,6 +289,7 @@ describe('resolveFileInput', () => {
 
   test('reads a Windows absolute path (C:\\)', async () => {
     const fileContent = Buffer.from('windows file');
+    stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
 
     const result = await resolveFileInput('C:\\Users\\user\\template.docx');
@@ -267,10 +298,88 @@ describe('resolveFileInput', () => {
   });
 
   test('throws when local file is not found', async () => {
-    vi.mocked(readFile).mockRejectedValueOnce(
+    // stat() is called before readFile, so the ENOENT surfaces from there.
+    vi.mocked(stat).mockRejectedValueOnce(
       Object.assign(new Error('ENOENT: no such file'), { code: 'ENOENT' })
     );
 
     await expect(resolveFileInput('/nonexistent/file.docx')).rejects.toThrow('ENOENT');
+  });
+
+  // ── size limit + timeout ──────────────────────────────────────────────────
+
+  test('rejects a local file larger than the limit (before reading it)', async () => {
+    vi.mocked(readFile).mockClear();
+    stubStatSize(999);
+    await expect(resolveFileInput('/big/file.docx', { maxBytes: 10 })).rejects.toThrow('exceeds the maximum');
+    expect(vi.mocked(readFile)).not.toHaveBeenCalled();
+  });
+
+  test('rejects a URL download larger than the declared Content-Length', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ 'content-length': '999' }),
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response);
+    await expect(resolveFileInput('https://example.com/big.pdf', { maxBytes: 10 })).rejects.toThrow('exceeds the maximum');
+  });
+
+  test('rejects an oversized base64 string', async () => {
+    await expect(resolveFileInput('A'.repeat(200), { maxBytes: 10 })).rejects.toThrow('exceeds the maximum');
+  });
+
+  test('over-limit message is cloud-aware (no env-var hint on cloud)', async () => {
+    stubStatSize(999);
+    await expect(
+      resolveFileInput('/big/file.docx', { maxBytes: 10, isCloud: true })
+    ).rejects.toThrow('Carbone Cloud limits');
+  });
+
+  test('wraps a URL download timeout in a clear error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+      Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' })
+    );
+    await expect(resolveFileInput('https://slow.example.com/file.pdf')).rejects.toThrow('Timed out');
+  });
+
+  test('passes an AbortSignal to the URL fetch', async () => {
+    const fileContent = Buffer.from('x');
+    const ab = fileContent.buffer.slice(fileContent.byteOffset, fileContent.byteOffset + fileContent.byteLength);
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers(),
+      arrayBuffer: async () => ab,
+    } as unknown as Response);
+
+    await resolveFileInput('https://example.com/file.pdf');
+
+    expect(spy).toHaveBeenCalledWith(
+      'https://example.com/file.pdf',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+});
+
+describe('writeOutputFile', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test('writes the buffer to disk and returns the resolved path and size', async () => {
+    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+    const buffer = Buffer.from('hello');
+
+    const result = await writeOutputFile('/tmp/out.pdf', buffer);
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith('/tmp/out.pdf', buffer);
+    expect(result).toEqual({ path: '/tmp/out.pdf', size: 5 });
+  });
+
+  test('expands ~ in the output path', async () => {
+    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+    const home = process.env['HOME'] ?? process.env['USERPROFILE'] ?? '~';
+
+    const result = await writeOutputFile('~/out.docx', Buffer.from('x'));
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(`${home}/out.docx`, expect.anything());
+    expect(result.path).toBe(`${home}/out.docx`);
   });
 });

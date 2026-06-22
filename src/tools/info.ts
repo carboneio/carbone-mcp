@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { formatError } from '../utils/errors.js';
 
@@ -11,6 +12,11 @@ export const getApiStatusDescription =
 
 export const getApiStatusSchema = {};
 
+export const getApiStatusOutputSchema = {
+  version: z.string().describe('The running Carbone API version.'),
+  message: z.string().describe('Status message returned by the API.'),
+};
+
 export async function handleGetApiStatus(client: CarboneClient, options?: CallOptions) {
   try {
     const status = await client.getStatus(options);
@@ -21,6 +27,7 @@ export async function handleGetApiStatus(client: CarboneClient, options?: CallOp
           text: `Carbone API: online (v${status.version})\nMessage: ${status.message}`,
         },
       ],
+      structuredContent: { version: status.version, message: status.message },
     };
   } catch (error) {
     return { content: [{ type: 'text' as const, text: formatError(error) }], isError: true };
@@ -57,12 +64,13 @@ const CAPABILITIES_TEXT = `# Carbone — Document Generation & Conversion
 
 ## Resources available
 
-| Resource               | Purpose                              |
-|------------------------|--------------------------------------|
-| carbone://templates    | Browse all stored templates          |
-| carbone://categories   | List all template categories         |
-| carbone://tags         | List all template tags               |
-| carbone://status       | Check Carbone API health and version |
+| Resource                | Purpose                                          |
+|-------------------------|--------------------------------------------------|
+| carbone://templates     | Browse all stored templates                      |
+| carbone://templates/{id}| Fetch one template (with version history) by ID  |
+| carbone://categories    | List all template categories                     |
+| carbone://tags          | List all template tags                           |
+| carbone://status        | Check Carbone API health and version             |
 
 ---
 

@@ -185,6 +185,23 @@ describe('loadConfig', () => {
       vi.stubEnv('MCP_MAX_BODY_BYTES', '5242880');
       expect(loadConfig().maxBodyBytes).toBe(5_242_880);
     });
+
+    test('uses fallback (100 MB) when CARBONE_MAX_FILE_BYTES is not set', () => {
+      stubStdio();
+      expect(loadConfig().maxFileBytes).toBe(100 * 1024 * 1024);
+    });
+
+    test('parses a valid CARBONE_MAX_FILE_BYTES', () => {
+      stubStdio();
+      vi.stubEnv('CARBONE_MAX_FILE_BYTES', '5242880');
+      expect(loadConfig().maxFileBytes).toBe(5_242_880);
+    });
+
+    test('throws for a non-positive CARBONE_MAX_FILE_BYTES', () => {
+      stubStdio();
+      vi.stubEnv('CARBONE_MAX_FILE_BYTES', '0');
+      expect(() => loadConfig()).toThrow('Invalid CARBONE_MAX_FILE_BYTES');
+    });
   });
 
   // ── Returned config shape ─────────────────────────────────────────────────
@@ -201,6 +218,8 @@ describe('loadConfig', () => {
         port: 3000,
         mcpPath: '/',
         maxBodyBytes: 60 * 1024 * 1024,
+        maxFileBytes: 100 * 1024 * 1024,
+        requireClientAuth: false,
       });
     });
 
@@ -216,6 +235,32 @@ describe('loadConfig', () => {
       vi.stubEnv('CARBONE_API_KEY', '');
       vi.stubEnv('CARBONE_BASE_URL', 'https://carbone.my-company.com');
       expect(loadConfig().carboneBaseUrl).toBe('https://carbone.my-company.com');
+    });
+  });
+
+  // ── CARBONE_REQUIRE_CLIENT_AUTH_HEADER ───────────────────────────────────
+  describe('CARBONE_REQUIRE_CLIENT_AUTH_HEADER', () => {
+    test('defaults to false when not set', () => {
+      stubStdio();
+      expect(loadConfig().requireClientAuth).toBe(false);
+    });
+
+    test('parses "true"', () => {
+      stubHttp();
+      vi.stubEnv('CARBONE_REQUIRE_CLIENT_AUTH_HEADER', 'true');
+      expect(loadConfig().requireClientAuth).toBe(true);
+    });
+
+    test('parses "false"', () => {
+      stubHttp();
+      vi.stubEnv('CARBONE_REQUIRE_CLIENT_AUTH_HEADER', 'false');
+      expect(loadConfig().requireClientAuth).toBe(false);
+    });
+
+    test('throws on a non-boolean value', () => {
+      stubHttp();
+      vi.stubEnv('CARBONE_REQUIRE_CLIENT_AUTH_HEADER', 'yes');
+      expect(() => loadConfig()).toThrow('Invalid CARBONE_REQUIRE_CLIENT_AUTH_HEADER value "yes"');
     });
   });
 });

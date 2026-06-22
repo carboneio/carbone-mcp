@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CarboneClient } from '../carbone/client.js';
+import type { FileContext } from './output.js';
 
 import {
   convertDocumentToolName,
@@ -19,16 +20,20 @@ import {
   listTemplatesToolName,
   listTemplatesDescription,
   listTemplatesSchema,
+  listTemplatesOutputSchema,
   handleListTemplates,
   listCategoriesToolName,
   listCategoriesDescription,
+  listCategoriesOutputSchema,
   handleListCategories,
   listTagsToolName,
   listTagsDescription,
+  listTagsOutputSchema,
   handleListTags,
   uploadTemplateToolName,
   uploadTemplateDescription,
   uploadTemplateSchema,
+  uploadTemplateOutputSchema,
   handleUploadTemplate,
   updateTemplateMetadataToolName,
   updateTemplateMetadataDescription,
@@ -47,76 +52,139 @@ import {
 import {
   getApiStatusToolName,
   getApiStatusDescription,
+  getApiStatusOutputSchema,
   handleGetApiStatus,
   getCapabilitiesToolName,
   getCapabilitiesDescription,
   handleGetCapabilities,
 } from './info.js';
 
-export function registerTools(server: McpServer, client: CarboneClient): void {
+export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext): void {
+  // Annotations are hints (not security boundaries): they let clients show safe/destructive
+  // badges and help models reason about which tools are read-only, repeatable, or destructive.
+  // - readOnlyHint:   does not modify stored state (generation/listing/status).
+  // - idempotentHint: same args produce the same effect when repeated.
+  // - destructiveHint: only meaningful when readOnlyHint is false; true for delete.
+  // - openWorldHint:  calls the external Carbone API (false only for the local capabilities tool).
   server.registerTool(
     listTemplatesToolName,
-    { description: listTemplatesDescription, inputSchema: listTemplatesSchema },
+    {
+      title: 'List Templates',
+      description: listTemplatesDescription,
+      inputSchema: listTemplatesSchema,
+      outputSchema: listTemplatesOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
     (args, extra) => handleListTemplates(args, client, { apiKey: extra.authInfo?.token })
   );
 
   server.registerTool(
     convertDocumentToolName,
-    { description: convertDocumentDescription, inputSchema: convertDocumentSchema },
-    (args, extra) => handleConvertDocument(args, client, { apiKey: extra.authInfo?.token })
+    {
+      title: 'Convert Document',
+      description: convertDocumentDescription,
+      inputSchema: convertDocumentSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    (args, extra) => handleConvertDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
     renderDocumentToolName,
-    { description: renderDocumentDescription, inputSchema: renderDocumentSchema },
-    (args, extra) => handleRenderDocument(args, client, { apiKey: extra.authInfo?.token })
+    {
+      title: 'Generate Document',
+      description: renderDocumentDescription,
+      inputSchema: renderDocumentSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    (args, extra) => handleRenderDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
     listCategoriesToolName,
-    { description: listCategoriesDescription },
+    {
+      title: 'List Categories',
+      description: listCategoriesDescription,
+      outputSchema: listCategoriesOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
     (extra) => handleListCategories({} as never, client, { apiKey: extra.authInfo?.token })
   );
 
   server.registerTool(
     listTagsToolName,
-    { description: listTagsDescription },
+    {
+      title: 'List Tags',
+      description: listTagsDescription,
+      outputSchema: listTagsOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
     (extra) => handleListTags({} as never, client, { apiKey: extra.authInfo?.token })
   );
 
   server.registerTool(
     uploadTemplateToolName,
-    { description: uploadTemplateDescription, inputSchema: uploadTemplateSchema },
-    (args, extra) => handleUploadTemplate(args, client, { apiKey: extra.authInfo?.token })
+    {
+      title: 'Upload Template',
+      description: uploadTemplateDescription,
+      inputSchema: uploadTemplateSchema,
+      outputSchema: uploadTemplateOutputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    (args, extra) => handleUploadTemplate(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
     updateTemplateMetadataToolName,
-    { description: updateTemplateMetadataDescription, inputSchema: updateTemplateMetadataSchema },
+    {
+      title: 'Update Template Metadata',
+      description: updateTemplateMetadataDescription,
+      inputSchema: updateTemplateMetadataSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
     (args, extra) => handleUpdateTemplateMetadata(args, client, { apiKey: extra.authInfo?.token })
   );
 
   server.registerTool(
     deleteTemplateToolName,
-    { description: deleteTemplateDescription, inputSchema: deleteTemplateSchema },
+    {
+      title: 'Delete Template',
+      description: deleteTemplateDescription,
+      inputSchema: deleteTemplateSchema,
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    },
     (args, extra) => handleDeleteTemplate(args, client, { apiKey: extra.authInfo?.token })
   );
 
   server.registerTool(
     downloadTemplateToolName,
-    { description: downloadTemplateDescription, inputSchema: downloadTemplateSchema },
-    (args, extra) => handleDownloadTemplate(args, client, { apiKey: extra.authInfo?.token })
+    {
+      title: 'Download Template',
+      description: downloadTemplateDescription,
+      inputSchema: downloadTemplateSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    (args, extra) => handleDownloadTemplate(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
     getApiStatusToolName,
-    { description: getApiStatusDescription },
+    {
+      title: 'API Status',
+      description: getApiStatusDescription,
+      outputSchema: getApiStatusOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    },
     (extra) => handleGetApiStatus(client, { apiKey: extra.authInfo?.token })
   );
 
   server.registerTool(
     getCapabilitiesToolName,
-    { description: getCapabilitiesDescription },
+    {
+      title: 'Capabilities',
+      description: getCapabilitiesDescription,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
     () => handleGetCapabilities()
   );
 }

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
-import { OUTPUT_FORMATS, CONVERTERS } from '../validation/schemas.js';
+import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
 import { resolveFileInput, toToolContent } from '../utils/file.js';
+import { saveOrReject, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
 export const renderDocumentToolName = 'render_document';
@@ -145,9 +146,11 @@ export const renderDocumentSchema = {
     .string()
     .optional()
     .describe(
-      'Filename for the generated document, returned in the Content-Disposition header. ' +
+      'Filename (WITHOUT extension) for the generated document, returned in the Content-Disposition header. ' +
+      'Carbone automatically appends the extension that matches convertTo, so do not include one — ' +
+      'passing "invoice.pdf" yields "invoice.pdf.pdf". ' +
       'Supports Carbone tags resolved against the data at render time. ' +
-      'Examples: "invoice.pdf" (static), "{d.type}-{d.id}.pdf" (dynamic), "{d.client}-{d.date:formatD(YYYY-MM)}.docx".'
+      'Examples: "invoice" (static), "{d.type}-{d.id}" (dynamic), "{d.client}-{d.date:formatD(YYYY-MM)}".'
     ),
 
   enum: z
@@ -266,6 +269,26 @@ export const renderDocumentSchema = {
       'Carbone will call your URL with headers: authorization: my-secret, custom-id: 12345, custom-name: Jane Doe. ' +
       'Requires webhookUrl to be set.'
     ),
+
+  outputPath: z
+    .string()
+    .optional()
+    .describe(
+      'Optional local file path to save the generated document to (e.g. "/home/user/out.pdf" or "~/out.pdf"). ' +
+      'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
+      'the document inline — ideal for large files. Local (stdio) mode only; rejected in HTTP mode. ' +
+      'Ignored for async/webhook renders (no document is returned inline).'
+    ),
+
+  asAttachment: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, return the document as a downloadable file attachment (base64 resource) instead of inline ' +
+      'text/image. Use when the user wants to download or save the file rather than read its content inline — ' +
+      'especially in HTTP mode where outputPath is unavailable. Default: false (text inline, images viewable, ' +
+      'other binaries as resources). Ignored when outputPath is set.'
+    ),
 };
 
 export async function handleRenderDocument(
@@ -291,9 +314,12 @@ export async function handleRenderDocument(
     batchReportName?: string;
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
+    outputPath?: string;
+    asAttachment?: boolean;
   },
   client: CarboneClient,
-  options?: CallOptions
+  options?: CallOptions,
+  fileCtx?: FileContext
 ) {
   // XOR: exactly one of templateId or template must be provided
   if ((args.templateId != null) === (args.template != null)) {
@@ -304,7 +330,9 @@ export async function handleRenderDocument(
   }
 
   try {
-    const template = args.template ? await resolveFileInput(args.template) : undefined;
+    const template = args.template
+      ? await resolveFileInput(args.template, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes })
+      : undefined;
     const result = await client.renderDocument({ ...args, template }, options);
 
     if ('async' in result) {
@@ -312,7 +340,12 @@ export async function handleRenderDocument(
     }
 
     const format = args.convertTo ?? result.filename.split('.').pop() ?? 'pdf';
-    const content = toToolContent(result.buffer, result.filename, format);
+
+    if (args.outputPath) {
+      return saveOrReject({ buffer: result.buffer, format, outputPath: args.outputPath, allowFileOutput: fileCtx?.allowFileOutput ?? false });
+    }
+
+    const content = toToolContent(result.buffer, result.filename, format, args.asAttachment);
     return { content: [content] };
   } catch (error) {
     return {
