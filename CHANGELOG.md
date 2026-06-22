@@ -163,6 +163,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.2.1]: https://github.com/carboneio/carbone-mcp/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/carboneio/carbone-mcp/compare/v1.1.4...v1.2.0
 [1.1.4]: https://github.com/carboneio/carbone-mcp/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/carboneio/carbone-mcp/compare/v1.1.2...v1.1.3
