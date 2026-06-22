@@ -73,6 +73,14 @@ export class CarboneClient {
   }
 
   /**
+   * Public one-time download URL for a renderId (produced by render/convert with returnLink).
+   * The endpoint needs no auth; Carbone deletes the file after the first GET.
+   */
+  renderUrl(renderId: string): string {
+    return `${this.baseUrl}/render/${renderId}`;
+  }
+
+  /**
    * Convert document without template storage.
    * POST /render/template?download=true
    *
@@ -84,7 +92,8 @@ export class CarboneClient {
     template: string;
     convertTo: OutputFormat;
     converter?: string;
-  }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string }> {
+    returnLink?: boolean;
+  }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { renderId: string }> {
     const body: Record<string, unknown> = {
       data: {},
       template: params.template,
@@ -92,12 +101,19 @@ export class CarboneClient {
     };
     if (params.converter) body['converter'] = params.converter;
 
-    const response = await this.request('/render/template?download=true', {
+    // Without download=true the API stores the file and returns a renderId (one-time download link).
+    const response = await this.request(`/render/template${params.returnLink ? '' : '?download=true'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }, options);
 
+    if (params.returnLink) {
+      // request() already threw on any non-2xx (errors are { success:false, error }), so a 200 here
+      // always carries data.renderId.
+      const json = await response.json() as { data: { renderId: string } };
+      return { renderId: json.data.renderId };
+    }
     return this.handleBinaryResponse(response);
   }
 
@@ -131,7 +147,8 @@ export class CarboneClient {
     batchReportName?: string;
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
-  }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string }> {
+    returnLink?: boolean;
+  }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string } | { renderId: string }> {
     const body: Record<string, unknown> = { data: params.data };
     if (params.template)                   body['template']       = params.template;
     if (params.convertTo)                  body['convertTo']      = params.convertTo;
@@ -152,9 +169,12 @@ export class CarboneClient {
     if (params.batchReportName)            body['batchReportName'] = params.batchReportName;
 
     const isAsync = !!params.webhookUrl;
+    // returnLink: skip download=true so the API stores the file and returns a renderId (one-time link).
+    const wantsLink = !!params.returnLink && !isAsync;
+    const stream = !isAsync && !wantsLink;
     const endpoint = params.template
-      ? `/render/template${isAsync ? '' : '?download=true'}`
-      : `/render/${params.templateId}${isAsync ? '' : '?download=true'}`;
+      ? `/render/template${stream ? '?download=true' : ''}`
+      : `/render/${params.templateId}${stream ? '?download=true' : ''}`;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (params.webhookUrl) {
@@ -175,6 +195,11 @@ export class CarboneClient {
     if (isAsync) {
       const json = await response.json() as { success: boolean; message: string };
       return { async: true, message: json.message };
+    }
+
+    if (wantsLink) {
+      const json = await response.json() as { data: { renderId: string } };
+      return { renderId: json.data.renderId };
     }
 
     return this.handleBinaryResponse(response);

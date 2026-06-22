@@ -2,17 +2,11 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/utils/file.js')>();
-  return { ...actual, resolveFileInput: vi.fn() };
-});
-
-vi.mock('../../../src/tools/output.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/tools/output.js')>();
-  return { ...actual, saveOrReject: vi.fn() };
+  return { ...actual, resolveFileInput: vi.fn(), writeOutputFile: vi.fn() };
 });
 
 import { handleConvertDocument } from '../../../src/tools/convert.js';
-import { resolveFileInput } from '../../../src/utils/file.js';
-import { saveOrReject } from '../../../src/tools/output.js';
+import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
 import { CarboneError } from '../../../src/carbone/errors.js';
 
@@ -22,6 +16,7 @@ const makeClient = (
 ) =>
   ({
     convertDocument: vi.fn().mockResolvedValue({ buffer, filename }),
+    renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
   }) as unknown as CarboneClient;
 
 describe('handleConvertDocument', () => {
@@ -44,8 +39,8 @@ describe('handleConvertDocument', () => {
     );
   });
 
-  test('delegates to saveOrReject when outputPath is provided', async () => {
-    vi.mocked(saveOrReject).mockResolvedValue({ content: [{ type: 'text', text: 'saved to /out.pdf' }] });
+  test('saves to disk when outputPath is provided (stdio)', async () => {
+    vi.mocked(writeOutputFile).mockResolvedValue({ path: '/out.pdf', size: 100 });
     const client = makeClient();
 
     const result = await handleConvertDocument(
@@ -55,8 +50,25 @@ describe('handleConvertDocument', () => {
       { allowFileOutput: true, maxFileBytes: 100 }
     );
 
-    expect(saveOrReject).toHaveBeenCalledWith(expect.objectContaining({ outputPath: '/out.pdf', format: 'pdf', allowFileOutput: true }));
-    expect((result.content[0] as { text: string }).text).toBe('saved to /out.pdf');
+    expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/out.pdf', expect.anything());
+    expect((result.content[0] as { text: string }).text).toContain('/out.pdf');
+  });
+
+  test('returnLink: returns a one-time download URL (renders with download=false)', async () => {
+    const client = {
+      convertDocument: vi.fn().mockResolvedValue({ renderId: 'RID123.pdf' }),
+      renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
+    } as unknown as CarboneClient;
+
+    const result = await handleConvertDocument({ file: 'data', convertTo: 'pdf', returnLink: true }, client);
+
+    expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ returnLink: true }),
+      undefined
+    );
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain('https://api.carbone.io/render/RID123.pdf');
+    expect(text).toContain('ONCE');
   });
 
   test('does not pass "file" field to client', async () => {

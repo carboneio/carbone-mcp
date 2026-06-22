@@ -43,6 +43,16 @@ const HTML_DATA = {
   total: 1700,
 };
 
+type BinaryResult = { buffer: Buffer; filename: string };
+
+/** Narrow a render/convert result to its binary (inline bytes) shape, asserting it isn't a link/async result. */
+function binary(
+  r: BinaryResult | { async: true; message: string } | { renderId: string }
+): BinaryResult {
+  if (!('buffer' in r)) throw new Error(`expected a binary result, got ${JSON.stringify(r)}`);
+  return r;
+}
+
 describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
   const client = new CarboneClient({
     apiKey: TEST_API_KEY!,
@@ -61,11 +71,11 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
   // ── Convert ─────────────────────────────────────────────────────────────────
 
   test('POST /render/template — converts HTML to PDF (Chromium)', async () => {
-    const result = await client.convertDocument({
+    const result = binary(await client.convertDocument({
       template: HTML_TEMPLATE,
       convertTo: 'pdf',
       converter: 'C',
-    });
+    }));
 
     expect(result.buffer).toBeInstanceOf(Buffer);
     expect(result.buffer.subarray(0, 4).toString()).toBe('%PDF');
@@ -73,21 +83,21 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
   });
 
   test('POST /render/template — converts HTML to TXT', async () => {
-    const result = await client.convertDocument({
+    const result = binary(await client.convertDocument({
       template: HTML_TEMPLATE,
       convertTo: 'txt',
-    });
+    }));
 
     expect(result.buffer).toBeInstanceOf(Buffer);
     expect(result.buffer.length).toBeGreaterThan(0);
   });
 
   test('POST /render/template — converts to PDF with object-form convertTo + formatOptions', async () => {
-    const result = await client.convertDocument({
+    const result = binary(await client.convertDocument({
       template: HTML_TEMPLATE,
       convertTo: { formatName: 'pdf', formatOptions: { Watermarks: [{ text: 'DRAFT', opacity: 0.2 }] } },
       converter: 'C',
-    });
+    }));
 
     expect(result.buffer.subarray(0, 4).toString()).toBe('%PDF');
   });
@@ -125,17 +135,61 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
   // ── Inline render ───────────────────────────────────────────────────────────
 
   test('POST /render/template — renders HTML template with data injection', async () => {
-    const result = await client.renderDocument({
+    const result = binary(await client.renderDocument({
       template: HTML_TEMPLATE,
       data: HTML_DATA,
       convertTo: 'html',
-    });
+    }));
 
     const html = result.buffer.toString('utf8');
     expect(html).toContain('Acme Corp');
     expect(html).toContain('Consulting');
     expect(html).toContain('Support');
     expect(html).toContain('1,700.00');
+  });
+
+  // ── returnLink (one-time public download URL) ────────────────────────────────
+
+  test('POST /render/template?download=false — returnLink yields a renderId whose URL downloads once', async () => {
+    const result = await client.renderDocument({
+      template: HTML_TEMPLATE,
+      data: HTML_DATA,
+      convertTo: 'pdf',
+      converter: 'C',
+      returnLink: true,
+    });
+
+    expect('renderId' in result).toBe(true);
+    const { renderId } = result as { renderId: string };
+    expect(typeof renderId).toBe('string');
+    expect(renderId.length).toBeGreaterThan(0);
+
+    const url = client.renderUrl(renderId);
+    expect(url).toBe(`${BASE_URL}/render/${renderId}`);
+
+    // The link is public (no auth) and one-time: the first GET returns the PDF.
+    const first = await fetch(url);
+    expect(first.status).toBe(200);
+    const bytes = Buffer.from(await first.arrayBuffer());
+    expect(bytes.subarray(0, 4).toString()).toBe('%PDF');
+
+    // The file is consumed after the first download — a second GET no longer returns the PDF.
+    const second = await fetch(url);
+    expect(second.ok).toBe(false);
+  });
+
+  test('convertDocument with returnLink yields a renderId (no inline buffer)', async () => {
+    const result = await client.convertDocument({
+      template: HTML_TEMPLATE,
+      convertTo: 'pdf',
+      converter: 'C',
+      returnLink: true,
+    });
+
+    expect('renderId' in result).toBe(true);
+    expect('buffer' in result).toBe(false);
+    const { renderId } = result as { renderId: string };
+    expect(client.renderUrl(renderId)).toContain(renderId);
   });
 
   // ── Lang + Translations ──────────────────────────────────────────────────────
@@ -147,7 +201,7 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
   <p>{t(farewell)}</p>
 </body></html>`).toString('base64');
 
-    const result = await client.renderDocument({
+    const result = binary(await client.renderDocument({
       template,
       data: { name: 'Alice' },
       convertTo: 'html',
@@ -156,7 +210,7 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
         'fr-fr': { greeting: 'Bonjour', farewell: 'Au revoir' },
         'en-us': { greeting: 'Hello',   farewell: 'Goodbye'   },
       },
-    });
+    }));
 
     const html = result.buffer.toString('utf8');
     expect(html).toContain('Bonjour');
@@ -248,11 +302,11 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
     expect(typeof versionId).toBe('string');
 
     // Render with stored templateId
-    const rendered = await client.renderDocument({
+    const rendered = binary(await client.renderDocument({
       templateId,
       data: HTML_DATA,
       convertTo: 'html',
-    });
+    }));
     const html = rendered.buffer.toString('utf8');
     expect(html).toContain('Acme Corp');
     expect(html).toContain('1,700.00');

@@ -38,7 +38,13 @@ const c0 = (r) => r.content?.[0];
 const typeOf = (r) => c0(r)?.type;
 const mimeOf = (r) => c0(r)?.resource?.mimeType ?? '';
 const uriOf = (r) => c0(r)?.resource?.uri ?? '';
-const isPdf = (r) => typeOf(r) === 'resource' && mimeOf(r) === 'application/pdf';
+// Binary docs (PDF, Office, …) are delivered per-transport: stdio saves to a temp file and returns a
+// text result (path + byte count); HTTP returns the bytes as an attachment (EmbeddedResource).
+const savedToFile = (r) => typeOf(r) === 'text' && /saved to/i.test(text(r)) && /bytes/i.test(text(r));
+const isBinaryDoc = (r, mimeMatch) => IS_STDIO ? savedToFile(r) : (typeOf(r) === 'resource' && mimeOf(r).includes(mimeMatch));
+const isPdf = (r) => isBinaryDoc(r, 'application/pdf');
+// returnLink → inline text carrying the public one-time /render/{renderId} URL + a one-time warning.
+const isOneTimeLink = (r) => typeOf(r) === 'text' && /\/render\//.test(text(r)) && /ONCE/.test(text(r));
 function check(label, cond, extra = '') {
   if (cond) { pass++; console.log(`  ✓ ${label}${extra ? '  ' + extra : ''}`); }
   else { fail++; console.log(`  ✗ ${label}${extra ? '  ' + extra : ''}`); }
@@ -78,9 +84,10 @@ async function run() {
     check('formatOptions watermark', isPdf(await call('convert_document', { file: INV, convertTo: { formatName: 'pdf', formatOptions: { Watermarks: [{ text: 'DRAFT', opacity: 0.2 }] } }, converter: 'C' })));
     check('formatOptions password', isPdf(await call('convert_document', { file: INV, convertTo: { formatName: 'pdf', formatOptions: { EncryptFile: true, DocumentOpenPassword: 's' } }, converter: 'C' })));
     check('formatOptions PDF/A', isPdf(await call('convert_document', { file: INV, convertTo: { formatName: 'pdf', formatOptions: { SelectPdfVersion: 1 } }, converter: 'C' })));
-    check('→ DOCX', mimeOf(await call('convert_document', { file: INV, convertTo: 'docx' })).includes('officedocument'));
+    check('→ DOCX', isBinaryDoc(await call('convert_document', { file: INV, convertTo: 'docx' }), 'officedocument'));
     check('→ TXT inline text', typeOf(await call('convert_document', { file: INV, convertTo: 'txt' })) === 'text');
     check('→ TXT asAttachment = resource', mimeOf(await call('convert_document', { file: INV, convertTo: 'txt', asAttachment: true })) === 'text/plain');
+    check('returnLink → one-time download URL', isOneTimeLink(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', returnLink: true })));
     check('bad converter rejected (validation)', (await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'X' })).isError === true);
     const cOut = await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', outputPath: `/tmp/bt-c-${Date.now()}.pdf` });
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(cOut).includes('bytes') : (cOut.isError && text(cOut).includes('stdio')));
@@ -89,7 +96,7 @@ async function run() {
     console.log('\n[render_document]');
     check('data injection', text(await call('render_document', { template: INV, data: { customer: 'Acme', total: 1700 }, convertTo: 'html' })).includes('Acme'));
     check('→ PDF', isPdf(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', converter: 'C' })));
-    check('→ DOCX', mimeOf(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'docx' })).includes('officedocument'));
+    check('→ DOCX', isBinaryDoc(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'docx' }), 'officedocument'));
     check('lang + translations', text(await call('render_document', { template: TRANS, data: { name: 'Al', status: '1' }, convertTo: 'html', lang: 'fr-fr', translations: { 'fr-fr': { hi: 'Bonjour' }, 'en-us': { hi: 'Hello' } }, enum: { ST: { 1: 'Actif' } } })).includes('Bonjour'));
     check('enum convEnum', text(await call('render_document', { template: TRANS, data: { name: 'Al', status: '1' }, convertTo: 'html', enum: { ST: { 1: 'Actif' } } })).includes('Actif'));
     check('currency formatC conversion', /\$|USD/.test(text(await call('render_document', { template: CUR, data: { p: 100 }, convertTo: 'html', currencySource: 'EUR', currencyTarget: 'USD', currencyRates: { EUR: 1, USD: 1.1 } }))));
@@ -97,8 +104,10 @@ async function run() {
     check('variableStr (no error)', !(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'html', variableStr: '{#z = d.total}' })).isError);
     check('timezone formatD (no error)', !(await call('render_document', { template: DATE, data: { d: '2026-01-15T10:00:00Z' }, convertTo: 'html', timezone: 'Europe/Paris' })).isError);
     check('hardRefresh (no error)', !(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', hardRefresh: true })).isError);
-    check('reportName (no ext) → filename', uriOf(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', converter: 'C', reportName: 'bt-invoice' })).includes('bt-invoice'));
+    const rRep = await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', converter: 'C', reportName: 'bt-invoice' });
+    check('reportName (no ext) → filename', IS_STDIO ? (savedToFile(rRep) && /bt-invoice/.test(text(rRep))) : uriOf(rRep).includes('bt-invoice'));
     check('asAttachment = resource', typeOf(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'html', asAttachment: true })) === 'resource');
+    check('returnLink → one-time download URL', isOneTimeLink(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', converter: 'C', returnLink: true })));
     check('webhook async message', /callback|render/i.test(text(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', webhookUrl: 'https://example.com/hook' }))));
     check('batch async message', /callback|render/i.test(text(await call('render_document', { template: INV, data: { items: [{ x: 1 }, { x: 2 }] }, convertTo: 'pdf', batchSplitBy: 'd.items', batchOutput: 'zip', webhookUrl: 'https://example.com/hook' }))));
     check('XOR both rejected', (await call('render_document', { templateId: 'x', template: INV, data: {} })).isError === true);

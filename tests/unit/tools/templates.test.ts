@@ -2,12 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/utils/file.js')>();
-  return { ...actual, resolveFileInput: vi.fn() };
-});
-
-vi.mock('../../../src/tools/output.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/tools/output.js')>();
-  return { ...actual, saveOrReject: vi.fn() };
+  return { ...actual, resolveFileInput: vi.fn(), writeOutputFile: vi.fn() };
 });
 
 import {
@@ -19,8 +14,7 @@ import {
   handleDeleteTemplate,
   handleDownloadTemplate,
 } from '../../../src/tools/templates.js';
-import { resolveFileInput } from '../../../src/utils/file.js';
-import { saveOrReject } from '../../../src/tools/output.js';
+import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
 import { CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
 
@@ -446,8 +440,8 @@ describe('handleDownloadTemplate', () => {
     expect(result.content[0].type).toBe('resource');
   });
 
-  test('delegates to saveOrReject when outputPath is provided', async () => {
-    vi.mocked(saveOrReject).mockResolvedValue({ content: [{ type: 'text', text: 'saved to /tpl.docx' }] });
+  test('saves to disk when outputPath is provided (stdio)', async () => {
+    vi.mocked(writeOutputFile).mockResolvedValue({ path: '/tpl.docx', size: 100 });
     const client = makeClient('invoice.docx');
 
     const result = await handleDownloadTemplate(
@@ -457,8 +451,8 @@ describe('handleDownloadTemplate', () => {
       { allowFileOutput: true, maxFileBytes: 100 }
     );
 
-    expect(saveOrReject).toHaveBeenCalledWith(expect.objectContaining({ outputPath: '/tpl.docx', format: 'docx', allowFileOutput: true }));
-    expect((result.content[0] as { text: string }).text).toBe('saved to /tpl.docx');
+    expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/tpl.docx', expect.anything());
+    expect((result.content[0] as { text: string }).text).toContain('/tpl.docx');
   });
 
   test('returns EmbeddedResource for PDF download', async () => {

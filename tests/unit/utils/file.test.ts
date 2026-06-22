@@ -161,16 +161,16 @@ describe('toToolContent', () => {
     if (result.type === 'image') expect(result.mimeType).toBe('image/webp');
   });
 
-  test('returns ImageContent for SVG', () => {
+  test('returns EmbeddedResource for SVG (not an Anthropic-permitted image type)', () => {
     const result = toToolContent(buf, 'file.svg', 'svg');
-    expect(result.type).toBe('image');
-    if (result.type === 'image') expect(result.mimeType).toBe('image/svg+xml');
+    expect(result.type).toBe('resource');
+    if (result.type === 'resource') expect(result.resource.mimeType).toBe('image/svg+xml');
   });
 
-  test('returns ImageContent for remaining image formats (tiff, bmp, gif)', () => {
-    for (const fmt of ['tiff', 'bmp', 'gif'] as const) {
-      expect(toToolContent(buf, `file.${fmt}`, fmt).type).toBe('image');
-    }
+  test('GIF is an inline image; TIFF and BMP fall back to a resource', () => {
+    expect(toToolContent(buf, 'file.gif', 'gif').type).toBe('image');
+    expect(toToolContent(buf, 'file.tiff', 'tiff').type).toBe('resource');
+    expect(toToolContent(buf, 'file.bmp', 'bmp').type).toBe('resource');
   });
 
   test('returns EmbeddedResource for XLSX', () => {

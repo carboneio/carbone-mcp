@@ -8,6 +8,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.2.1] — 2026-06-22
+
+### Fixed
+
+- Binary documents (PDF, Office, ZIP, …) are no longer returned as inline `image` blocks. Some clients (e.g. Claude Desktop) mis-routed a PDF into an image block and rejected it with `image.source.media_type: Input is not one of the permitted values`, crashing the render. Only true inline-renderable formats (text and `png`/`jpeg`/`gif`/`webp`) are now inlined; everything else is saved to a local temp file in stdio mode (path returned) or returned as a download attachment in HTTP mode. `svg`/`tiff`/`bmp` now return as attachments rather than inline images.
+
+### Added
+
+- `returnLink` on `convert_document` and `render_document` — return Carbone's public one-time download URL (`<API URL>/render/{renderId}`) instead of the bytes. The result clearly instructs that the link is short-lived and consumed by the first download, so the model hands it to the user rather than fetching it.
+
+---
+
 ## [1.2.0] — 2026-06-22
 
 ### Added

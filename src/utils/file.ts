@@ -156,12 +156,28 @@ export async function writeOutputFile(
   return { path: resolvedPath, size: buffer.length };
 }
 
+/** Output formats represented inline as plain text. */
+export const TEXT_OUTPUT_FORMATS = new Set(['html', 'xhtml', 'txt', 'csv', 'md', 'markdown', 'xml']);
+
+/**
+ * MIME types Anthropic's tool-result image block accepts (verified: JPEG, PNG, GIF, WebP).
+ * Other "image/*" types (svg, tiff, bmp) MUST NOT use an image block — the API rejects the
+ * media_type — so they are delivered as a resource/file instead.
+ */
+export const INLINE_IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/** True when the format is safe to return inline (readable text or an Anthropic-viewable image). */
+export function isInlineFormat(format: FormatArg): boolean {
+  const formatName = (typeof format === 'string' ? format : format.formatName).toLowerCase();
+  return TEXT_OUTPUT_FORMATS.has(formatName) || INLINE_IMAGE_MIME.has(getMimeType(format));
+}
+
 /**
  * Build the MCP tool content entry for a generated/converted document.
- * - asAttachment = true                           → EmbeddedResource with blob (downloadable file), any format
- * - Plain-text formats (HTML, CSV, TXT, MD, XML) → TextContent (read inline)
- * - Image formats                                 → ImageContent (viewable)
- * - All other binary formats (PDF, DOCX, …)       → EmbeddedResource with blob
+ * - asAttachment = true                            → EmbeddedResource with blob (downloadable file), any format
+ * - Plain-text formats (HTML, CSV, TXT, MD, XML)  → TextContent (read inline)
+ * - png / jpeg / gif / webp                        → ImageContent (viewable)
+ * - Everything else (PDF, DOCX, svg, tiff, bmp, …) → EmbeddedResource with blob
  */
 export function toToolContent(
   buffer: Buffer,
@@ -182,12 +198,12 @@ export function toToolContent(
     return asResource();
   }
 
-  const textFormats = new Set(['html', 'xhtml', 'txt', 'csv', 'md', 'markdown', 'xml']);
-  if (textFormats.has(formatName)) {
+  if (TEXT_OUTPUT_FORMATS.has(formatName)) {
     return { type: 'text', text: buffer.toString('utf-8') };
   }
 
-  if (mimeType.startsWith('image/')) {
+  // Only the four image types Anthropic permits in an image block; svg/tiff/bmp fall through.
+  if (INLINE_IMAGE_MIME.has(mimeType)) {
     return { type: 'image', data: buffer.toString('base64'), mimeType };
   }
 

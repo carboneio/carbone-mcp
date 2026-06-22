@@ -377,7 +377,7 @@ describe('CarboneClient', () => {
         _arrayBuffer: new ArrayBuffer(50),
       });
 
-      const result = await client.convertDocument({ template: 'abc', convertTo: 'pdf' });
+      const result = await client.convertDocument({ template: 'abc', convertTo: 'pdf' }) as { buffer: Buffer; filename: string };
       expect(result.filename).toBe('invoice.pdf');
       expect(result.buffer).toBeInstanceOf(Buffer);
       expect(result.buffer.length).toBe(50);
@@ -386,7 +386,7 @@ describe('CarboneClient', () => {
     test('falls back to "document" when content-disposition is missing', async () => {
       mockFetch({ headers: new Headers(), _arrayBuffer: new ArrayBuffer(10) });
 
-      const result = await client.convertDocument({ template: 'abc', convertTo: 'pdf' });
+      const result = await client.convertDocument({ template: 'abc', convertTo: 'pdf' }) as { buffer: Buffer; filename: string };
       expect(result.filename).toBe('document');
     });
   });

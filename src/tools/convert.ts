@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
-import { resolveFileInput, toToolContent } from '../utils/file.js';
-import { saveOrReject, type FileContext } from './output.js';
+import { resolveFileInput } from '../utils/file.js';
+import { deliver, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
 export const convertDocumentToolName = 'convert_document';
@@ -92,30 +92,38 @@ export const convertDocumentSchema = {
     .boolean()
     .optional()
     .describe(
-      'If true, return the document as a downloadable file attachment (base64 resource) instead of inline ' +
-      'text/image. Use when the user wants to download or save the file rather than read its content inline — ' +
-      'especially in HTTP mode where outputPath is unavailable. Default: false (text inline, images viewable, ' +
-      'other binaries as resources). Ignored when outputPath is set.'
+      'If true, return the document as a downloadable file attachment (a base64 EmbeddedResource), for any format. ' +
+      'Default delivery: text and png/jpg/gif/webp are returned inline; other binary outputs (PDF, Office, …) are ' +
+      'saved to a temp file in stdio mode (path returned), or returned as an attachment in HTTP mode. ' +
+      'Ignored when outputPath or returnLink is set.'
+    ),
+
+  returnLink: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, generate the document and return a public download URL instead of the file contents. ' +
+      'The link is SHORT-LIVED and ONE-TIME — Carbone deletes the file after the first download — so it is ' +
+      'meant for the end user to download once (do not fetch it programmatically). Works in stdio and HTTP. ' +
+      'Mutually exclusive with outputPath and asAttachment.'
     ),
 };
 
 export async function handleConvertDocument(
-  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O'; outputPath?: string; asAttachment?: boolean },
+  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O'; outputPath?: string; asAttachment?: boolean; returnLink?: boolean },
   client: CarboneClient,
   options?: CallOptions,
   fileCtx?: FileContext
 ) {
   try {
-    const { file, outputPath, asAttachment, ...rest } = args;
+    const { file, outputPath, asAttachment, returnLink, ...rest } = args;
     const template = await resolveFileInput(file, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes });
-    const result = await client.convertDocument({ ...rest, template }, options);
+    const result = await client.convertDocument({ ...rest, template, returnLink }, options);
 
-    if (outputPath) {
-      return saveOrReject({ buffer: result.buffer, format: args.convertTo, outputPath, allowFileOutput: fileCtx?.allowFileOutput ?? false });
-    }
-
-    const content = toToolContent(result.buffer, result.filename, args.convertTo, asAttachment);
-    return { content: [content] };
+    return deliver(result, args.convertTo, {
+      outputPath, asAttachment, allowFileOutput: fileCtx?.allowFileOutput ?? false,
+      renderUrl: (id) => client.renderUrl(id),
+    });
   } catch (error) {
     return {
       isError: true,

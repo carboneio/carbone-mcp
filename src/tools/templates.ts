@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import type { UploadTemplateResult } from '../carbone/types.js';
-import { resolveFileInput, toToolContent } from '../utils/file.js';
-import { saveOrReject, type FileContext } from './output.js';
+import { resolveFileInput } from '../utils/file.js';
+import { deliverDocument, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
 // ─── list_templates ──────────────────────────────────────────────────────────
@@ -476,12 +476,14 @@ export async function handleDownloadTemplate(
     const result = await client.downloadTemplate(args.templateId, options);
     const ext = result.filename.split('.').pop() ?? 'bin';
 
-    if (args.outputPath) {
-      return saveOrReject({ buffer: result.buffer, format: ext, outputPath: args.outputPath, allowFileOutput: fileCtx?.allowFileOutput ?? false });
-    }
-
-    const content = toToolContent(result.buffer, result.filename, ext, args.asAttachment);
-    return { content: [content] };
+    return deliverDocument({
+      buffer: result.buffer,
+      filename: result.filename,
+      format: ext,
+      outputPath: args.outputPath,
+      asAttachment: args.asAttachment,
+      allowFileOutput: fileCtx?.allowFileOutput ?? false,
+    });
   } catch (error) {
     return {
       isError: true,

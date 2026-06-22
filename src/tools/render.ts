@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
-import { resolveFileInput, toToolContent } from '../utils/file.js';
-import { saveOrReject, type FileContext } from './output.js';
+import { resolveFileInput } from '../utils/file.js';
+import { deliver, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
 export const renderDocumentToolName = 'render_document';
@@ -284,10 +284,20 @@ export const renderDocumentSchema = {
     .boolean()
     .optional()
     .describe(
-      'If true, return the document as a downloadable file attachment (base64 resource) instead of inline ' +
-      'text/image. Use when the user wants to download or save the file rather than read its content inline — ' +
-      'especially in HTTP mode where outputPath is unavailable. Default: false (text inline, images viewable, ' +
-      'other binaries as resources). Ignored when outputPath is set.'
+      'If true, return the document as a downloadable file attachment (a base64 EmbeddedResource), for any format. ' +
+      'Default delivery: text and png/jpg/gif/webp are returned inline; other binary outputs (PDF, Office, …) are ' +
+      'saved to a temp file in stdio mode (path returned), or returned as an attachment in HTTP mode. ' +
+      'Ignored when outputPath or returnLink is set.'
+    ),
+
+  returnLink: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, generate the document and return a public download URL instead of the file contents. ' +
+      'The link is SHORT-LIVED and ONE-TIME — Carbone deletes the file after the first download — so it is ' +
+      'meant for the end user to download once (do not fetch it programmatically). Works in stdio and HTTP. ' +
+      'Mutually exclusive with outputPath, asAttachment, and webhookUrl (async).'
     ),
 };
 
@@ -316,6 +326,7 @@ export async function handleRenderDocument(
     webhookHeaders?: Record<string, string>;
     outputPath?: string;
     asAttachment?: boolean;
+    returnLink?: boolean;
   },
   client: CarboneClient,
   options?: CallOptions,
@@ -335,18 +346,12 @@ export async function handleRenderDocument(
       : undefined;
     const result = await client.renderDocument({ ...args, template }, options);
 
-    if ('async' in result) {
-      return { content: [{ type: 'text' as const, text: result.message }] };
-    }
-
-    const format = args.convertTo ?? result.filename.split('.').pop() ?? 'pdf';
-
-    if (args.outputPath) {
-      return saveOrReject({ buffer: result.buffer, format, outputPath: args.outputPath, allowFileOutput: fileCtx?.allowFileOutput ?? false });
-    }
-
-    const content = toToolContent(result.buffer, result.filename, format, args.asAttachment);
-    return { content: [content] };
+    return deliver(result, args.convertTo, {
+      outputPath: args.outputPath,
+      asAttachment: args.asAttachment,
+      allowFileOutput: fileCtx?.allowFileOutput ?? false,
+      renderUrl: (id) => client.renderUrl(id),
+    });
   } catch (error) {
     return {
       isError: true,
