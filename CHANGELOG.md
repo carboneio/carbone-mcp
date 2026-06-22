@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.2.2] — 2026-06-22
+
+### Changed
+
+- Server instructions and `get_capabilities` now reference Carbone documentation as Markdown (`.md`) instead of HTML, and surface the `llms.txt` / `llms-full.txt` indexes — cutting the token cost when the model fetches a doc page
+- The initial instructions now point to the Carbone Skill as the source of truth for templating syntax, and warn that Carbone tags are a unique language.
+
+### Fixed
+
+- Corrected a dead documentation link (MCP docs: `…/developer/mcp/introduction.html` → `…/developer/ai/mcp.md`)
+
+---
+
 ## [1.2.1] — 2026-06-22
 
 ### Fixed
@@ -163,6 +176,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.2.2]: https://github.com/carboneio/carbone-mcp/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/carboneio/carbone-mcp/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/carboneio/carbone-mcp/compare/v1.1.4...v1.2.0
 [1.1.4]: https://github.com/carboneio/carbone-mcp/compare/v1.1.3...v1.1.4
