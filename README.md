@@ -140,10 +140,12 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 |---|---|---|
 | `CARBONE_BASE_URL` | `https://api.carbone.io` | Override for self-hosted or staging environments. When set to a custom URL, `CARBONE_API_KEY` is not required. |
 | `CARBONE_TIMEOUT` | `60000` | Request timeout in milliseconds (max: 60000) |
+| `CARBONE_MAX_FILE_BYTES` | `104857600` | Maximum size (bytes) for a resolved input file — path, URL, or base64 (100 MB default) |
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` (default, for AI clients) or `http` (for self-hosted deployments) |
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size in bytes (60 MB default, matching Carbone Cloud limit) |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — reject requests without a Bearer key instead of falling back to the server-level `CARBONE_API_KEY` (multi-tenant safety) |
 
 </details>
 
@@ -178,6 +180,28 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `get_capabilities` | View all supported formats, features, and examples | |
 
 📖 **[Full API Reference →](./docs/API.md)** — Detailed parameters, schemas, and examples
+
+---
+
+## Output & File Delivery
+
+By default, a generated or converted file is returned based on its type and transport:
+
+| Output | stdio (local clients) | HTTP (remote / self-hosted) |
+|---|---|---|
+| Text — HTML, TXT, CSV, MD, XML | inline text | inline text |
+| Inline images — PNG, JPG, GIF, WEBP | inline image | inline image |
+| Everything else — PDF, Office, ZIP, SVG… | saved to a temp file, path returned | returned as a download attachment |
+
+Three optional parameters on `convert_document` and `render_document` (and `outputPath` / `asAttachment` on `download_template`) override this:
+
+| Parameter | Effect |
+|---|---|
+| `outputPath` | **stdio only** — save the output to this local path instead of returning it inline (rejected in HTTP mode) |
+| `asAttachment` | return the bytes as a downloadable attachment for any format, instead of inline |
+| `returnLink` | return Carbone's public **one-time** download URL instead of the file — short-lived and consumed by the first download, so hand it to the user rather than fetching it yourself (works in stdio and HTTP) |
+
+> **Claude Desktop:** it cannot render inline binary attachments (it mishandles them as images). For PDFs and Office files, rely on the default stdio temp-file path, or use **`returnLink`** to get a download URL.
 
 ---
 
@@ -291,8 +315,8 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp":    { "version": "1.1.2" },
-  "carbone": { "version": "4.x.x" }
+  "mcp":    { "version": "1.2.2" },
+  "carbone": { "version": "5.x.x" }
 }
 ```
 
@@ -351,7 +375,7 @@ Items:
 
 | Category | Formats |
 |---|---|
-| Documents | PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF, EPUB |
+| Documents | PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, RTF, EPUB |
 | Images | PNG, JPG, WEBP, SVG, TIFF, BMP, GIF |
 | Web / Text | HTML, TXT, CSV, MD, XML |
 
@@ -376,7 +400,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ```bash
 npm run dev          # Run with tsx (no build needed)
 npm run build        # Compile TypeScript → dist/
-npm test             # Run unit tests
+npm test             # Run the test suite (integration tests run only with CARBONE_TEST_API_KEY)
 npm run test:watch   # Watch mode
 npm run test:integration  # Real API tests (requires CARBONE_TEST_API_KEY)
 npm run test:coverage     # Coverage report

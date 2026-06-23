@@ -34,7 +34,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "1.1.4" },
+  "mcp": { "version": "1.2.2" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -108,10 +108,12 @@ Claude Desktop does not support HTTP Bearer token authentication. Use stdio tran
 | `CARBONE_API_KEY` | — | Your Carbone API key ([get one free →](https://account.carbone.io)). Required for cloud API. Not required for on-premise deployments. |
 | `CARBONE_BASE_URL` | `https://api.carbone.io` | Override for self-hosted Carbone instances. |
 | `CARBONE_TIMEOUT` | `60000` | Request timeout in milliseconds. |
+| `CARBONE_MAX_FILE_BYTES` | `104857600` | Maximum size (bytes) for a resolved input file — path, URL, or base64 (100 MB). |
 | `MCP_TRANSPORT` | `http` | Transport mode: `http` (default) or `stdio`. |
 | `MCP_PORT` | `3000` | HTTP server port. |
 | `MCP_PATH` | `/` | HTTP endpoint path. |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB). Returns HTTP 413 when exceeded. |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Reject requests without a Bearer key instead of falling back to the server-level `CARBONE_API_KEY` (multi-tenant safety). |
 
 ---
 
@@ -125,6 +127,17 @@ docker run -d \
   -e CARBONE_BASE_URL=https://your-carbone-server.com \
   carbone/carbone-mcp
 ```
+
+---
+
+## Output & file delivery
+
+In HTTP mode (the Docker default), a generated PDF / Office / ZIP file is returned as a **download attachment** (an MCP `EmbeddedResource`); text and PNG/JPG/GIF/WEBP come back inline. Two options on `convert_document` / `render_document` change this:
+
+- `asAttachment` — force a download attachment for any format
+- `returnLink` — return Carbone's public **one-time** download URL instead of the bytes (hand it to the user; it is consumed by the first download)
+
+> `outputPath` (save to a local file) is **stdio-only** — in HTTP mode the file would land inside the container, so it is rejected. See the [full API reference](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md#output--file-delivery).
 
 ---
 
@@ -149,8 +162,8 @@ docker run -d \
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `1.1.4` | Specific version |
-| `1.1` | Latest patch of 1.1 |
+| `1.2.2` | Specific version |
+| `1.2` | Latest patch of 1.2 |
 | `1` | Latest minor of v1 |
 
 Supported platforms: `linux/amd64`, `linux/arm64`
