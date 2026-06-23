@@ -93,7 +93,7 @@ Use \`convert_document\` to convert between formats instantly. No template requi
 - PPTX / DOCX → PNG, JPG, WEBP    (rasterised slides/pages)
 - XLSX → CSV
 - Markdown → PDF, DOCX, ODT
-- PDF → DOCX, ODT, TXT            (text extraction)
+- PDF → PNG, JPG, WEBP, GIF, TIFF, BMP  (rasterise pages to images), ODT, or PDF
 
 **Converter engines** (applies to PDF and rasterised image output):
 - \`L\` — LibreOffice (default) — best all-round for Office documents

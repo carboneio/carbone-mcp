@@ -37,7 +37,10 @@ Convert any document to another format without storing a template.
 Convert /path/to/report.docx to PDF
 Convert https://example.com/presentation.pptx to PNG
 Convert this HTML to PDF: <h1>Hello</h1>
+Rasterize each page of /path/to/report.pdf to PNG
 ```
+
+> **PDF as input:** a PDF can be converted to an image (`png`, `jpg`, `webp`, `gif`, `tiff`, `bmp`), to `odt`, or re-saved as `pdf` (e.g. to add a watermark or password).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

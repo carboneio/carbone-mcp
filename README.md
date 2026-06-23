@@ -214,7 +214,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 "Convert this HTML page to a PNG image"
 "Convert my Markdown README to PDF"
 "Convert this PPTX to PNG — use OnlyOffice for best fidelity"
-"Extract text from this PDF by converting it to TXT"
+"Rasterize this PDF to PNG images — one per page"
 ```
 
 ### 💼 Finance & Invoicing
