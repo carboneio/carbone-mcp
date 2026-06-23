@@ -4,16 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased]
-
----
-
 ## [1.2.2] — 2026-06-22
 
 ### Changed
 
 - Server instructions and `get_capabilities` now reference Carbone documentation as Markdown (`.md`) instead of HTML, and surface the `llms.txt` / `llms-full.txt` indexes — cutting the token cost when the model fetches a doc page
 - The initial instructions now point to the Carbone Skill as the source of truth for templating syntax, and warn that Carbone tags are a unique language.
+- Docker base image upgraded from `node:24-alpine` to `node:26-alpine`
 
 ### Fixed
 
