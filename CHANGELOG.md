@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.3.0] — 2026-06-24
+
+### Added
+
+- `render_document` — `data`, `complement`, `translations`, `enum`, and `currencyRates` can now be passed **by reference** as a string (a local file path in stdio mode, an HTTPS URL, or a base64-encoded JSON string) in addition to inline JSON. Large datasets and translation maps no longer have to be inlined into the tool call. A string is always treated as a reference; inline JSON is still passed as an object/array.
+- `render_document` — `data` now also accepts a **top-level JSON array** (rendered with `{d[i].field}` loops), not just an object.
+
+### Fixed
+
+- `get_capabilities` listed unsupported PDF conversions (PDF → DOCX/TXT) and omitted PDF → image. Corrected to the supported set: a PDF converts to an image (PNG/JPG/WEBP/GIF/TIFF/BMP), to ODT, or re-saved as PDF.
+
+### Changed
+
+- Documentation accuracy pass across README, `docs/API.md`, `docs/DOCKER_HUB.md`, and the MCP specification: documented output delivery (`outputPath` / `asAttachment` / `returnLink`) and the binary-delivery model, added the `CARBONE_MAX_FILE_BYTES` and `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` environment variables, corrected stale health-check version examples, and documented the PDF→image capability.
+
+---
+
 ## [1.2.2] — 2026-06-22
 
 ### Changed
@@ -173,6 +190,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.3.0]: https://github.com/carboneio/carbone-mcp/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/carboneio/carbone-mcp/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/carboneio/carbone-mcp/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/carboneio/carbone-mcp/compare/v1.1.4...v1.2.0

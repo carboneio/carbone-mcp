@@ -146,6 +146,44 @@ export async function resolveFileInput(input: string, options?: ResolveFileOptio
   return input;
 }
 
+/**
+ * Resolve a JSON-valued tool argument that may be given inline or by reference.
+ *
+ * - Non-string (object or array) → returned unchanged (inline JSON, the common case).
+ * - String → a reference, resolved to JSON and parsed:
+ *     - starts with `{` or `[` → treated as raw inline JSON text and parsed directly
+ *     - otherwise → a local path / HTTPS URL / base64 (via resolveFileInput) whose bytes are parsed
+ *
+ * A string can never be ambiguous with inline data, because inline JSON is passed as an object/array,
+ * never as a string. Lets large datasets (and translation maps, etc.) be passed by path/URL instead of
+ * inlined into the tool call. Throws a clear, field-named error when the resolved content isn't valid JSON.
+ */
+export async function resolveJsonInput(
+  value: unknown,
+  field: string,
+  options?: ResolveFileOptions
+): Promise<unknown> {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  let text: string;
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    text = trimmed;
+  } else {
+    const base64 = await resolveFileInput(value, options);
+    text = Buffer.from(base64, 'base64').toString('utf8');
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error(
+      `Invalid JSON for "${field}": ${err instanceof Error ? err.message : String(err)}. ` +
+      'Pass an inline JSON object/array, or a local path / HTTPS URL / base64 string pointing to a JSON file.'
+    );
+  }
+}
+
 /** Write a document buffer to a local path (expanding a leading ~), returning the resolved path and size. */
 export async function writeOutputFile(
   outputPath: string,

@@ -214,4 +214,37 @@ describe('handleRenderDocument', () => {
       expect(result.content[0].text).toContain('Render');
     }
   });
+
+  test('accepts data as an inline JSON string (parsed before sending to client)', async () => {
+    const client = makeClient();
+    await handleRenderDocument({ templateId: 'tpl1', data: '{"customer":"Acme","total":5}' }, client);
+
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { customer: 'Acme', total: 5 } }),
+      undefined
+    );
+  });
+
+  test('accepts data as a top-level array', async () => {
+    const client = makeClient();
+    await handleRenderDocument({ templateId: 'tpl1', data: [{ id: 1 }, { id: 2 }] }, client);
+
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ data: [{ id: 1 }, { id: 2 }] }),
+      undefined
+    );
+  });
+
+  test('resolves object params (translations) passed as a JSON string reference', async () => {
+    const client = makeClient();
+    await handleRenderDocument(
+      { templateId: 'tpl1', data: {}, lang: 'fr-fr', translations: '{"fr-fr":{"hi":"Bonjour"}}' },
+      client
+    );
+
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ translations: { 'fr-fr': { hi: 'Bonjour' } } }),
+      undefined
+    );
+  });
 });

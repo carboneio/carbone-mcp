@@ -220,6 +220,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 ### 💼 Finance & Invoicing
 ```
 "Generate an invoice using template T123 with: {customer: 'Acme Corp', total: 1500, items: [...]}"
+"Generate invoices from the data in /data/invoices.json"
 "Create 500 invoices from my billing data and bundle them in a ZIP"
 "Generate a French invoice for my Paris client — use EUR currency and fr-fr locale"
 "Render this monthly report for each client in clients.json and ZIP them all"

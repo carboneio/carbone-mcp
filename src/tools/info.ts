@@ -130,6 +130,8 @@ Two modes — choose based on whether you need to reuse the template:
 
 **Output format:** \`convertTo\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
+**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: a local file path (stdio only), an HTTPS URL, or base64 to a JSON file — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
+
 **Template data tags (quick reference):**
 - \`{d.customer.name}\`            — simple field access
 - \`{c.company}\`                  — complement data (static/shared values passed via \`complement\`)

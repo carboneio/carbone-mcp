@@ -110,7 +110,7 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `data` | object | JSON data injected into `{d.field}` tags |
+| `data` | object \| array \| string | JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file — see [Pass JSON by reference](#pass-json-by-reference) |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`) |
 | `converter` | `L` \| `O` \| `C` | PDF converter engine (see `convert_document`) |
 | `reportName` | string | Output filename, supports Carbone tags (e.g. `"{d.client}-invoice.pdf"`) |
@@ -149,6 +149,26 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 | `batchSplitBy` | string | JSON path to array driving batch: `"d.invoices"` → one doc per invoice |
 | `batchOutput` | string | Container for batch result: `"zip"` |
 | `batchReportName` | string | Filename per document in ZIP: `"invoice-{d.id}.pdf"` |
+
+### Pass JSON by reference
+
+The JSON-valued parameters — `data`, `complement`, `translations`, `enum`, `currencyRates` — can be given **inline** (an object, or an array for `data`) or as a **string reference** that the server reads and parses. This keeps large datasets (and big translation maps) out of the tool call, cutting token cost — especially for batch.
+
+A string value is resolved as:
+
+| Reference | Resolved as | stdio | HTTP |
+|---|---|---|---|
+| `"/data/invoices.json"`, `"~/data.json"` | local file → parsed JSON | ✅ | ❌ (not on the server) |
+| `"https://example.com/data.json"` | downloaded → parsed JSON | ✅ | ✅ |
+| base64 of a JSON document | decoded → parsed JSON | ✅ | ✅ |
+| `'{"customer":"Acme"}'` / `'[…]'` | parsed directly as inline JSON | ✅ | ✅ |
+
+```
+Render template T123 with the data in /data/invoices.json, output PDF
+Render T123 with translations from https://cdn.example.com/i18n.json, lang fr-fr
+```
+
+> A string is never ambiguous with inline JSON: inline data is passed as an object/array, so a string always means "reference". Same size guard (`CARBONE_MAX_FILE_BYTES`) and URL timeout as `file` / `template`.
 
 ---
 

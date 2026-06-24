@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { getMimeType, toToolContent, resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
+import { getMimeType, toToolContent, resolveFileInput, resolveJsonInput, writeOutputFile } from '../../../src/utils/file.js';
 
 // Mock node:fs/promises at the top level so vi.mock hoisting works correctly
 vi.mock('node:fs/promises', () => ({
@@ -356,6 +356,64 @@ describe('resolveFileInput', () => {
     expect(spy).toHaveBeenCalledWith(
       'https://example.com/file.pdf',
       expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+});
+
+describe('resolveJsonInput', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test('passes an inline object through unchanged', async () => {
+    const obj = { customer: 'Acme', total: 1500 };
+    expect(await resolveJsonInput(obj, 'data')).toBe(obj);
+  });
+
+  test('passes an inline array through unchanged (top-level array data)', async () => {
+    const arr = [{ id: 1 }, { id: 2 }];
+    expect(await resolveJsonInput(arr, 'data')).toBe(arr);
+  });
+
+  test('passes undefined through (optional params)', async () => {
+    expect(await resolveJsonInput(undefined, 'complement')).toBeUndefined();
+  });
+
+  test('parses a raw inline JSON object string', async () => {
+    expect(await resolveJsonInput('{"a":1}', 'data')).toEqual({ a: 1 });
+  });
+
+  test('parses a raw inline JSON array string', async () => {
+    expect(await resolveJsonInput(' [1, 2, 3] ', 'data')).toEqual([1, 2, 3]);
+  });
+
+  test('decodes and parses a base64 JSON string', async () => {
+    const b64 = Buffer.from(JSON.stringify({ hello: 'world' })).toString('base64');
+    expect(await resolveJsonInput(b64, 'data')).toEqual({ hello: 'world' });
+  });
+
+  test('reads and parses a local JSON file path', async () => {
+    const json = Buffer.from(JSON.stringify([{ id: 1 }, { id: 2 }]));
+    stubStatSize(json.length);
+    vi.mocked(readFile).mockResolvedValueOnce(json as unknown as string);
+
+    const result = await resolveJsonInput('/data/invoices.json', 'data');
+    expect(vi.mocked(readFile)).toHaveBeenCalledWith('/data/invoices.json');
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  test('downloads and parses a JSON URL', async () => {
+    const json = Buffer.from(JSON.stringify({ from: 'url' }));
+    const arrayBuffer = json.buffer.slice(json.byteOffset, json.byteOffset + json.byteLength);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      arrayBuffer: async () => arrayBuffer,
+    } as unknown as Response);
+
+    expect(await resolveJsonInput('https://example.com/data.json', 'data')).toEqual({ from: 'url' });
+  });
+
+  test('throws a field-named error when the reference is not valid JSON', async () => {
+    await expect(resolveJsonInput('not-valid-json-or-path', 'translations')).rejects.toThrow(
+      'Invalid JSON for "translations"'
     );
   });
 });

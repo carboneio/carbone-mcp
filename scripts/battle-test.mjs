@@ -95,6 +95,8 @@ async function run() {
     // ── render: every option ──────────────────────────────────────────────────────
     console.log('\n[render_document]');
     check('data injection', text(await call('render_document', { template: INV, data: { customer: 'Acme', total: 1700 }, convertTo: 'html' })).includes('Acme'));
+    check('data as inline JSON string (parsed)', text(await call('render_document', { template: INV, data: '{"customer":"AcmeStr","total":1}', convertTo: 'html' })).includes('AcmeStr'));
+    check('data as top-level array ({d[i]})', text(await call('render_document', { template: b64('<!DOCTYPE html><html><body><ul><li>{d[i].n}</li><li>{d[i+1].n}</li></ul></body></html>'), data: [{ n: 'A1' }, { n: 'B2' }], convertTo: 'html' })).includes('A1'));
     check('→ PDF', isPdf(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'pdf', converter: 'C' })));
     check('→ DOCX', isBinaryDoc(await call('render_document', { template: INV, data: { customer: 'A', total: 1 }, convertTo: 'docx' }), 'officedocument'));
     check('lang + translations', text(await call('render_document', { template: TRANS, data: { name: 'Al', status: '1' }, convertTo: 'html', lang: 'fr-fr', translations: { 'fr-fr': { hi: 'Bonjour' }, 'en-us': { hi: 'Hello' } }, enum: { ST: { 1: 'Actif' } } })).includes('Bonjour'));

@@ -1,6 +1,6 @@
 {
   "name": "carbone-mcp",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Official MCP for Carbone — Document Generation, Document Conversion, and Universal Templating. Generate PDF, DOCX, XLSX, PPTX, ODT, ODS, CSV, HTML and XML documents from templates and JSON data. Convert Office documents (DOCX, XLSX, PPTX) and HTML to PDF. Automate document workflows with a No-Code / Low-Code approach using your existing data sources and APIs.",
   "type": "module",
   "main": "dist/index.js",

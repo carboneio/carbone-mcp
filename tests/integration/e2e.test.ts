@@ -148,6 +148,22 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
     expect(html).toContain('1,700.00');
   });
 
+  test('POST /render/template — renders a top-level array dataset ({d[i]})', async () => {
+    const template = Buffer.from(
+      '<!DOCTYPE html><html><body><ul><li>{d[i].name}</li><li>{d[i+1].name}</li></ul></body></html>'
+    ).toString('base64');
+
+    const result = binary(await client.renderDocument({
+      template,
+      data: [{ name: 'Alice' }, { name: 'Bob' }],
+      convertTo: 'html',
+    }));
+
+    const html = result.buffer.toString('utf8');
+    expect(html).toContain('Alice');
+    expect(html).toContain('Bob');
+  });
+
   // ── returnLink (one-time public download URL) ────────────────────────────────
 
   test('POST /render/template?download=false — returnLink yields a renderId whose URL downloads once', async () => {

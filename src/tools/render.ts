@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
-import { resolveFileInput } from '../utils/file.js';
+import { resolveFileInput, resolveJsonInput } from '../utils/file.js';
 import { deliver, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
 
@@ -44,14 +44,21 @@ export const renderDocumentSchema = {
     ),
 
   data: z
-    .record(z.string(), z.unknown())
+    .union([
+      z.record(z.string(), z.unknown()),
+      z.array(z.unknown()),
+      z.string(),
+    ])
     .describe(
-      'JSON data merged into the template. ' +
+      'JSON data merged into the template — an object, or a top-level array (accessed with {d[i].field}). ' +
       'Access fields with {d.fieldName} tags. ' +
       'Nested objects: {d.customer.name}. ' +
       'Array loops: {d.items[i].description} … {d.items[i+1]}. ' +
       'Conditionals: {d.status == "active" ? "Yes" : "No"}. ' +
-      'For pure document conversion without data injection, pass {}.'
+      'For pure document conversion without data injection, pass {}. ' +
+      'Instead of inlining a large dataset, you may pass a STRING reference to the JSON: a local file path ' +
+      '(e.g. "/data/invoices.json"), an HTTPS URL, or a base64-encoded JSON string — it is read and parsed ' +
+      'server-side. Local paths resolve in stdio (local) mode only; URLs and base64 work in both transports.'
     ),
 
   convertTo: z
@@ -121,13 +128,14 @@ export const renderDocumentSchema = {
     ),
 
   complement: z
-    .record(z.string(), z.unknown())
+    .union([z.record(z.string(), z.unknown()), z.string()])
     .optional()
     .describe(
       'Extra data object accessible in templates with {c.field} tags (as opposed to {d.field} for main data). ' +
       'Useful for static or shared values that should not be mixed into the main dataset: ' +
       'company info, logo URLs, footer text, configuration constants. ' +
-      'Example: { "company": "Acme Corp", "address": "123 Main St", "vatNumber": "FR12345" }'
+      'Example: { "company": "Acme Corp", "address": "123 Main St", "vatNumber": "FR12345" }. ' +
+      'Like data, may instead be passed by reference as a string — a local path, HTTPS URL, or base64 to a JSON file.'
     ),
 
   variableStr: z
@@ -154,24 +162,26 @@ export const renderDocumentSchema = {
     ),
 
   enum: z
-    .record(z.string(), z.unknown())
+    .union([z.record(z.string(), z.unknown()), z.string()])
     .optional()
     .describe(
       'Enumeration map used with the :convEnum(TYPE) formatter to translate code values into human-readable labels. ' +
       'Define one key per enum type; each value is an object mapping code → label. ' +
       'Example: { "STATUS": { "1": "Active", "2": "Inactive", "3": "Pending" }, "ROLE": { "A": "Admin", "U": "User" } }. ' +
       'Template usage: {d.status:convEnum(STATUS)}, {d.role:convEnum(ROLE)}. ' +
+      'May instead be passed by reference as a string — a local path, HTTPS URL, or base64 to a JSON file. ' +
       'Documentation: https://carbone.io/documentation.html#convenum-type-'
     ),
 
   translations: z
-    .record(z.string(), z.record(z.string(), z.string()))
+    .union([z.record(z.string(), z.record(z.string(), z.string())), z.string()])
     .optional()
     .describe(
       'Translation map for multilingual documents. Requires "lang" to be set to select the active locale. ' +
       'Top-level keys are BCP-47 locale codes; values are key → translated-string maps. ' +
       'Template usage: {t(greeting)} is replaced by the matching string for the active locale. ' +
       'Example: { "fr-fr": { "greeting": "Bonjour", "total": "Total" }, "en-us": { "greeting": "Hello", "total": "Total" } }. ' +
+      'These dictionaries get large, so you may instead pass a string reference — a local path, HTTPS URL, or base64 to a JSON file. ' +
       'Documentation: https://carbone.io/documentation.html#translations'
     ),
 
@@ -197,13 +207,14 @@ export const renderDocumentSchema = {
     ),
 
   currencyRates: z
-    .record(z.string(), z.number())
+    .union([z.record(z.string(), z.number()), z.string()])
     .optional()
     .describe(
       'Exchange rate table used by :formatC for currency conversion. ' +
       'Keys are ISO 4217 currency codes; values are rates relative to a common base. ' +
       'The base currency should have rate 1. ' +
-      'Example: { "EUR": 1, "USD": 1.08, "GBP": 0.86, "JPY": 160.5 }.'
+      'Example: { "EUR": 1, "USD": 1.08, "GBP": 0.86, "JPY": 160.5 }. ' +
+      'May instead be passed by reference as a string — a local path, HTTPS URL, or base64 to a JSON file.'
     ),
 
   hardRefresh: z
@@ -305,19 +316,19 @@ export async function handleRenderDocument(
   args: {
     templateId?: string;
     template?: string;
-    data: Record<string, unknown>;
+    data: Record<string, unknown> | unknown[] | string;
     convertTo?: z.infer<typeof renderDocumentSchema.convertTo>;
     converter?: string;
     timezone?: string;
     lang?: string;
-    complement?: Record<string, unknown>;
+    complement?: Record<string, unknown> | string;
     variableStr?: string;
     reportName?: string;
-    enum?: Record<string, unknown>;
-    translations?: Record<string, Record<string, string>>;
+    enum?: Record<string, unknown> | string;
+    translations?: Record<string, Record<string, string>> | string;
     currencySource?: string;
     currencyTarget?: string;
-    currencyRates?: Record<string, number>;
+    currencyRates?: Record<string, number> | string;
     hardRefresh?: boolean;
     batchSplitBy?: string;
     batchOutput?: string;
@@ -341,10 +352,30 @@ export async function handleRenderDocument(
   }
 
   try {
+    const resolveOpts = { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes };
     const template = args.template
-      ? await resolveFileInput(args.template, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes })
+      ? await resolveFileInput(args.template, resolveOpts)
       : undefined;
-    const result = await client.renderDocument({ ...args, template }, options);
+
+    // Object params may be passed inline (object/array) or by reference (path / URL / base64 → parsed JSON).
+    // resolveJsonInput passes non-strings (and undefined) through untouched.
+    const [data, complement, translations, enumMap, currencyRates] = await Promise.all([
+      resolveJsonInput(args.data, 'data', resolveOpts),
+      resolveJsonInput(args.complement, 'complement', resolveOpts),
+      resolveJsonInput(args.translations, 'translations', resolveOpts),
+      resolveJsonInput(args.enum, 'enum', resolveOpts),
+      resolveJsonInput(args.currencyRates, 'currencyRates', resolveOpts),
+    ]);
+
+    const result = await client.renderDocument({
+      ...args,
+      template,
+      data: data as object,
+      complement: complement as Record<string, unknown> | undefined,
+      translations: translations as Record<string, Record<string, string>> | undefined,
+      enum: enumMap as Record<string, unknown> | undefined,
+      currencyRates: currencyRates as Record<string, number> | undefined,
+    }, options);
 
     return deliver(result, args.convertTo, {
       outputPath: args.outputPath,
