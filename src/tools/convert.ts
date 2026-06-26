@@ -107,10 +107,21 @@ export const convertDocumentSchema = {
       'meant for the end user to download once (do not fetch it programmatically). Works in stdio and HTTP. ' +
       'Mutually exclusive with outputPath and asAttachment.'
     ),
+
+  egressAuthorization: z
+    .string()
+    .max(512)
+    .optional()
+    .describe(
+      'Value for the Authorization header Carbone adds to its OUTBOUND (egress) requests during conversion — ' +
+      'e.g. when a Chromium HTML→PDF conversion fetches a protected external image or stylesheet. ' +
+      'For example "Bearer abc123" makes Carbone send `authorization: Bearer abc123` to those hosts. ' +
+      'Only the authorization header can be customised; max 512 characters.'
+    ),
 };
 
 export async function handleConvertDocument(
-  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O'; outputPath?: string; asAttachment?: boolean; returnLink?: boolean },
+  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O'; outputPath?: string; asAttachment?: boolean; returnLink?: boolean; egressAuthorization?: string },
   client: CarboneClient,
   options?: CallOptions,
   fileCtx?: FileContext

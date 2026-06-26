@@ -130,7 +130,9 @@ Two modes — choose based on whether you need to reuse the template:
 
 **Output format:** \`convertTo\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
-**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: a local file path (stdio only), an HTTPS URL, or base64 to a JSON file — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
+**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). It is optional: omit it (or pass {}) to simply convert a template without data injection. \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: a local file path (stdio only), an HTTPS URL, or base64 to a JSON file — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
+
+**External resources behind auth:** if a template fetches a protected external image/PDF, or you call a secured webhook, pass \`egressAuthorization\` (e.g. "Bearer abc123", max 512 chars) — Carbone sends it as the \`authorization\` header on those outbound requests. Also available on convert_document (for HTML→PDF assets). For webhooks, webhookHeaders.authorization overrides it.
 
 **Template data tags (quick reference):**
 - \`{d.customer.name}\`            — simple field access

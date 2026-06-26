@@ -93,7 +93,11 @@ export class CarboneClient {
     convertTo: OutputFormat;
     converter?: string;
     returnLink?: boolean;
+    egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { renderId: string }> {
+    // `data: {}` is sent unconditionally — Carbone runs the (empty) templating pass and converts the file.
+    // We intentionally keep the field rather than omitting it (which, on Carbone 5.9.0+, would skip templating)
+    // to avoid a behavior change for existing v5 users.
     const body: Record<string, unknown> = {
       data: {},
       template: params.template,
@@ -101,10 +105,14 @@ export class CarboneClient {
     };
     if (params.converter) body['converter'] = params.converter;
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // Authorize Carbone's egress fetches (external images/PDFs during conversion).
+    if (params.egressAuthorization) headers['carbone-egress-header-authorization'] = params.egressAuthorization;
+
     // Without download=true the API stores the file and returns a renderId (one-time download link).
     const response = await this.request(`/render/template${params.returnLink ? '' : '?download=true'}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     }, options);
 
@@ -128,7 +136,7 @@ export class CarboneClient {
   async renderDocument(params: {
     templateId?: string;
     template?: string;
-    data: object;
+    data?: object;
     convertTo?: OutputFormat;
     converter?: string;
     timezone?: string;
@@ -148,8 +156,11 @@ export class CarboneClient {
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
     returnLink?: boolean;
+    egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string } | { renderId: string }> {
-    const body: Record<string, unknown> = { data: params.data };
+    // Default data to {} and always send the field. Omitting it would make Carbone 5.9.0+ skip templating —
+    // we keep the field to preserve existing v5 behavior (template is converted with empty data).
+    const body: Record<string, unknown> = { data: params.data ?? {} };
     if (params.template)                   body['template']       = params.template;
     if (params.convertTo)                  body['convertTo']      = params.convertTo;
     if (params.converter)                  body['converter']      = params.converter;
@@ -177,6 +188,9 @@ export class CarboneClient {
       : `/render/${params.templateId}${stream ? '?download=true' : ''}`;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // Authorize Carbone's egress fetches — external images, external PDFs (append/attach), and webhooks.
+    // For webhook calls specifically, carbone-webhook-header-authorization (below) overrides this.
+    if (params.egressAuthorization) headers['carbone-egress-header-authorization'] = params.egressAuthorization;
     if (params.webhookUrl) {
       headers['carbone-webhook-url'] = params.webhookUrl;
       if (params.webhookHeaders) {

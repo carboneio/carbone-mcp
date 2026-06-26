@@ -50,6 +50,7 @@ Rasterize each page of /path/to/report.pdf to PNG
 | `outputPath` | string | ❌ | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | ❌ | Return the bytes as a downloadable attachment instead of inline |
 | `returnLink` | boolean | ❌ | Return a public **one-time** download URL instead of the file |
+| `egressAuthorization` | string | ❌ | `Authorization` header value Carbone adds when fetching protected external assets during conversion (e.g. a Chromium HTML→PDF fetching a secured image). Max 512 chars |
 
 **`converter` options:**
 - `L` — LibreOffice (default): best all-round engine for DOCX, XLSX, PPTX, ODT
@@ -110,7 +111,7 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `data` | object \| array \| string | JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file — see [Pass JSON by reference](#pass-json-by-reference) |
+| `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, defaults to `{}` (the template is converted without data injection) |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`) |
 | `converter` | `L` \| `O` \| `C` | PDF converter engine (see `convert_document`) |
 | `reportName` | string | Output filename, supports Carbone tags (e.g. `"{d.client}-invoice.pdf"`) |
@@ -139,6 +140,7 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 |---|---|---|
 | `webhookUrl` | string | URL to POST the result to when rendering completes (enables async mode, 5-minute timeout) |
 | `webhookHeaders` | object | Additional headers sent with the webhook POST (e.g. auth headers) |
+| `egressAuthorization` | string | `Authorization` header value Carbone adds to its **outbound** requests while rendering — external images (`{d.imageUrl}`), external PDFs (`:appendFile`/`:attachFile`), and webhooks. Max 512 chars. `webhookHeaders.authorization` overrides it for webhook calls only |
 
 ### Batch generation
 

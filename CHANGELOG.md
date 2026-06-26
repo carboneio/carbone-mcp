@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.4.0] — 2026-06-26
+
+### Added
+
+- `render_document` and `convert_document` — new `egressAuthorization` parameter sets Carbone's `carbone-egress-header-authorization` header (Carbone API v5.9.0), authorizing Carbone's **outbound** requests while rendering/converting: external images (`{d.imageUrl}`), external PDFs (`:appendFile` / `:attachFile`), and webhooks. Max 512 characters; only the `authorization` header is customizable. For webhook calls, `webhookHeaders.authorization` overrides it.
+
+### Changed
+
+- `render_document` — `data` is now optional. When omitted it defaults to `{}` (the template is converted without data injection — e.g. to convert a stored template by `templateId`). The `data` field is always sent to the API, so existing v5 behavior is unchanged (templating is not skipped).
+
+---
+
 ## [1.3.0] — 2026-06-24
 
 ### Added
@@ -190,6 +202,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.4.0]: https://github.com/carboneio/carbone-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/carboneio/carbone-mcp/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/carboneio/carbone-mcp/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/carboneio/carbone-mcp/compare/v1.2.0...v1.2.1

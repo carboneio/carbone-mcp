@@ -49,13 +49,15 @@ export const renderDocumentSchema = {
       z.array(z.unknown()),
       z.string(),
     ])
+    .optional()
     .describe(
       'JSON data merged into the template — an object, or a top-level array (accessed with {d[i].field}). ' +
       'Access fields with {d.fieldName} tags. ' +
       'Nested objects: {d.customer.name}. ' +
       'Array loops: {d.items[i].description} … {d.items[i+1]}. ' +
       'Conditionals: {d.status == "active" ? "Yes" : "No"}. ' +
-      'For pure document conversion without data injection, pass {}. ' +
+      'Optional — if omitted, defaults to an empty object {} so the template is simply converted ' +
+      '(tags resolve to empty). Useful to convert a stored template by templateId without data injection. ' +
       'Instead of inlining a large dataset, you may pass a STRING reference to the JSON: a local file path ' +
       '(e.g. "/data/invoices.json"), an HTTPS URL, or a base64-encoded JSON string — it is read and parsed ' +
       'server-side. Local paths resolve in stdio (local) mode only; URLs and base64 work in both transports.'
@@ -281,6 +283,18 @@ export const renderDocumentSchema = {
       'Requires webhookUrl to be set.'
     ),
 
+  egressAuthorization: z
+    .string()
+    .max(512)
+    .optional()
+    .describe(
+      'Value for the Authorization header Carbone adds to its OUTBOUND (egress) requests while rendering — ' +
+      'fetching external images ({d.imageUrl}), external PDFs (:appendFile / :attachFile), and calling webhooks. ' +
+      'For example "Bearer abc123" or "my-secret" makes Carbone send `authorization: <value>` to those hosts. ' +
+      'Only the authorization header can be customised; max 512 characters. ' +
+      'For webhook calls specifically, webhookHeaders.authorization (if set) overrides this value.'
+    ),
+
   outputPath: z
     .string()
     .optional()
@@ -316,7 +330,7 @@ export async function handleRenderDocument(
   args: {
     templateId?: string;
     template?: string;
-    data: Record<string, unknown> | unknown[] | string;
+    data?: Record<string, unknown> | unknown[] | string;
     convertTo?: z.infer<typeof renderDocumentSchema.convertTo>;
     converter?: string;
     timezone?: string;
@@ -335,6 +349,7 @@ export async function handleRenderDocument(
     batchReportName?: string;
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
+    egressAuthorization?: string;
     outputPath?: string;
     asAttachment?: boolean;
     returnLink?: boolean;
@@ -360,7 +375,7 @@ export async function handleRenderDocument(
     // Object params may be passed inline (object/array) or by reference (path / URL / base64 → parsed JSON).
     // resolveJsonInput passes non-strings (and undefined) through untouched.
     const [data, complement, translations, enumMap, currencyRates] = await Promise.all([
-      resolveJsonInput(args.data, 'data', resolveOpts),
+      resolveJsonInput(args.data ?? {}, 'data', resolveOpts),
       resolveJsonInput(args.complement, 'complement', resolveOpts),
       resolveJsonInput(args.translations, 'translations', resolveOpts),
       resolveJsonInput(args.enum, 'enum', resolveOpts),
