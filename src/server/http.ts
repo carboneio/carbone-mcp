@@ -102,8 +102,9 @@ export async function startHttpServer(options: {
   mcpPath: string;
   maxBodyBytes: number;
   maxFileBytes: number;
+  allowPrivateNetwork: boolean;
 }): Promise<void> {
-  const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes } = options;
+  const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork } = options;
 
   // ── Public static files — loaded once at startup into memory ────────────
   // All files under <cwd>/public/ are served as static assets.
@@ -212,8 +213,14 @@ export async function startHttpServer(options: {
           }
 
           const mcpServer = new McpServer(serverInfo(version), { instructions: SERVER_INSTRUCTIONS });
-          // HTTP clients are remote, so writing outputPath to the server's disk is disallowed.
-          registerTools(mcpServer, client, { allowFileOutput: false, maxFileBytes });
+          // HTTP clients are remote: they may neither write outputPath to the server's disk nor read
+          // local paths from it (that would expose server files such as /proc/self/environ).
+          registerTools(mcpServer, client, {
+            allowFileOutput: false,
+            allowFileInput: false,
+            allowPrivateNetwork,
+            maxFileBytes,
+          });
           registerResources(mcpServer, client);
 
           const transport = new StreamableHTTPServerTransport({

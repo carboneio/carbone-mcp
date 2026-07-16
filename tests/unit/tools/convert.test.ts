@@ -32,7 +32,12 @@ describe('handleConvertDocument', () => {
     const client = makeClient();
     await handleConvertDocument({ file: '/path/to/doc.docx', convertTo: 'pdf' }, client);
 
-    expect(resolveFileInput).toHaveBeenCalledWith('/path/to/doc.docx', { isCloud: undefined });
+    // Gates are fail-closed when no FileContext is supplied (i.e. never implicitly allow
+    // local reads or private-network fetches).
+    expect(resolveFileInput).toHaveBeenCalledWith(
+      '/path/to/doc.docx',
+      expect.objectContaining({ isCloud: undefined, allowLocalPath: false, allowPrivateNetwork: false })
+    );
     expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
       expect.objectContaining({ template: 'resolved-base64==' }),
       undefined
@@ -47,7 +52,7 @@ describe('handleConvertDocument', () => {
       { file: '/in.docx', convertTo: 'pdf', outputPath: '/out.pdf' },
       client,
       undefined,
-      { allowFileOutput: true, maxFileBytes: 100 }
+      { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 100 }
     );
 
     expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/out.pdf', expect.anything());

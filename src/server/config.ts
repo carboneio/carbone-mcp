@@ -12,6 +12,7 @@ export interface ServerConfig {
   maxBodyBytes: number;
   maxFileBytes: number;
   requireClientAuth: boolean;
+  allowPrivateNetwork: boolean;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, name: string): number {
@@ -71,8 +72,12 @@ export function loadConfig(): ServerConfig {
     mcpPath,
     maxBodyBytes: parsePositiveInt(process.env['MCP_MAX_BODY_BYTES'], 60 * 1024 * 1024, 'MCP_MAX_BODY_BYTES'),
     maxFileBytes: parsePositiveInt(process.env['CARBONE_MAX_FILE_BYTES'], 100 * 1024 * 1024, 'CARBONE_MAX_FILE_BYTES'),
-    // HTTP only: when true, a request without an Authorization: Bearer key is rejected
-    // instead of falling back to the server-level CARBONE_API_KEY.
+    // HTTP only: when true, a request without an Authorization: Bearer key is rejected instead of
+    // falling back to the server-level CARBONE_API_KEY. Defaults to false so a deliberately
+    // shared-key deployment keeps working; startHttpServer warns when that combination is live.
     requireClientAuth: parseBool(process.env['CARBONE_REQUIRE_CLIENT_AUTH_HEADER'], false, 'CARBONE_REQUIRE_CLIENT_AUTH_HEADER'),
+    // When true, user-supplied URLs may resolve to private/internal addresses. Off by default to
+    // block SSRF (cloud metadata, localhost, RFC1918); enable only on a trusted deployment.
+    allowPrivateNetwork: parseBool(process.env['CARBONE_ALLOW_PRIVATE_NETWORK'], false, 'CARBONE_ALLOW_PRIVATE_NETWORK'),
   };
 }

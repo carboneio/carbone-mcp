@@ -220,6 +220,8 @@ describe('loadConfig', () => {
         maxBodyBytes: 60 * 1024 * 1024,
         maxFileBytes: 100 * 1024 * 1024,
         requireClientAuth: false,
+        // SSRF guard is on by default: user-supplied URLs may not reach private/internal addresses.
+        allowPrivateNetwork: false,
       });
     });
 

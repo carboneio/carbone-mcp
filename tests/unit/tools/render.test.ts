@@ -43,7 +43,10 @@ describe('handleRenderDocument', () => {
     const client = makeClient();
     await handleRenderDocument({ template: '/path/to/template.docx', data: {} }, client);
 
-    expect(resolveFileInput).toHaveBeenCalledWith('/path/to/template.docx', { isCloud: undefined });
+    expect(resolveFileInput).toHaveBeenCalledWith(
+      '/path/to/template.docx',
+      expect.objectContaining({ isCloud: undefined, allowLocalPath: false, allowPrivateNetwork: false })
+    );
     expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
       expect.objectContaining({ template: 'resolved-base64==' }),
       undefined
@@ -58,7 +61,7 @@ describe('handleRenderDocument', () => {
       { templateId: 'tpl1', data: {}, convertTo: 'pdf', outputPath: '/out.pdf' },
       client,
       undefined,
-      { allowFileOutput: true, maxFileBytes: 100 }
+      { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 100 }
     );
 
     expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/out.pdf', expect.anything());

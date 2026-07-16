@@ -367,7 +367,13 @@ export async function handleRenderDocument(
   }
 
   try {
-    const resolveOpts = { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes };
+    // Gates apply to the template AND every by-reference JSON param (data, complement, …).
+    const resolveOpts = {
+      isCloud: client.isCloud,
+      maxBytes: fileCtx?.maxFileBytes,
+      allowLocalPath: fileCtx?.allowFileInput ?? false,
+      allowPrivateNetwork: fileCtx?.allowPrivateNetwork ?? false,
+    };
     const template = args.template
       ? await resolveFileInput(args.template, resolveOpts)
       : undefined;

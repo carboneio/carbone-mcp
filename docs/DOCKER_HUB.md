@@ -113,7 +113,8 @@ Claude Desktop does not support HTTP Bearer token authentication. Use stdio tran
 | `MCP_PORT` | `3000` | HTTP server port. |
 | `MCP_PATH` | `/` | HTTP endpoint path. |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB). Returns HTTP 413 when exceeded. |
-| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Reject requests without a Bearer key instead of falling back to the server-level `CARBONE_API_KEY` (multi-tenant safety). |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Require `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server — anyone reaching the port can spend it). Set `true` to require per-client keys. No effect when no server key is set. |
+| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs to resolve to private/internal addresses. Off by default to block SSRF. |
 
 ---
 

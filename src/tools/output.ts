@@ -10,6 +10,16 @@ import {
 export interface FileContext {
   /** Whether the tool may write outputPath to local disk (stdio only — not HTTP, where it would land on the server). */
   allowFileOutput: boolean;
+  /**
+   * Whether the tool may READ a local filesystem path supplied by the caller (stdio only). In HTTP
+   * mode the path would resolve on the server's disk, so remote callers must not be able to read it.
+   */
+  allowFileInput: boolean;
+  /**
+   * Whether user-supplied URLs may resolve to private/internal addresses (CARBONE_ALLOW_PRIVATE_NETWORK).
+   * Off by default — blocks SSRF to cloud metadata, localhost, and RFC1918 hosts.
+   */
+  allowPrivateNetwork: boolean;
   /** Maximum size in bytes for a resolved input file (from CARBONE_MAX_FILE_BYTES). */
   maxFileBytes: number;
 }

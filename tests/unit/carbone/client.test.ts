@@ -221,6 +221,48 @@ describe('CarboneClient', () => {
       );
     });
 
+    // ── Security: the operator's key must never leak to anonymous HTTP callers ──
+    test('templateId is URL-encoded so it cannot reshape the API request path', async () => {
+      const c = new CarboneClient({ apiKey: 'k' });
+      const spy = mockFetch({ headers: new Headers(), _arrayBuffer: new ArrayBuffer(1) });
+
+      // A traversal/query payload must land encoded inside the path segment, not alter it.
+      await c.deleteTemplate('../../admin?x=1');
+
+      const url = spy.mock.calls[0][0] as string;
+      expect(url).toBe('https://api.carbone.io/template/..%2F..%2Fadmin%3Fx%3D1');
+      expect(url).not.toContain('/admin?');
+    });
+
+    test('HTTP: an anonymous request falls back to the server key (documented shared-key default)', async () => {
+      const shared = new CarboneClient({ apiKey: 'operator-key', transport: 'http', requireClientAuth: false });
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await shared.convertDocument({ template: 'abc', convertTo: 'pdf' });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer operator-key' }),
+        })
+      );
+    });
+
+    test('HTTP + on-premise: still works unauthenticated (fail-closed must not break on-prem)', async () => {
+      const onPremHttp = new CarboneClient({ baseUrl: 'https://carbone.my-company.com', transport: 'http' });
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await expect(onPremHttp.convertDocument({ template: 'abc', convertTo: 'pdf' })).resolves.toBeDefined();
+      const sentHeaders = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(sentHeaders).not.toHaveProperty('Authorization');
+    });
+
     test('on-premise: no apiKey and custom baseUrl — does NOT throw', async () => {
       const onPremClient = new CarboneClient({ baseUrl: 'https://carbone.my-company.com' });
 

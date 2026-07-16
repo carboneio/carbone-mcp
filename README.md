@@ -145,7 +145,8 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size in bytes (60 MB default, matching Carbone Cloud limit) |
-| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — reject requests without a Bearer key instead of falling back to the server-level `CARBONE_API_KEY` (multi-tenant safety) |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — require `Authorization: Bearer <key>` on every request. **Leave `false` only if you intend a shared-key server:** with a server-level `CARBONE_API_KEY` set, requests that carry no Bearer key fall back to it, so anyone who can reach the port can spend that Carbone account. Set to `true` to require each client to bring its own key. Irrelevant when no server key is set (e.g. on-premise) |
+| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs (templates, `data`, …) to resolve to private/internal addresses. Off by default to block SSRF (cloud metadata, `localhost`, RFC1918). Enable only on a trusted deployment with internal template hosts |
 
 </details>
 
@@ -329,6 +330,14 @@ The `carbone` field shows backend connectivity:
 ---
 
 ## Security
+
+⚠️ **File and URL inputs (SSRF / local files)**
+Tools accept a local path, an HTTPS URL, or base64 for `file` / `template` and the by-reference JSON params (`data`, `complement`, …). Two guards apply:
+- **URLs** are resolved and refused when they point at loopback, private (RFC1918), link-local (incl. cloud metadata `169.254.169.254`), CGNAT or reserved addresses — and every redirect hop is re-checked. Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` only on a trusted deployment that needs internal template hosts.
+- **Local paths** are readable in **stdio only**, where the server already runs as you. In HTTP mode they are refused, so a remote caller can never make the server read its own filesystem.
+
+⚠️ **Sharing a server-level API key (HTTP mode)**
+If you set `CARBONE_API_KEY` on an HTTP server and leave `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=false` (the default), requests without a Bearer key fall back to that key — anyone who can reach the port can spend that Carbone account. Set it to `true` to require each client to bring its own key, or only expose the port on a trusted network. (Not applicable when no server key is set, e.g. on-premise Carbone without authentication.)
 
 ⚠️ **Prompt Injection**
 Connecting an AI assistant to any external service carries inherent risks. A malicious document or template could contain instructions that trick the AI into performing unintended actions (e.g. exfiltrating data, deleting templates). Always review what your AI client is about to do before confirming tool calls.

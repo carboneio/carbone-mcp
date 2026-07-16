@@ -1,5 +1,5 @@
-import { describe, test, expect, vi, afterEach } from 'vitest';
-import { getMimeType, toToolContent, resolveFileInput, resolveJsonInput, writeOutputFile } from '../../../src/utils/file.js';
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
+import { getMimeType, toToolContent, resolveFileInput, resolveJsonInput, writeOutputFile, isBlockedIp } from '../../../src/utils/file.js';
 
 // Mock node:fs/promises at the top level so vi.mock hoisting works correctly
 vi.mock('node:fs/promises', () => ({
@@ -8,12 +8,26 @@ vi.mock('node:fs/promises', () => ({
   writeFile: vi.fn(),
 }));
 
+// DNS is mocked so the SSRF guard never performs a real lookup in unit tests.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }));
+
 import { readFile, stat, writeFile } from 'node:fs/promises';
+import { lookup } from 'node:dns/promises';
 
 /** Default stat stub (small file) so size-limit checks pass unless a test overrides it. */
 function stubStatSize(size: number) {
   vi.mocked(stat).mockResolvedValueOnce({ size } as unknown as Awaited<ReturnType<typeof stat>>);
 }
+
+/** Point the SSRF guard's DNS lookup at an address (defaults to a public one). */
+function stubDns(address = '93.184.216.34') {
+  vi.mocked(lookup).mockResolvedValue([{ address, family: 4 }] as never);
+}
+
+/** Local-path reads are fail-closed; stdio callers opt in. */
+const LOCAL = { allowLocalPath: true } as const;
+
+beforeEach(() => stubDns());
 
 describe('getMimeType', () => {
   test('returns correct MIME type for common formats', () => {
@@ -238,6 +252,7 @@ describe('resolveFileInput', () => {
     );
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
+      status: 200,
       arrayBuffer: async () => arrayBuffer,
     } as unknown as Response);
 
@@ -262,7 +277,7 @@ describe('resolveFileInput', () => {
     stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
 
-    const result = await resolveFileInput('/absolute/path/to/file.docx');
+    const result = await resolveFileInput('/absolute/path/to/file.docx', LOCAL);
     expect(vi.mocked(readFile)).toHaveBeenCalledWith('/absolute/path/to/file.docx');
     expect(result).toBe(fileContent.toString('base64'));
   });
@@ -272,7 +287,7 @@ describe('resolveFileInput', () => {
     stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
 
-    const result = await resolveFileInput('./template.docx');
+    const result = await resolveFileInput('./template.docx', LOCAL);
     expect(result).toBe(fileContent.toString('base64'));
   });
 
@@ -282,7 +297,7 @@ describe('resolveFileInput', () => {
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
     const home = process.env['HOME'] ?? process.env['USERPROFILE'] ?? '~';
 
-    await resolveFileInput('~/Documents/template.docx');
+    await resolveFileInput('~/Documents/template.docx', LOCAL);
 
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(`${home}/Documents/template.docx`);
   });
@@ -292,7 +307,7 @@ describe('resolveFileInput', () => {
     stubStatSize(fileContent.length);
     vi.mocked(readFile).mockResolvedValueOnce(fileContent as unknown as string);
 
-    const result = await resolveFileInput('C:\\Users\\user\\template.docx');
+    const result = await resolveFileInput('C:\\Users\\user\\template.docx', LOCAL);
     expect(vi.mocked(readFile)).toHaveBeenCalledWith('C:\\Users\\user\\template.docx');
     expect(result).toBe(fileContent.toString('base64'));
   });
@@ -303,7 +318,7 @@ describe('resolveFileInput', () => {
       Object.assign(new Error('ENOENT: no such file'), { code: 'ENOENT' })
     );
 
-    await expect(resolveFileInput('/nonexistent/file.docx')).rejects.toThrow('ENOENT');
+    await expect(resolveFileInput('/nonexistent/file.docx', LOCAL)).rejects.toThrow('ENOENT');
   });
 
   // ── size limit + timeout ──────────────────────────────────────────────────
@@ -311,13 +326,14 @@ describe('resolveFileInput', () => {
   test('rejects a local file larger than the limit (before reading it)', async () => {
     vi.mocked(readFile).mockClear();
     stubStatSize(999);
-    await expect(resolveFileInput('/big/file.docx', { maxBytes: 10 })).rejects.toThrow('exceeds the maximum');
+    await expect(resolveFileInput('/big/file.docx', { maxBytes: 10, allowLocalPath: true })).rejects.toThrow('exceeds the maximum');
     expect(vi.mocked(readFile)).not.toHaveBeenCalled();
   });
 
   test('rejects a URL download larger than the declared Content-Length', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
+      status: 200,
       headers: new Headers({ 'content-length': '999' }),
       arrayBuffer: async () => new ArrayBuffer(0),
     } as unknown as Response);
@@ -331,7 +347,7 @@ describe('resolveFileInput', () => {
   test('over-limit message is cloud-aware (no env-var hint on cloud)', async () => {
     stubStatSize(999);
     await expect(
-      resolveFileInput('/big/file.docx', { maxBytes: 10, isCloud: true })
+      resolveFileInput('/big/file.docx', { maxBytes: 10, isCloud: true, allowLocalPath: true })
     ).rejects.toThrow('Carbone Cloud limits');
   });
 
@@ -347,6 +363,7 @@ describe('resolveFileInput', () => {
     const ab = fileContent.buffer.slice(fileContent.byteOffset, fileContent.byteOffset + fileContent.byteLength);
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
+      status: 200,
       headers: new Headers(),
       arrayBuffer: async () => ab,
     } as unknown as Response);
@@ -357,6 +374,96 @@ describe('resolveFileInput', () => {
       'https://example.com/file.pdf',
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
+  });
+});
+
+describe('security — SSRF and local-file guards', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('isBlockedIp', () => {
+    test('blocks loopback, private, link-local/metadata, CGNAT and reserved ranges', () => {
+      for (const ip of [
+        '127.0.0.1', '10.0.0.5', '172.16.0.1', '172.31.255.255', '192.168.1.1',
+        '169.254.169.254',            // AWS/GCP cloud metadata
+        '100.64.0.1', '0.0.0.0', '198.18.0.1', '224.0.0.1', '240.0.0.1',
+        '::1', '::', 'fc00::1', 'fe80::1', '::ffff:127.0.0.1',
+      ]) {
+        expect(isBlockedIp(ip), `${ip} must be blocked`).toBe(true);
+      }
+    });
+
+    test('allows ordinary public addresses', () => {
+      for (const ip of ['93.184.216.34', '1.1.1.1', '8.8.8.8', '172.32.0.1', '2606:4700::1']) {
+        expect(isBlockedIp(ip), `${ip} must be allowed`).toBe(false);
+      }
+    });
+
+    test('rejects anything that is not a valid IP literal', () => {
+      expect(isBlockedIp('not-an-ip')).toBe(true);
+    });
+  });
+
+  test('refuses a URL whose host resolves to cloud metadata (SSRF)', async () => {
+    stubDns('169.254.169.254');
+    const spy = vi.spyOn(globalThis, 'fetch');
+    await expect(resolveFileInput('http://metadata.evil.example/latest/meta-data/'))
+      .rejects.toThrow(/private or internal address/);
+    expect(spy, 'must not issue the request at all').not.toHaveBeenCalled();
+  });
+
+  test('refuses a literal private IP URL without any DNS lookup', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    await expect(resolveFileInput('http://127.0.0.1:8080/secret')).rejects.toThrow(/private or internal address/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test('re-validates redirects — a public host cannot bounce into internal space', async () => {
+    vi.mocked(lookup)
+      .mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }] as never)  // first hop: public
+      .mockResolvedValueOnce([{ address: '169.254.169.254', family: 4 }] as never); // redirect target
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 302,
+      headers: new Headers({ location: 'http://metadata.evil.example/latest/meta-data/' }),
+    } as unknown as Response);
+
+    await expect(resolveFileInput('https://example.com/innocent.docx'))
+      .rejects.toThrow(/private or internal address/);
+  });
+
+  test('CARBONE_ALLOW_PRIVATE_NETWORK opt-in permits an internal host', async () => {
+    const body = Buffer.from('internal');
+    const ab = body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true, status: 200, headers: new Headers(), arrayBuffer: async () => ab,
+    } as unknown as Response);
+
+    const result = await resolveFileInput('http://10.0.0.5/template.docx', { allowPrivateNetwork: true });
+    expect(result).toBe(body.toString('base64'));
+  });
+
+  test('rejects a redirect into a non-http(s) scheme', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 302,
+      headers: new Headers({ location: 'file:///etc/passwd' }),
+    } as unknown as Response);
+
+    await expect(resolveFileInput('https://example.com/innocent.docx'))
+      .rejects.toThrow(/Unsupported URL scheme/);
+  });
+
+  test('refuses to read a local path unless the caller opts in (HTTP mode)', async () => {
+    vi.mocked(readFile).mockClear();
+    for (const p of ['/proc/self/environ', './secret.txt', '~/.ssh/id_rsa', 'C:\\Windows\\win.ini']) {
+      await expect(resolveFileInput(p), `${p} must be refused`).rejects.toThrow(/only supported in stdio/);
+    }
+    expect(vi.mocked(readFile), 'must never touch the filesystem').not.toHaveBeenCalled();
+  });
+
+  test('by-reference JSON params are guarded too (data via internal URL)', async () => {
+    stubDns('169.254.169.254');
+    await expect(resolveJsonInput('http://metadata.evil.example/creds', 'data'))
+      .rejects.toThrow(/private or internal address/);
+    await expect(resolveJsonInput('/etc/passwd', 'data')).rejects.toThrow(/only supported in stdio/);
   });
 });
 
@@ -395,7 +502,7 @@ describe('resolveJsonInput', () => {
     stubStatSize(json.length);
     vi.mocked(readFile).mockResolvedValueOnce(json as unknown as string);
 
-    const result = await resolveJsonInput('/data/invoices.json', 'data');
+    const result = await resolveJsonInput('/data/invoices.json', 'data', LOCAL);
     expect(vi.mocked(readFile)).toHaveBeenCalledWith('/data/invoices.json');
     expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
@@ -405,6 +512,7 @@ describe('resolveJsonInput', () => {
     const arrayBuffer = json.buffer.slice(json.byteOffset, json.byteOffset + json.byteLength);
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
+      status: 200,
       arrayBuffer: async () => arrayBuffer,
     } as unknown as Response);
 

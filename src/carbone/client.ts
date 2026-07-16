@@ -185,7 +185,7 @@ export class CarboneClient {
     const stream = !isAsync && !wantsLink;
     const endpoint = params.template
       ? `/render/template${stream ? '?download=true' : ''}`
-      : `/render/${params.templateId}${stream ? '?download=true' : ''}`;
+      : `/render/${encodeURIComponent(params.templateId!)}${stream ? '?download=true' : ''}`;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     // Authorize Carbone's egress fetches — external images, external PDFs (append/attach), and webhooks.
@@ -280,7 +280,7 @@ export class CarboneClient {
     if (params.deployedAt !== undefined) body['deployedAt'] = params.deployedAt;
     if (params.expireAt   !== undefined) body['expireAt']   = params.expireAt;
 
-    await this.request(`/template/${params.templateId}`, {
+    await this.request(`/template/${encodeURIComponent(params.templateId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -292,7 +292,7 @@ export class CarboneClient {
    * DELETE /template/{id}
    */
   async deleteTemplate(templateId: string, options?: CallOptions): Promise<void> {
-    await this.request(`/template/${templateId}`, { method: 'DELETE' }, options);
+    await this.request(`/template/${encodeURIComponent(templateId)}`, { method: 'DELETE' }, options);
   }
 
   /**
@@ -303,7 +303,7 @@ export class CarboneClient {
     templateId: string,
     options?: CallOptions
   ): Promise<{ buffer: Buffer; filename: string }> {
-    const response = await this.request(`/template/${templateId}`, {
+    const response = await this.request(`/template/${encodeURIComponent(templateId)}`, {
       method: 'GET',
     }, options);
     return this.handleBinaryResponse(response);

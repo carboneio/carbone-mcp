@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.5.0] — 2026-06-26
+
+### Security
+
+- **Fixed SSRF (critical, HTTP mode).** User-supplied URLs were fetched server-side with no destination validation, letting a caller reach internal services, `localhost`, and cloud metadata (`169.254.169.254`) — and read the response back via `download_template`, `convert_document`, or a render. URLs are now resolved and rejected when they point at loopback, private (RFC1918), link-local, CGNAT, multicast or reserved addresses, for both IPv4 and IPv6. **Every redirect hop is re-validated**, so an allowed host cannot bounce into internal space, and non-`http(s)` redirect targets are rejected. Affected `upload_template`, `render_document`, `convert_document`, and the by-reference JSON params (`data`, `complement`, `translations`, `enum`, `currencyRates`). Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` to allow internal hosts on a trusted deployment.
+- **Fixed arbitrary local file read (critical, HTTP mode).** Local filesystem paths were resolved with no transport gate, so a remote caller could make the server read its own disk (e.g. `/proc/self/environ`, leaking the operator's `CARBONE_API_KEY`). Reading local paths is now restricted to stdio, where the server already runs as the caller. Not reported in the original disclosure — found while auditing it.
+- **Hardened template ID handling.** `templateId` / `versionId` are now URL-encoded before being interpolated into Carbone API paths, so a crafted value can no longer reshape the request path or query.
+
+### Changed
+
+- **Documented the shared-key trade-off.** `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` still defaults to `false`, and that default is unchanged: in HTTP mode with a server-level `CARBONE_API_KEY` set, a request without a Bearer key falls back to that key, so anyone who can reach the port can spend that Carbone account. That is a deliberate deployment choice (and is irrelevant when no server key is set — e.g. on-premise Carbone without authentication), so it is now spelled out where it is configured: README, `docs/API.md`, `docs/DOCKER_HUB.md` and `.env.example`. Set it to `true` to require every client to bring its own key.
+
+### Added
+
+- `CARBONE_ALLOW_PRIVATE_NETWORK` (default `false`) — allow user-supplied URLs to resolve to private/internal addresses. Only enable on a trusted deployment (e.g. an internal template host).
+
+---
+
 ## [1.4.0] — 2026-06-26
 
 ### Added
@@ -202,6 +220,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[1.5.0]: https://github.com/carboneio/carbone-mcp/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/carboneio/carbone-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/carboneio/carbone-mcp/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/carboneio/carbone-mcp/compare/v1.2.1...v1.2.2

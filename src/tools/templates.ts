@@ -214,7 +214,12 @@ export async function handleUploadTemplate(
   fileCtx?: FileContext
 ) {
   try {
-    const template = await resolveFileInput(args.template, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes });
+    const template = await resolveFileInput(args.template, {
+      isCloud: client.isCloud,
+      maxBytes: fileCtx?.maxFileBytes,
+      allowLocalPath: fileCtx?.allowFileInput ?? false,
+      allowPrivateNetwork: fileCtx?.allowPrivateNetwork ?? false,
+    });
     const result: UploadTemplateResult = await client.uploadTemplate({ ...args, template }, options);
 
     // The API returns different shapes depending on whether versioning is enabled

@@ -152,7 +152,10 @@ describe('handleUploadTemplate', () => {
     const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 1024 });
     await handleUploadTemplate({ template: '/path/invoice.docx', name: 'Invoice' }, client);
 
-    expect(resolveFileInput).toHaveBeenCalledWith('/path/invoice.docx', { isCloud: undefined });
+    expect(resolveFileInput).toHaveBeenCalledWith(
+      '/path/invoice.docx',
+      expect.objectContaining({ isCloud: undefined, allowLocalPath: false, allowPrivateNetwork: false })
+    );
     expect(vi.mocked(client.uploadTemplate)).toHaveBeenCalledWith(
       expect.objectContaining({ template: 'resolved-base64==' }),
       undefined
@@ -448,7 +451,7 @@ describe('handleDownloadTemplate', () => {
       { templateId: 'tpl1', outputPath: '/tpl.docx' },
       client,
       undefined,
-      { allowFileOutput: true, maxFileBytes: 100 }
+      { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 100 }
     );
 
     expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/tpl.docx', expect.anything());

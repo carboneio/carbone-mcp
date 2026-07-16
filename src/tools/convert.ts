@@ -128,7 +128,12 @@ export async function handleConvertDocument(
 ) {
   try {
     const { file, outputPath, asAttachment, returnLink, ...rest } = args;
-    const template = await resolveFileInput(file, { isCloud: client.isCloud, maxBytes: fileCtx?.maxFileBytes });
+    const template = await resolveFileInput(file, {
+      isCloud: client.isCloud,
+      maxBytes: fileCtx?.maxFileBytes,
+      allowLocalPath: fileCtx?.allowFileInput ?? false,
+      allowPrivateNetwork: fileCtx?.allowPrivateNetwork ?? false,
+    });
     const result = await client.convertDocument({ ...rest, template, returnLink }, options);
 
     return deliver(result, args.convertTo, {

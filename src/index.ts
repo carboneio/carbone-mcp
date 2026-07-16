@@ -24,14 +24,20 @@ async function main() {
   });
 
   if (config.transport === 'http') {
-    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes });
+    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork });
     return;
   }
 
   // stdio mode (default) — one server, one client, key from env var
   const server = new McpServer(serverInfo(version), { instructions: SERVER_INSTRUCTIONS });
   // stdio runs locally, so writing outputPath files to disk is meaningful.
-  registerTools(server, client, { allowFileOutput: true, maxFileBytes: config.maxFileBytes });
+  // stdio runs locally as the caller, so reading/writing local paths is the documented behavior.
+  registerTools(server, client, {
+    allowFileOutput: true,
+    allowFileInput: true,
+    allowPrivateNetwork: config.allowPrivateNetwork,
+    maxFileBytes: config.maxFileBytes,
+  });
   registerResources(server, client);
 
   const transport = new StdioServerTransport();

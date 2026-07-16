@@ -1,4 +1,6 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 export type FormatArg = string | { formatName: string };
 
@@ -15,6 +17,9 @@ const DEFAULT_MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** Hard timeout for downloading a file from a user/AI-supplied URL, so a request never hangs. */
 const URL_FETCH_TIMEOUT_MS = 60_000;
 
+/** Maximum redirect hops followed for a user-supplied URL — every hop is re-validated. */
+const MAX_REDIRECTS = 5;
+
 export interface ResolveFileOptions {
   /** Maximum allowed size in bytes. Defaults to 100 MB (the operator sets CARBONE_MAX_FILE_BYTES via config). */
   maxBytes?: number;
@@ -25,6 +30,115 @@ export interface ResolveFileOptions {
    * which only takes effect on self-hosted instances.
    */
   isCloud?: boolean;
+  /**
+   * Whether a local filesystem path may be read. Fail-closed by default: only stdio (where the
+   * server runs on the caller's own machine) enables it. In HTTP mode the path would resolve on
+   * the *server's* disk, so a caller could read server files (e.g. /proc/self/environ).
+   */
+  allowLocalPath?: boolean;
+  /**
+   * Whether URLs resolving to private/loopback/link-local addresses may be fetched. Fail-closed by
+   * default to prevent SSRF (cloud metadata at 169.254.169.254, localhost, RFC1918). Operators with
+   * internal template hosts opt in via CARBONE_ALLOW_PRIVATE_NETWORK=true.
+   */
+  allowPrivateNetwork?: boolean;
+}
+
+/**
+ * True when an IP literal belongs to a range that must never be reachable from a user-supplied URL:
+ * loopback, private (RFC1918), link-local (incl. 169.254.169.254 cloud metadata), CGNAT, multicast,
+ * and reserved space — for both IPv4 and IPv6 (including IPv4-mapped IPv6).
+ */
+export function isBlockedIp(ip: string): boolean {
+  const version = isIP(ip);
+  if (version === 4) return isBlockedIpv4(ip);
+  if (version === 6) return isBlockedIpv6(ip.toLowerCase());
+  return true; // not a valid IP literal — reject rather than guess
+}
+
+function isBlockedIpv4(ip: string): boolean {
+  const o = ip.split('.').map(Number);
+  if (o.length !== 4 || o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+  const [a, b] = o as [number, number, number, number];
+  if (a === 0) return true;                                  // 0.0.0.0/8 "this network"
+  if (a === 10) return true;                                 // 10/8 private
+  if (a === 127) return true;                                // 127/8 loopback
+  if (a === 169 && b === 254) return true;                   // 169.254/16 link-local + cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;          // 172.16/12 private
+  if (a === 192 && b === 168) return true;                   // 192.168/16 private
+  if (a === 192 && b === 0) return true;                      // 192.0.0/24 + 192.0.2/24 special-use
+  if (a === 100 && b >= 64 && b <= 127) return true;         // 100.64/10 CGNAT
+  if (a === 198 && (b === 18 || b === 19)) return true;      // 198.18/15 benchmarking
+  if (a >= 224) return true;                                 // 224/4 multicast + 240/4 reserved
+  return false;
+}
+
+function isBlockedIpv6(ip: string): boolean {
+  if (ip === '::' || ip === '::1') return true;              // unspecified + loopback
+  // IPv4-mapped (::ffff:1.2.3.4) / IPv4-compatible — validate the embedded v4 address.
+  const mapped = ip.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped?.[1]) return isBlockedIpv4(mapped[1]);
+  if (/^f[cd]/.test(ip)) return true;                        // fc00::/7 unique-local
+  if (/^fe[89ab]/.test(ip)) return true;                     // fe80::/10 link-local
+  if (/^ff/.test(ip)) return true;                           // ff00::/8 multicast
+  return false;
+}
+
+/**
+ * Reject a URL that targets internal infrastructure, resolving DNS so a hostname cannot hide a
+ * private address. Every redirect hop is validated through this same function.
+ *
+ * Residual risk: a DNS rebind between this check and connect() is theoretically possible; the short
+ * fetch timeout and the fact that every hop is re-validated keep the window impractically small.
+ */
+async function assertUrlAllowed(rawUrl: string, allowPrivateNetwork: boolean): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid URL: ${rawUrl}`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`Unsupported URL scheme "${url.protocol}" — only http and https are allowed.`);
+  }
+  if (allowPrivateNetwork) return;
+
+  const host = url.hostname.replace(/^\[|\]$/g, ''); // strip brackets from IPv6 literals
+  const addresses = isIP(host)
+    ? [host]
+    : (await lookup(host, { all: true }).catch(() => {
+        throw new Error(`Could not resolve host "${host}".`);
+      })).map((a) => a.address);
+
+  for (const address of addresses) {
+    if (isBlockedIp(address)) {
+      throw new Error(
+        `Refusing to fetch "${url.origin}" — it resolves to a private or internal address (${address}). ` +
+        'Set CARBONE_ALLOW_PRIVATE_NETWORK=true to allow internal hosts on a trusted deployment.'
+      );
+    }
+  }
+}
+
+/**
+ * Fetch a validated URL, following redirects manually so each hop is re-checked against
+ * assertUrlAllowed (an allowed host must not be able to redirect into internal space).
+ */
+async function fetchGuarded(rawUrl: string, allowPrivateNetwork: boolean): Promise<Response> {
+  let target = rawUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    await assertUrlAllowed(target, allowPrivateNetwork);
+    const response = await fetch(target, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
+    });
+    if (response.status < 300 || response.status > 399) return response;
+
+    const location = response.headers.get('location');
+    if (!location) return response;
+    target = new URL(location, target).toString(); // resolve relative redirects, then re-validate
+  }
+  throw new Error(`Too many redirects (>${MAX_REDIRECTS}) while downloading from URL.`);
 }
 
 function assertWithinLimit(bytes: number, maxBytes: number, isCloud: boolean): void {
@@ -96,12 +210,17 @@ export function getMimeType(format: FormatArg): string {
 export async function resolveFileInput(input: string, options?: ResolveFileOptions): Promise<string> {
   const maxBytes = options?.maxBytes ?? DEFAULT_MAX_FILE_BYTES;
   const isCloud = options?.isCloud ?? false;
+  // Fail closed: callers must explicitly opt in (stdio enables local paths; the operator enables
+  // private-network URLs). A caller that forgets is denied rather than silently exposed.
+  const allowLocalPath = options?.allowLocalPath ?? false;
+  const allowPrivateNetwork = options?.allowPrivateNetwork ?? false;
 
-  // Remote URL — downloaded with a hard timeout so a slow/unresponsive host can't stall the request.
+  // Remote URL — SSRF-guarded (private/internal addresses blocked, every redirect hop re-validated)
+  // and hard-timed-out so a slow/unresponsive host can't stall the request.
   if (input.startsWith('http://') || input.startsWith('https://')) {
     let response: Response;
     try {
-      response = await fetch(input, { signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS) });
+      response = await fetchGuarded(input, allowPrivateNetwork);
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
         throw new Error(
@@ -133,6 +252,14 @@ export async function resolveFileInput(input: string, options?: ResolveFileOptio
     /^[A-Za-z]:[/\\]/.test(input);
 
   if (isLocalPath) {
+    // Only stdio (server runs on the caller's own machine) may read local paths. In HTTP mode this
+    // would read the server's filesystem, so it is refused — see SECURITY notes in the changelog.
+    if (!allowLocalPath) {
+      throw new Error(
+        'Reading local file paths is only supported in stdio (local) mode. ' +
+        'Pass an HTTPS URL or a base64 string instead.'
+      );
+    }
     const resolvedPath = expandHome(input);
     // Check the size before reading so a huge file can't blow up memory.
     const { size } = await stat(resolvedPath);

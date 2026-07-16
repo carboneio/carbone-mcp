@@ -160,7 +160,7 @@ A string value is resolved as:
 
 | Reference | Resolved as | stdio | HTTP |
 |---|---|---|---|
-| `"/data/invoices.json"`, `"~/data.json"` | local file → parsed JSON | ✅ | ❌ (not on the server) |
+| `"/data/invoices.json"`, `"~/data.json"` | local file → parsed JSON | ✅ | ❌ refused — stdio only |
 | `"https://example.com/data.json"` | downloaded → parsed JSON | ✅ | ✅ |
 | base64 of a JSON document | decoded → parsed JSON | ✅ | ✅ |
 | `'{"customer":"Acme"}'` / `'[…]'` | parsed directly as inline JSON | ✅ | ✅ |
@@ -351,7 +351,8 @@ MCP_TRANSPORT=http MCP_PORT=3000 node dist/index.js
 | `MCP_PORT` | `3000` | Listening port |
 | `MCP_PATH` | `/` | MCP endpoint path. Cannot be `/health` (reserved). |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB, matches Carbone Cloud limit). Returns HTTP 413 when exceeded. |
-| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Reject requests without a Bearer key instead of falling back to the server-level `CARBONE_API_KEY` (multi-tenant safety). |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Require `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server — anyone reaching the port can spend it). Set `true` to require per-client keys. No effect when no server key is set. |
+| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs to resolve to private/internal addresses. Off by default to block SSRF. |
 
 ---
 
