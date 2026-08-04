@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+Parked on a branch, not published — waiting for MCP client ecosystem (Claude Desktop, Cursor, VS Code, etc.) to adopt SDK v2 / protocol 2026-07-28 before this becomes the default.
+
+### Changed
+
+- **Migrated to MCP TypeScript SDK v2.** The MCP specification published a new major revision, [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog), and the TypeScript SDK split the monolithic `@modelcontextprotocol/sdk` (v1) package into `@modelcontextprotocol/client`, `@modelcontextprotocol/server`, and `@modelcontextprotocol/node`. Migrated using the official codemod, plus manual fixes for context-parameter destructuring and a couple of output-only tool schemas that needed wrapping in `z.object(...)` to hit the non-deprecated `registerTool` overload. **No wire-protocol behavior change**: the server still speaks the 2025-era `initialize` handshake by default — v2 does not put a 2026-07-28 byte on the wire unless explicitly opted in, so every existing client keeps working unmodified. v1 continues to receive security patches for at least 6 months, so this is not urgent — it was done ahead of time to have it ready once the ecosystem catches up.
+- Minimum Node.js version raised from 18 to 20 (required by SDK v2).
+
+---
+
 ## [1.5.0] — 2026-06-26
 
 ### Security

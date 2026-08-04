@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from 'module';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { McpServer } from '@modelcontextprotocol/server';
 import { CarboneClient } from './carbone/client.js';
 import { loadConfig } from './server/config.js';
 import { startHttpServer } from './server/http.js';
