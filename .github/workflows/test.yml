@@ -21,8 +21,29 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+
+      # Type-checks src/ + tests/ together (tsconfig.json alone only covers src/, since that's
+      # also the build config — tests/ and scripts/ were previously never type-checked at all).
+      - run: npm run typecheck
+
       - run: npm test
         env:
           # Integration (e2e) tests run only when this secret is present; otherwise they self-skip.
           # Add it in repo Settings → Secrets and variables → Actions. Optionally also CARBONE_TEST_BASE_URL.
           CARBONE_TEST_API_KEY: ${{ secrets.CARBONE_TEST_API_KEY }}
+
+      # scripts/battle-test.mjs is plain JS (not covered by npm run typecheck) and needs real
+      # Carbone credentials to run its actual suite. This just confirms its import chain still
+      # resolves against the installed packages — it fails fast on a missing key, before any
+      # network call, so no credentials are needed to catch a broken import path.
+      - name: Verify battle-test.mjs imports resolve
+        run: |
+          set +e
+          output=$(node scripts/battle-test.mjs 2>&1)
+          code=$?
+          set -e
+          echo "$output"
+          if [ "$code" -ne 2 ] || [[ "$output" != *"Set CARBONE_API_KEY"* ]]; then
+            echo "::error::battle-test.mjs failed unexpectedly (exit $code) — likely a broken import"
+            exit 1
+          fi

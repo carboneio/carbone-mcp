@@ -19,7 +19,12 @@ describe('MCP registration surface (in-process, no API key)', () => {
     const server = new McpServer(serverInfo('0.0.0-test'), { instructions: SERVER_INSTRUCTIONS });
     // The Carbone client is never called by registration / get_capabilities, so a dummy key is fine.
     const carbone = new CarboneClient({ apiKey: 'unused', baseUrl: CarboneClient.CLOUD_API_URL });
-    registerTools(server, carbone, { allowFileOutput: true, maxFileBytes: 100 * 1024 * 1024 });
+    registerTools(server, carbone, {
+      allowFileOutput: true,
+      allowFileInput: true,
+      allowPrivateNetwork: false,
+      maxFileBytes: 100 * 1024 * 1024,
+    });
     registerResources(server, carbone);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
