@@ -1,5 +1,5 @@
-import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ResourceTemplate } from '@modelcontextprotocol/server';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
 
 import {
@@ -20,7 +20,7 @@ export function registerResources(server: McpServer, client: CarboneClient): voi
     'carbone-templates',
     TEMPLATES_URI,
     { description: templatesResourceDescription, mimeType: 'application/json' },
-    (uri, { authInfo }) => readTemplatesResource(uri, client, { apiKey: authInfo?.token })
+    (uri, ctx) => readTemplatesResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   // Parameterized: a single template by ID/version, with Template ID autocompletion. Completion
@@ -32,28 +32,28 @@ export function registerResources(server: McpServer, client: CarboneClient): voi
       complete: { id: (value) => completeTemplateId(value, client) },
     }),
     { description: templateByIdResourceDescription, mimeType: 'application/json' },
-    (uri, variables, { authInfo }) =>
-      readTemplateByIdResource(uri, String(variables['id']), client, { apiKey: authInfo?.token })
+    (uri, variables, ctx) =>
+      readTemplateByIdResource(uri, String(variables['id']), client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerResource(
     'carbone-categories',
     CATEGORIES_URI,
     { description: categoriesResourceDescription, mimeType: 'application/json' },
-    (uri, { authInfo }) => readCategoriesResource(uri, client, { apiKey: authInfo?.token })
+    (uri, ctx) => readCategoriesResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerResource(
     'carbone-tags',
     TAGS_URI,
     { description: tagsResourceDescription, mimeType: 'application/json' },
-    (uri, { authInfo }) => readTagsResource(uri, client, { apiKey: authInfo?.token })
+    (uri, ctx) => readTagsResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerResource(
     'carbone-status',
     STATUS_URI,
     { description: statusResourceDescription, mimeType: 'application/json' },
-    (uri, { authInfo }) => readStatusResource(uri, client, { apiKey: authInfo?.token })
+    (uri, ctx) => readStatusResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
   );
 }

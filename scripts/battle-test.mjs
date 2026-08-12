@@ -1,3 +1,5 @@
+import { Client } from '@modelcontextprotocol/client';
+
 // Battle test — exercises the FULL Carbone MCP option matrix end-to-end through the real MCP
 // protocol against a real Carbone API, with one suite usable across three targets. Self-cleaning.
 //
@@ -7,8 +9,6 @@
 //   CARBONE_API_KEY=$CARBONE_TEST_API_KEY MCP_TARGET=stdio node scripts/battle-test.mjs
 //   CARBONE_API_KEY=$CARBONE_TEST_API_KEY MCP_TARGET=http MCP_URL=http://localhost:3000 node scripts/battle-test.mjs
 //   CARBONE_API_KEY=$CARBONE_TEST_API_KEY MCP_TARGET=http MCP_URL=https://mcp.carbone.io node scripts/battle-test.mjs
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-
 const TARGET = process.env.MCP_TARGET ?? 'stdio';
 const KEY = process.env.CARBONE_API_KEY ?? process.env.CARBONE_TEST_API_KEY;
 const IS_STDIO = TARGET !== 'http';
@@ -16,11 +16,11 @@ if (!KEY) { console.error('Set CARBONE_API_KEY (or CARBONE_TEST_API_KEY).'); pro
 
 async function makeTransport() {
   if (IS_STDIO) {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+    const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio');
     return new StdioClientTransport({ command: 'node', args: ['dist/index.js'], env: { ...process.env, CARBONE_API_KEY: KEY } });
   }
   const url = process.env.MCP_URL ?? 'http://localhost:3000';
-  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/client');
   return new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${KEY}` } } });
 }
 

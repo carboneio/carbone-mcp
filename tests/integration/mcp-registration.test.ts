@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client } from '@modelcontextprotocol/client';
+import { McpServer, InMemoryTransport } from '@modelcontextprotocol/server';
 import { CarboneClient } from '../../src/carbone/client.js';
 import { registerTools } from '../../src/tools/index.js';
 import { registerResources } from '../../src/resources/index.js';
@@ -20,7 +19,12 @@ describe('MCP registration surface (in-process, no API key)', () => {
     const server = new McpServer(serverInfo('0.0.0-test'), { instructions: SERVER_INSTRUCTIONS });
     // The Carbone client is never called by registration / get_capabilities, so a dummy key is fine.
     const carbone = new CarboneClient({ apiKey: 'unused', baseUrl: CarboneClient.CLOUD_API_URL });
-    registerTools(server, carbone, { allowFileOutput: true, maxFileBytes: 100 * 1024 * 1024 });
+    registerTools(server, carbone, {
+      allowFileOutput: true,
+      allowFileInput: true,
+      allowPrivateNetwork: false,
+      maxFileBytes: 100 * 1024 * 1024,
+    });
     registerResources(server, carbone);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

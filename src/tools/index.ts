@@ -1,4 +1,5 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
 import type { FileContext } from './output.js';
 
@@ -75,7 +76,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       outputSchema: listTemplatesOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, extra) => handleListTemplates(args, client, { apiKey: extra.authInfo?.token })
+    (args, ctx) => handleListTemplates(args, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerTool(
@@ -86,7 +87,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       inputSchema: convertDocumentSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, extra) => handleConvertDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
+    (args, ctx) => handleConvertDocument(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
@@ -97,7 +98,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       inputSchema: renderDocumentSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, extra) => handleRenderDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
+    (args, ctx) => handleRenderDocument(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
@@ -105,10 +106,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'List Categories',
       description: listCategoriesDescription,
-      outputSchema: listCategoriesOutputSchema,
+      outputSchema: z.object(listCategoriesOutputSchema),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (extra) => handleListCategories({} as never, client, { apiKey: extra.authInfo?.token })
+    (ctx) => handleListCategories({} as never, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerTool(
@@ -116,10 +117,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'List Tags',
       description: listTagsDescription,
-      outputSchema: listTagsOutputSchema,
+      outputSchema: z.object(listTagsOutputSchema),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (extra) => handleListTags({} as never, client, { apiKey: extra.authInfo?.token })
+    (ctx) => handleListTags({} as never, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerTool(
@@ -131,7 +132,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       outputSchema: uploadTemplateOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    (args, extra) => handleUploadTemplate(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
+    (args, ctx) => handleUploadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
@@ -142,7 +143,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       inputSchema: updateTemplateMetadataSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    (args, extra) => handleUpdateTemplateMetadata(args, client, { apiKey: extra.authInfo?.token })
+    (args, ctx) => handleUpdateTemplateMetadata(args, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerTool(
@@ -153,7 +154,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       inputSchema: deleteTemplateSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, extra) => handleDeleteTemplate(args, client, { apiKey: extra.authInfo?.token })
+    (args, ctx) => handleDeleteTemplate(args, client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerTool(
@@ -164,7 +165,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       inputSchema: downloadTemplateSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, extra) => handleDownloadTemplate(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
+    (args, ctx) => handleDownloadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
   );
 
   server.registerTool(
@@ -172,10 +173,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'API Status',
       description: getApiStatusDescription,
-      outputSchema: getApiStatusOutputSchema,
+      outputSchema: z.object(getApiStatusOutputSchema),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (extra) => handleGetApiStatus(client, { apiKey: extra.authInfo?.token })
+    (ctx) => handleGetApiStatus(client, { apiKey: ctx.http?.authInfo?.token })
   );
 
   server.registerTool(

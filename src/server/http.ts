@@ -1,8 +1,8 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, join, extname } from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
+import { McpServer } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
 
 /** Minimal shape of AuthInfo expected by StreamableHTTPServerTransport on req.auth */
@@ -223,7 +223,7 @@ export async function startHttpServer(options: {
           });
           registerResources(mcpServer, client);
 
-          const transport = new StreamableHTTPServerTransport({
+          const transport = new NodeStreamableHTTPServerTransport({
             sessionIdGenerator: undefined,
           });
 

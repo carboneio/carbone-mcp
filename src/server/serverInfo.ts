@@ -13,7 +13,7 @@ export function serverInfo(version: string) {
     websiteUrl: 'https://carbone.io',
     icons: [
       { src: CARBONE_ICON_SVG, mimeType: 'image/svg+xml', sizes: ['any'] },
-      { src: CARBONE_ICON_PNG, mimeType: 'image/png', sizes: ['85x96'] },
+      { src: CARBONE_ICON_PNG, mimeType: 'image/png', sizes: ['250x250'] },
     ],
   };
 }
