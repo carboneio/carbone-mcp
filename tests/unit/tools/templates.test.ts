@@ -433,7 +433,16 @@ describe('handleDownloadTemplate', () => {
     const client = makeClient();
     await handleDownloadTemplate({ templateId: 'tpl1' }, client);
 
-    expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1', undefined);
+    expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith(
+      'tpl1', expect.objectContaining({ sample: undefined }));
+  });
+
+  test('sample:true requests the sample dataset', async () => {
+    const client = makeClient();
+    await handleDownloadTemplate({ templateId: 'tpl1', sample: true }, client);
+
+    expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith(
+      'tpl1', expect.objectContaining({ sample: true }));
   });
 
   test('returns EmbeddedResource for DOCX download', async () => {

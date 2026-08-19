@@ -401,6 +401,32 @@ describe('CarboneClient', () => {
       );
     });
 
+    test('omits data entirely so conversion preserves Carbone tags', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await client.convertDocument({ template: 'abc', convertTo: 'pdf' });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      // Sending data:{} would run templating against an empty dataset and blank every tag.
+      expect('data' in body).toBe(false);
+    });
+
+    test('includes reportName and hardRefresh in body when provided', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await client.convertDocument({ template: 'abc', convertTo: 'pdf', reportName: 'contract', hardRefresh: true });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.reportName).toBe('contract');
+      expect(body.hardRefresh).toBe(true);
+    });
+
     test('includes converter in body when provided', async () => {
       const spy = mockFetch({
         headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
@@ -448,6 +474,31 @@ describe('CarboneClient', () => {
         'https://api.carbone.io/render/tpl123?download=true',
         expect.objectContaining({ method: 'POST' })
       );
+    });
+
+    test('sends data:{} by default so tags resolve to empty', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({ templateId: 'tpl1' });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.data).toEqual({});
+    });
+
+    test('keepTags omits data entirely so templating is skipped', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({ templateId: 'tpl1', convertTo: 'pdf', keepTags: true });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect('data' in body).toBe(false);
+      expect(body.convertTo).toBe('pdf');
     });
 
     test('includes convertTo when convertTo is provided', async () => {

@@ -10,7 +10,7 @@ Give Claude, ChatGPT, and other AI assistants the power to:
 - 🔄 **Document Conversion** — 100+ format combinations (PDF, DOCX, XLSX, PNG, HTML, CSV…)
 - 📄 **Template Engine** — Generate documents from JSON data with `{d.field}` tags
 - 📚 **Template Library** — Upload, version, categorize, and manage reusable templates
-- 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines
+- 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines (LibreOffice, OnlyOffice, Chromium, Carbone ICE)
 - 🌍 **Localization** — Multi-language support, currency conversion, timezone handling
 - ⚡ **Batch Generation** — Create hundreds of documents in one request (async via webhook)
 
@@ -215,6 +215,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 "Convert this HTML page to a PNG image"
 "Convert my Markdown README to PDF"
 "Convert this PPTX to PNG — use OnlyOffice for best fidelity"
+"Convert this 500-page Word report to PDF — use the ICE converter, it's much faster"
 "Rasterize this PDF to PNG images — one per page"
 ```
 

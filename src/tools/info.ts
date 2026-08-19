@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { type IoModes, inputFormsShort, jsonRefForms } from './inputForms.js';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { formatError } from '../utils/errors.js';
 
@@ -44,7 +45,7 @@ export const getCapabilitiesDescription =
 
 export const getCapabilitiesSchema = {};
 
-const CAPABILITIES_TEXT = `# Carbone — Document Generation & Conversion
+const capabilitiesText = (io: IoModes) => `# Carbone — Document Generation & Conversion
 
 ## Tools available
 
@@ -84,10 +85,20 @@ Invoice, Quote/Proposal, Purchase order, Pay slip, Delivery note, Offer letter, 
 
 Use \`convert_document\` to convert between formats instantly. No template required.
 
-**Accepted file input:** local path, HTTPS URL, or base64 string.
+**Accepted file input:** ${inputFormsShort(io)}. Conversion and templating share the same endpoint and
+the same format validation, so they accept the SAME input formats: XML-based and text-based documents
+only (DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, XML, SVG, IDML, MD, TXT, CSV, RTF, PDF).
+The legacy BINARY formats DOC, XLS and PPT are rejected as input — re-save them as DOCX/XLSX/PPTX.
+
+**Carbone tags are PRESERVED by conversion** — \`convert_document\` does not run templating, so a
+\`{d.field}\` tag survives untouched. That makes it the way to proof a template in another format
+(DOCX template → PDF), or to convert a template while it stays a template (DOCX → ODT). To resolve
+tags into real values, use \`render_document\` instead. \`render_document\` can also skip templating
+with \`keepTags: true\` — useful to proof a STORED template by \`templateId\`.
 
 **Common conversions:**
 - DOCX / XLSX / PPTX / ODT → PDF  (converter: "L" LibreOffice)
+- DOCX → PDF, fastest              (converter: "I" Carbone ICE — no third-party converter, up to 60x faster)
 - HTML → PDF                       (converter: "C" Chromium — full CSS/JS rendering)
 - DOCX → HTML, TXT, MD
 - PPTX / DOCX → PNG, JPG, WEBP    (rasterised slides/pages)
@@ -99,6 +110,13 @@ Use \`convert_document\` to convert between formats instantly. No template requi
 - \`L\` — LibreOffice (default) — best all-round for Office documents
 - \`O\` — OnlyOffice — highest fidelity for DOCX / XLSX / PPTX
 - \`C\` — Chromium — best for HTML/CSS/JS content
+- \`I\` — Carbone ICE — DOCX → PDF **only** (any other format is rejected), no third-party converter,
+  up to 60x faster than LibreOffice. **Security options are silently ignored:** \`EncryptFile\`,
+  \`DocumentOpenPassword\` and \`RestrictPermissions\` have NO effect and you get an unprotected PDF with
+  no error — never use \`I\` when a password or permissions are required, use \`L\`. Only \`Watermarks\`
+  apply. Also unsupported: WEBP and EMF/WMF images, table of contents, SmartArt, complex charts,
+  footnotes/endnotes, comments, tracked changes, form fields, equations, bookmarks and links;
+  a missing font falls back to Noto Sans.
 
 **Advanced PDF options** (via \`formatOptions\`):
 - Password protection: \`{ "EncryptFile": true, "DocumentOpenPassword": "secret" }\`
@@ -130,7 +148,7 @@ Two modes — choose based on whether you need to reuse the template:
 
 **Output format:** \`convertTo\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
-**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). It is optional: omit it (or pass {}) to simply convert a template without data injection. \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: a local file path (stdio only), an HTTPS URL, or base64 to a JSON file — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
+**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). It is optional: omit it (or pass {}) to simply convert a template without data injection. \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: ${jsonRefForms(io)} — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
 
 **External resources behind auth:** if a template fetches a protected external image/PDF, or you call a secured webhook, pass \`egressAuthorization\` (e.g. "Bearer abc123", max 512 chars) — Carbone sends it as the \`authorization\` header on those outbound requests. Also available on convert_document (for HTML→PDF assets). For webhooks, webhookHeaders.authorization overrides it.
 
@@ -194,8 +212,8 @@ Compatible with any AI assistant that supports the Agent Skills standard (agents
 - GitHub repository:    https://github.com/carboneio/carbone-skill
 `;
 
-export function handleGetCapabilities() {
+export function handleGetCapabilities(io: IoModes) {
   return {
-    content: [{ type: 'text' as const, text: CAPABILITIES_TEXT }],
+    content: [{ type: 'text' as const, text: capabilitiesText(io) }],
   };
 }

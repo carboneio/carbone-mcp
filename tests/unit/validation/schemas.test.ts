@@ -59,7 +59,7 @@ describe('ConvertDocumentSchema', () => {
   });
 
   test('accepts all converter values', () => {
-    for (const converter of ['L', 'O', 'C'] as const) {
+    for (const converter of ['L', 'O', 'C', 'I'] as const) {
       const result = ConvertDocumentSchema.parse({
         file: 'base64data',
         convertTo: 'pdf',

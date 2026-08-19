@@ -4,6 +4,7 @@ import type { UploadTemplateResult } from '../carbone/types.js';
 import { resolveFileInput } from '../utils/file.js';
 import { deliverDocument, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
+import { type IoModes, STDIO_IO, inputForms, outputPathDescription } from './inputForms.js';
 
 // ─── list_templates ──────────────────────────────────────────────────────────
 
@@ -40,7 +41,10 @@ export const listTemplatesSchema = {
     .number()
     .int()
     .optional()
-    .describe('Filter by upload origin. 0 = uploaded via API, 1 = uploaded via Carbone Studio.'),
+    .describe(
+      'Filter by upload origin. 0 = API, 1 = Carbone Studio, 2 = Salesforce, 3 = Odoo, 4 = HubSpot. ' +
+      'Templates created through this MCP are origin 0.'
+    ),
   includeVersions: z
     .boolean()
     .optional()
@@ -55,7 +59,7 @@ export const listTemplatesSchema = {
     .min(1)
     .max(100)
     .optional()
-    .describe('Maximum number of results to return. Must be between 1 and 100 (Carbone API limit). Default: 100.'),
+    .describe('Maximum number of results to return, between 1 and 100. Default: 100. Use cursor to page beyond that.'),
   cursor: z
     .string()
     .optional()
@@ -120,81 +124,85 @@ export const uploadTemplateOutputSchema = {
   size: z.number().optional().describe('Template size in bytes.'),
 };
 
-export const uploadTemplateSchema = {
-  template: z
-    .string()
-    .min(1)
-    .describe(
-      'The template file. Accepts a local file path (e.g. /home/user/invoice.docx), ' +
-      'a URL (https://example.com/template.docx), or a base64-encoded string. ' +
-      'Supported formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown (MD), PDF, and more. ' +
-      'Full list: https://carbone.io/documentation/developer/http-api/generate-reports.md'
-    ),
-  name: z
-    .string()
-    .min(1)
-    .describe('Display name for the template (e.g. "Invoice Template", "NDA Contract").'),
-  id: z
-    .string()
-    .optional()
-    .describe(
-      'Existing Template ID (64-bit format) to add this upload to its version history. ' +
-      'If omitted, a new Template ID is generated. ' +
-      'Providing a Version ID (SHA-256) is not allowed and will cause an error.'
-    ),
-  versioning: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe(
-      'Enable template versioning (default: true). ' +
-      'When true, a stable Template ID is generated and multiple versions can be managed under it. ' +
-      'When false, behaves as legacy mode and returns only a templateId (SHA-256 hash).'
-    ),
-  category: z
-    .string()
-    .optional()
-    .describe('Group templates into folders/categories (e.g. "invoices", "legal", "hr").'),
-  comment: z
-    .string()
-    .optional()
-    .describe('Free-text comment to describe the template version or its purpose.'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe('Tags for searchability and filtering (e.g. ["sales", "billing", "v2"]).'),
-  sample: z
-    .array(
-      z.object({
-        data:         z.record(z.string(), z.unknown()).describe('JSON dataset for {d.} tags.'),
-        complement:   z.record(z.string(), z.unknown()).describe('Extra data for {c.} tags.'),
-        translations: z.record(z.string(), z.unknown()).describe('Localization map for {t()} tags.'),
-        enum:         z.record(z.string(), z.unknown()).describe('Enumerations for :convEnum() formatter.'),
-      })
-    )
-    .optional()
-    .describe(
-      'Sample input data attached to the template for testing in Carbone Studio. ' +
-      'Each item must include data, complement, translations, and enum objects.'
-    ),
-  deployedAt: z
-    .number()
-    .int()
-    .optional()
-    .describe(
-      'UTC Unix timestamp (seconds) to set as the deployment time for this version. ' +
-      'Carbone uses the version with the most recent deployedAt when rendering via Template ID. ' +
-      'Use 42000000000 to deploy immediately (special "NOW" sentinel value).'
-    ),
-  expireAt: z
-    .number()
-    .int()
-    .optional()
-    .describe(
-      'UTC Unix timestamp (seconds) at which this template will be automatically deleted. ' +
-      'Use 42000000000 to delete immediately (special "NOW" sentinel value).'
-    ),
-};
+export function uploadTemplateSchemaFor(io: IoModes) {
+  return {
+    template: z
+      .string()
+      .min(1)
+      .describe(
+        'The template file. ' + inputForms(io) +
+        'Supported formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown (MD), PDF, and more. ' +
+        'Full list: https://carbone.io/documentation/developer/http-api/generate-reports.md'
+      ),
+    name: z
+      .string()
+      .min(1)
+      .describe('Display name for the template (e.g. "Invoice Template", "NDA Contract").'),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Existing Template ID (64-bit format) to add this upload to its version history. ' +
+        'If omitted, a new Template ID is generated. ' +
+        'Providing a Version ID (SHA-256) is not allowed and will cause an error.'
+      ),
+    versioning: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        'Enable template versioning (default: true). ' +
+        'When true, a stable Template ID is generated and multiple versions can be managed under it. ' +
+        'When false, behaves as legacy mode and returns only a templateId (SHA-256 hash).'
+      ),
+    category: z
+      .string()
+      .optional()
+      .describe('Group templates into folders/categories (e.g. "invoices", "legal", "hr").'),
+    comment: z
+      .string()
+      .optional()
+      .describe('Free-text comment to describe the template version or its purpose.'),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe('Tags for searchability and filtering (e.g. ["sales", "billing", "v2"]).'),
+    sample: z
+      .array(
+        z.object({
+          data:         z.record(z.string(), z.unknown()).describe('JSON dataset for {d.} tags.'),
+          complement:   z.record(z.string(), z.unknown()).describe('Extra data for {c.} tags.'),
+          translations: z.record(z.string(), z.unknown()).describe('Localization map for {t()} tags.'),
+          enum:         z.record(z.string(), z.unknown()).describe('Enumerations for :convEnum() formatter.'),
+        })
+      )
+      .optional()
+      .describe(
+        'Sample input data attached to the template for testing in Carbone Studio. ' +
+        'Each item must include data, complement, translations, and enum objects.'
+      ),
+    deployedAt: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'UTC Unix timestamp (seconds) to set as the deployment time for this version. ' +
+        'Carbone uses the version with the most recent deployedAt when rendering via Template ID. ' +
+        'Use 42000000000 to deploy immediately (special "NOW" sentinel value).'
+      ),
+    expireAt: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'UTC Unix timestamp (seconds) at which this template will be automatically deleted. ' +
+        'Use 42000000000 to delete immediately (special "NOW" sentinel value).'
+      ),
+  };
+}
+
+/** Default (stdio) wording — also the shape the validation schemas derive from. */
+export const uploadTemplateSchema = uploadTemplateSchemaFor(STDIO_IO);
 
 export async function handleUploadTemplate(
   args: {
@@ -266,6 +274,14 @@ export const updateTemplateMetadataSchema = {
       'Using a Template ID updates the metadata shared by all versions. ' +
       'Using a Version ID updates only that specific version.'
     ),
+  id: z
+    .string()
+    .optional()
+    .describe(
+      'Move this version under a DIFFERENT Template ID, re-parenting it so both share a version history. ' +
+      'Pass the destination Template ID (64-bit). Leave unset to keep the version where it is — ' +
+      'this does not rename anything, use name for that.'
+    ),
   name: z.string().optional().describe('New display name.'),
   comment: z.string().optional().describe('New free-text comment.'),
   category: z.string().optional().describe('New category.'),
@@ -292,6 +308,7 @@ export const updateTemplateMetadataSchema = {
 export async function handleUpdateTemplateMetadata(
   args: {
     templateId:  string;
+    id?:         string;
     name?:       string;
     comment?:    string;
     category?:   string;
@@ -442,44 +459,60 @@ export const downloadTemplateToolName = 'download_template';
 export const downloadTemplateDescription =
   'Download the original source file of a stored Carbone template (e.g. the DOCX, XLSX, PPTX, or HTML file that was uploaded). ' +
   'Use this to inspect, edit, or back up a template. ' +
-  'Pass a Template ID to download the currently deployed version, or a Version ID to download a specific version.';
+  'Pass a Template ID to download the currently deployed version, or a Version ID to download a specific version. ' +
+  'Set sample:true to fetch the JSON sample dataset stored with the template instead of the template file itself.';
 
-export const downloadTemplateSchema = {
-  templateId: z
-    .string()
-    .min(1)
-    .describe(
-      'Template ID (64-bit) or Version ID (SHA-256) to download. ' +
-      'Template ID — downloads the currently deployed version of the template. ' +
-      'Version ID — downloads that exact version regardless of deployment status. ' +
-      'Both formats are returned by upload_template and list_templates.'
-    ),
-  outputPath: z
-    .string()
-    .optional()
-    .describe(
-      'Optional local file path to save the template file to (e.g. "/home/user/template.docx" or "~/template.docx"). ' +
-      'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
-      'the file inline. Local (stdio) mode only; rejected in HTTP mode.'
-    ),
-  asAttachment: z
-    .boolean()
-    .optional()
-    .describe(
-      'If true, return the template as a downloadable file attachment (base64 resource) instead of inline ' +
-      'text/image. Useful in HTTP mode where outputPath is unavailable. Default: false. Ignored when outputPath is set.'
-    ),
-};
+export function downloadTemplateSchemaFor(io: IoModes) {
+  return {
+    templateId: z
+      .string()
+      .min(1)
+      .describe(
+        'Template ID (64-bit) or Version ID (SHA-256) to download. ' +
+        'Template ID — downloads the currently deployed version of the template. ' +
+        'Version ID — downloads that exact version regardless of deployment status. ' +
+        'Both formats are returned by upload_template and list_templates.'
+      ),
+    outputPath: z
+      .string()
+      .optional()
+      .describe(
+        outputPathDescription('template file', io)
+      ),
+    sample: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, download the JSON SAMPLE DATASET saved with the template (the "sample" array passed to ' +
+        'upload_template) instead of the template file. Returns JSON of the form ' +
+        '[{ "data": {...}, "complement": {...}, "translations": {...}, "enum": {...} }]. ' +
+        'Use it to recover the example data a template expects — handy before calling render_document ' +
+        'against an unfamiliar template. Errors if the template was uploaded without a sample.'
+      ),
+    asAttachment: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, return the template as a downloadable file attachment (base64 resource) instead of inline ' +
+        'text/image. Useful in HTTP mode where outputPath is unavailable. Default: false. Ignored when outputPath is set.'
+      ),
+  };
+}
+
+/** Default (stdio) wording — also the shape the validation schemas derive from. */
+export const downloadTemplateSchema = downloadTemplateSchemaFor(STDIO_IO);
 
 export async function handleDownloadTemplate(
-  args: { templateId: string; outputPath?: string; asAttachment?: boolean },
+  args: { templateId: string; outputPath?: string; asAttachment?: boolean; sample?: boolean },
   client: CarboneClient,
   options?: CallOptions,
   fileCtx?: FileContext
 ) {
   try {
-    const result = await client.downloadTemplate(args.templateId, options);
-    const ext = result.filename.split('.').pop() ?? 'bin';
+    const result = await client.downloadTemplate(args.templateId, { ...options, sample: args.sample });
+    // A sample download is JSON whatever the template's own type is, so it must not inherit the
+    // template extension — that would route JSON through a binary delivery path.
+    const ext = args.sample ? 'json' : (result.filename.split('.').pop() ?? 'bin');
 
     return deliverDocument({
       buffer: result.buffer,

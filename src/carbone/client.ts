@@ -92,18 +92,22 @@ export class CarboneClient {
     template: string;
     convertTo: OutputFormat;
     converter?: string;
+    reportName?: string;
+    hardRefresh?: boolean;
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { renderId: string }> {
-    // `data: {}` is sent unconditionally — Carbone runs the (empty) templating pass and converts the file.
-    // We intentionally keep the field rather than omitting it (which, on Carbone 5.9.0+, would skip templating)
-    // to avoid a behavior change for existing v5 users.
+    // `data` is deliberately NOT sent. From carbone-version 5, omitting it skips the templating pass, so
+    // Carbone tags survive the conversion untouched — which is what "convert" means. Sending `data: {}`
+    // instead runs templating against an empty dataset and blanks every tag, silently destroying a
+    // template that was only meant to change format. Use renderDocument when you want tags resolved.
     const body: Record<string, unknown> = {
-      data: {},
       template: params.template,
       convertTo: params.convertTo,
     };
-    if (params.converter) body['converter'] = params.converter;
+    if (params.converter)                 body['converter']   = params.converter;
+    if (params.reportName)                body['reportName']  = params.reportName;
+    if (params.hardRefresh !== undefined) body['hardRefresh'] = params.hardRefresh;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     // Authorize Carbone's egress fetches (external images/PDFs during conversion).
@@ -155,12 +159,14 @@ export class CarboneClient {
     batchReportName?: string;
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
+    keepTags?: boolean;
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string } | { renderId: string }> {
-    // Default data to {} and always send the field. Omitting it would make Carbone 5.9.0+ skip templating —
-    // we keep the field to preserve existing v5 behavior (template is converted with empty data).
-    const body: Record<string, unknown> = { data: params.data ?? {} };
+    // `data` drives the templating pass, so it is always sent — defaulting to {} resolves every tag to an
+    // empty string, which is what "render with no data" means. keepTags omits the field entirely instead:
+    // from carbone-version 5 that skips templating, leaving every tag intact (proofing a stored template).
+    const body: Record<string, unknown> = params.keepTags ? {} : { data: params.data ?? {} };
     if (params.template)                   body['template']       = params.template;
     if (params.convertTo)                  body['convertTo']      = params.convertTo;
     if (params.converter)                  body['converter']      = params.converter;
@@ -265,6 +271,7 @@ export class CarboneClient {
    */
   async updateTemplate(params: {
     templateId:  string;
+    id?:         string;
     name?:       string;
     comment?:    string;
     category?:   string;
@@ -273,6 +280,7 @@ export class CarboneClient {
     expireAt?:   number;
   }, options?: CallOptions): Promise<void> {
     const body: Record<string, unknown> = {};
+    if (params.id         !== undefined) body['id']         = params.id;
     if (params.name       !== undefined) body['name']       = params.name;
     if (params.comment    !== undefined) body['comment']    = params.comment;
     if (params.category   !== undefined) body['category']   = params.category;
@@ -301,11 +309,12 @@ export class CarboneClient {
    */
   async downloadTemplate(
     templateId: string,
-    options?: CallOptions
+    options?: CallOptions & { sample?: boolean }
   ): Promise<{ buffer: Buffer; filename: string }> {
-    const response = await this.request(`/template/${encodeURIComponent(templateId)}`, {
-      method: 'GET',
-    }, options);
+    // The sample dataset uploaded alongside a template is served from the same path with a
+    // "_sample.json" suffix. The id itself is encoded; the suffix is ours, so it stays outside.
+    const path = `/template/${encodeURIComponent(templateId)}${options?.sample ? '_sample.json' : ''}`;
+    const response = await this.request(path, { method: 'GET' }, options);
     return this.handleBinaryResponse(response);
   }
 

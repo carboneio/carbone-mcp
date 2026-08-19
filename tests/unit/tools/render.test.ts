@@ -204,6 +204,43 @@ describe('handleRenderDocument', () => {
     );
   });
 
+  test('keepTags forwards to client and skips templating', async () => {
+    const client = makeClient();
+    await handleRenderDocument({ templateId: 'tpl1', convertTo: 'pdf', keepTags: true }, client);
+
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ keepTags: true }),
+      undefined
+    );
+  });
+
+  test('rejects keepTags combined with data', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', data: { a: 1 }, keepTags: true }, client);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/keepTags/);
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
+  });
+
+  test('rejects batchOutput:pdf without convertTo:pdf', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument(
+      { template: 'abc', data: {}, batchSplitBy: 'd.items', batchOutput: 'pdf', convertTo: 'docx' }, client);
+
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
+  });
+
+  test('allows batchOutput:pdf with convertTo:pdf', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument(
+      { template: 'abc', data: {}, batchSplitBy: 'd.items', batchOutput: 'pdf', convertTo: 'pdf' }, client);
+
+    expect(result.isError).toBeUndefined();
+  });
+
   test('returns isError on client error', async () => {
     const client = {
       renderDocument: vi.fn().mockRejectedValue(new CarboneError('Render failed', 422)),

@@ -174,6 +174,7 @@ const MIME_TYPES: Record<string, string> = {
   md:       'text/markdown',
   markdown: 'text/markdown',
   xml:      'application/xml',
+  json:     'application/json',
   rtf:      'application/rtf',
   // Images
   png:  'image/png',
@@ -322,7 +323,7 @@ export async function writeOutputFile(
 }
 
 /** Output formats represented inline as plain text. */
-export const TEXT_OUTPUT_FORMATS = new Set(['html', 'xhtml', 'txt', 'csv', 'md', 'markdown', 'xml']);
+export const TEXT_OUTPUT_FORMATS = new Set(['html', 'xhtml', 'txt', 'csv', 'md', 'markdown', 'xml', 'json']);
 
 /**
  * MIME types Anthropic's tool-result image block accepts (verified: JPEG, PNG, GIF, WebP).

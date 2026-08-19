@@ -1,18 +1,19 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CarboneClient } from '../carbone/client.js';
 import type { FileContext } from './output.js';
+import type { IoModes } from './inputForms.js';
 
 import {
   convertDocumentToolName,
   convertDocumentDescription,
-  convertDocumentSchema,
+  convertDocumentSchemaFor,
   handleConvertDocument,
 } from './convert.js';
 
 import {
   renderDocumentToolName,
   renderDocumentDescription,
-  renderDocumentSchema,
+  renderDocumentSchemaFor,
   handleRenderDocument,
 } from './render.js';
 
@@ -32,7 +33,7 @@ import {
   handleListTags,
   uploadTemplateToolName,
   uploadTemplateDescription,
-  uploadTemplateSchema,
+  uploadTemplateSchemaFor,
   uploadTemplateOutputSchema,
   handleUploadTemplate,
   updateTemplateMetadataToolName,
@@ -45,7 +46,7 @@ import {
   handleDeleteTemplate,
   downloadTemplateToolName,
   downloadTemplateDescription,
-  downloadTemplateSchema,
+  downloadTemplateSchemaFor,
   handleDownloadTemplate,
 } from './templates.js';
 
@@ -60,6 +61,10 @@ import {
 } from './info.js';
 
 export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext): void {
+  // Schema wording follows the transport: local paths only resolve in stdio, so on HTTP the
+  // descriptions must not offer them (see inputForms.ts).
+  const io: IoModes = { allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput };
+
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
   // badges and help models reason about which tools are read-only, repeatable, or destructive.
   // - readOnlyHint:   does not modify stored state (generation/listing/status).
@@ -83,7 +88,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Convert Document',
       description: convertDocumentDescription,
-      inputSchema: convertDocumentSchema,
+      inputSchema: convertDocumentSchemaFor(io),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (args, extra) => handleConvertDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
@@ -94,7 +99,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Generate Document',
       description: renderDocumentDescription,
-      inputSchema: renderDocumentSchema,
+      inputSchema: renderDocumentSchemaFor(io),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (args, extra) => handleRenderDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
@@ -127,7 +132,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Upload Template',
       description: uploadTemplateDescription,
-      inputSchema: uploadTemplateSchema,
+      inputSchema: uploadTemplateSchemaFor(io),
       outputSchema: uploadTemplateOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
@@ -161,7 +166,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Download Template',
       description: downloadTemplateDescription,
-      inputSchema: downloadTemplateSchema,
+      inputSchema: downloadTemplateSchemaFor(io),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (args, extra) => handleDownloadTemplate(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
@@ -185,6 +190,6 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       description: getCapabilitiesDescription,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    () => handleGetCapabilities()
+    () => handleGetCapabilities(io)
   );
 }

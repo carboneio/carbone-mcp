@@ -1,7 +1,7 @@
 {
   "name": "carbone-mcp",
-  "version": "1.5.0",
-  "description": "Official MCP for Carbone — Document Generation, Document Conversion, and Universal Templating. Generate PDF, DOCX, XLSX, PPTX, ODT, ODS, CSV, HTML and XML documents from templates and JSON data. Convert Office documents (DOCX, XLSX, PPTX) and HTML to PDF. Automate document workflows with a No-Code / Low-Code approach using your existing data sources and APIs.",
+  "version": "1.6.0",
+  "description": "Official MCP for Carbone — Document Generation, Document Conversion, and Universal Templating. Generate PDF, DOCX, XLSX, PPTX, ODT, ODS, CSV, HTML, Markdown and XML documents from templates and JSON data. Convert Office documents (DOCX, XLSX, PPTX), Markdown and HTML to PDF. Automate document workflows with a No-Code / Low-Code approach using your existing data sources and APIs.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -9,7 +9,9 @@
   },
   "files": [
     "dist/",
+    "!dist/**/*.map",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -21,13 +23,18 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:coverage": "vitest run --coverage",
-    "battle": "node scripts/battle-test.mjs"
+    "battle": "node scripts/battle-test.mjs",
+    "battle:http": "MCP_TARGET=http node scripts/battle-test.mjs",
+    "battle:prod": "MCP_TARGET=prod node scripts/battle-test.mjs"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "carbone",
+    "carbone-ice",
     "claude",
     "anthropic",
     "chatgpt",

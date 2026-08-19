@@ -33,6 +33,17 @@ Convert any document to another format without storing a template.
 
 **File input:** local path, HTTPS URL, or base64 string.
 
+> **Accepted formats.** `convert_document` and `render_document` use the same Carbone endpoint and the same
+> format validation, so they accept the same inputs: XML-based and text-based documents only — `DOCX`,
+> `XLSX`, `PPTX`, `ODT`, `ODS`, `ODP`, `ODG`, `HTML`, `XHTML`, `XML`, `SVG`, `IDML`, `MD`, `TXT`, `CSV`,
+> `RTF`, `PDF`. The legacy **binary** formats `DOC`, `XLS` and `PPT` are **rejected as input** (error `w118`)
+> even though Carbone can produce them as output — re-save them as `DOCX`/`XLSX`/`PPTX` first.
+
+> **Carbone tags are preserved.** Conversion does not run templating, so `{d.field}` survives untouched.
+> Converting a DOCX template to PDF shows the tags as written — that is how you proof a template's layout,
+> or convert a template between formats (DOCX → ODT) while it stays a template. Use `render_document` to
+> resolve tags into real values.
+
 ```
 Convert /path/to/report.docx to PDF
 Convert https://example.com/presentation.pptx to PNG
@@ -46,7 +57,9 @@ Rasterize each page of /path/to/report.pdf to PNG
 |---|---|---|---|
 | `file` | string | ✅ | File path, HTTPS URL, or base64 string |
 | `convertTo` | string \| object | ✅ | Target format (`"pdf"`, `"docx"`, `"png"`, …) or advanced object |
-| `converter` | `L` \| `O` \| `C` | ❌ | Converter engine (default: `L` LibreOffice) |
+| `converter` | `L` \| `O` \| `C` \| `I` | ❌ | Converter engine (default: `L` LibreOffice) |
+| `reportName` | string | ❌ | Output filename **without** extension (Carbone appends it). Tags are not resolved here — pass a literal name |
+| `hardRefresh` | boolean | ❌ | Force the converter to run even when output format == input format. Needed for **PDF → PDF** so `formatOptions` (watermark, password, PDF/A, page range) actually apply |
 | `outputPath` | string | ❌ | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | ❌ | Return the bytes as a downloadable attachment instead of inline |
 | `returnLink` | boolean | ❌ | Return a public **one-time** download URL instead of the file |
@@ -56,6 +69,18 @@ Rasterize each page of /path/to/report.pdf to PNG
 - `L` — LibreOffice (default): best all-round engine for DOCX, XLSX, PPTX, ODT
 - `O` — OnlyOffice: highest fidelity for Microsoft Office formats
 - `C` — Chromium: best for HTML/CSS/JS — full browser rendering
+- `I` — **Carbone ICE** (Instant Converter Engine, Carbone `5.14.0`+): **DOCX → PDF only** — any other input
+  or output format is rejected. No third-party converter: up to 60x faster on a 1000-page DOCX (3x on a
+  one-page document). Handles pages/sections, headers/footers, styled paragraphs, lists, tables, pictures,
+  shapes and vector charts.
+  > ⚠️ **ICE silently ignores PDF security options.** `EncryptFile`, `DocumentOpenPassword` and
+  > `RestrictPermissions` have **no effect** and no error is raised — the PDF comes back readable by
+  > anyone. Only `Watermarks` are applied. Use `L` whenever a password or restricted permissions are
+  > required.
+
+  *Also unsupported:* WEBP and EMF/WMF images, table of contents, SmartArt, complex charts,
+  footnotes/endnotes, comments, tracked changes, form fields, equations, bookmarks and links.
+  A font the machine does not hold falls back to Noto Sans.
 
 **Advanced `convertTo` object:**
 ```json
@@ -111,9 +136,10 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, defaults to `{}` (the template is converted without data injection) |
+| `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, defaults to `{}` — templating still runs, so every tag resolves to an **empty string** |
+| `keepTags` | boolean | Skip templating entirely and leave every tag **as literal text** (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Mutually exclusive with `data` — passing both is rejected |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`) |
-| `converter` | `L` \| `O` \| `C` | PDF converter engine (see `convert_document`) |
+| `converter` | `L` \| `O` \| `C` \| `I` | PDF converter engine (see `convert_document`); `I` (Carbone ICE) is DOCX → PDF only |
 | `reportName` | string | Output filename, supports Carbone tags (e.g. `"{d.client}-invoice.pdf"`) |
 | `outputPath` | string | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | Return the bytes as a downloadable attachment instead of inline |
@@ -148,9 +174,12 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `batchSplitBy` | string | JSON path to array driving batch: `"d.invoices"` → one doc per invoice |
-| `batchOutput` | string | Container for batch result: `"zip"` |
-| `batchReportName` | string | Filename per document in ZIP: `"invoice-{d.id}.pdf"` |
+| `batchSplitBy` | string | Array driving the batch: `"d"` when data itself is the array, or `"d.invoices"` for a child array → one doc per element. **1–100 objects** on Carbone Cloud |
+| `batchOutput` | `zip` \| `pdf` | How the batch is packaged (default `zip`). `"zip"` bundles every document; `"pdf"` **concatenates them into one continuous PDF** and requires `convertTo: "pdf"` |
+| `batchReportName` | string | Filename per document in the ZIP: `"invoice-{d.id}.pdf"`. Carbone sanitises unsafe characters and appends an index to duplicates (`report_1.pdf`) |
+
+> Batch is **always asynchronous** — `webhookUrl` is required. Carbone returns immediately and POSTs the
+> `renderId` to your URL when the bundle is ready.
 
 ### Pass JSON by reference
 

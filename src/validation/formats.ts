@@ -10,8 +10,9 @@ import { z } from 'zod';
  * so both can import them without creating a circular dependency.
  */
 export const OUTPUT_FORMATS = [
-  // Documents
-  'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp', 'odg',
+  // Documents. doc/xls/ppt are OUTPUT-ONLY: Carbone writes the legacy binary Office formats but
+  // cannot read them back (they are neither XML- nor text-based), so they are not valid inputs.
+  'pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'odg',
   // Web / text
   'html', 'xhtml', 'txt', 'csv', 'md', 'xml', 'rtf',
   // Images
@@ -22,7 +23,11 @@ export const OUTPUT_FORMATS = [
   'idml', 'epub', 'cdr',
 ] as const;
 
-export const CONVERTERS = ['L', 'C', 'O'] as const;
+/**
+ * Converter engines accepted by the `converter` render/convert option.
+ * `I` (Carbone ICE) was introduced in Carbone 5.14.0 and handles DOCX → PDF only.
+ */
+export const CONVERTERS = ['L', 'C', 'O', 'I'] as const;
 
 /** Target format: either a simple string or an object with advanced options. */
 export const OutputFormatSchema = z.union([

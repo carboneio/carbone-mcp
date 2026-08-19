@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.6.0] — 2026-08-19
+
+### Added
+
+- **Carbone ICE converter** — `converter: "I"` on `render_document` and `convert_document` (Carbone API v5.14.0). Carbone's own DOCX → PDF engine, up to 60x faster than LibreOffice on a 1000-page DOCX. **DOCX → PDF only**; any other input or output format is rejected.
+
+  ⚠️ **ICE silently ignores PDF security options.** `EncryptFile`, `DocumentOpenPassword` and `RestrictPermissions` are accepted but never applied — the PDF comes back readable by anyone, with no error. Only `Watermarks` work. Use `L` whenever a password or restricted permissions are required.
+
+  Also unsupported: WEBP and EMF/WMF images, table of contents, SmartArt, complex charts, footnotes/endnotes, comments, tracked changes, form fields, equations, bookmarks and links. A missing font falls back to Noto Sans.
+
+- `render_document` — `keepTags` skips templating and leaves every tag as literal text (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Rejected together with `data`.
+
+- `convert_document` — `reportName` (output filename, extension appended by Carbone) and `hardRefresh` (forces the converter to run when the output format equals the input format — needed for PDF → PDF so `formatOptions` such as watermark, password and PDF/A actually apply).
+
+- `convert_document` / `render_document` — `doc`, `xls` and `ppt` added as output formats. Carbone writes the legacy binary Office formats even though it cannot read them back, so they are output-only (all three verified against the API).
+
+- `convert_document` — corrected the input format list. Carbone reads XML-based and text-based documents only, so the legacy binary formats `DOC`, `XLS` and `PPT` are rejected as input (`w118`) even though Carbone can produce them as output; `RTF` and `PDF` are accepted. Conversion and templating share one endpoint and one validation, so their accepted inputs are identical.
+
+- `render_document` — `batchOutput` now accepts `"pdf"` (concatenates the batch into one continuous PDF; requires `convertTo: "pdf"`) alongside `"zip"`. `batchSplitBy` accepts `"d"` when the data itself is the array. Carbone Cloud allows 1–100 objects per batch.
+
+- `download_template` — `sample: true` returns the JSON sample dataset stored with the template (`GET /template/{id}_sample.json`) instead of the template file. Sample data could be uploaded but never read back.
+
+- `update_template_metadata` — `id` moves a version under a different Template ID.
+
+- `list_templates` — the `origin` filter documents all five values: 0 = API, 1 = Studio, 2 = Salesforce, 3 = Odoo, 4 = HubSpot (only 0 and 1 were listed).
+
+### Changed
+
+- **Tool descriptions now follow the transport.** Over HTTP they no longer offer "local file path" as an input form — those have been rejected since 1.5.0, so the model was being told about a call that could only fail — and `outputPath` is marked unavailable with `asAttachment` / `returnLink` named instead. stdio wording is unchanged.
+
+- **`convert_document` now preserves Carbone tags.** It previously sent `data: {}`, which ran templating against an empty dataset and blanked every tag — so converting a DOCX template to PDF silently destroyed every `{d.field}`. The field is now omitted entirely, which skips templating (Carbone 5.9.0+). Conversion changes a document's format; it does not template. Use `render_document` to resolve tags.
+
+---
+
 ## [1.5.0] — 2026-06-26
 
 ### Security

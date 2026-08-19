@@ -115,6 +115,36 @@ describe('handleConvertDocument', () => {
     );
   });
 
+  test('passes the ICE converter to client', async () => {
+    const client = makeClient();
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', converter: 'I' }, client);
+
+    expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ converter: 'I' }),
+      undefined
+    );
+  });
+
+  test('passes reportName and hardRefresh to client', async () => {
+    const client = makeClient();
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', reportName: 'contract', hardRefresh: true }, client);
+
+    expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ reportName: 'contract', hardRefresh: true }),
+      undefined
+    );
+  });
+
+  test('applies reportName to the delivered filename (API cannot, templating is skipped)', async () => {
+    const client = makeClient(Buffer.from('pdf bytes'), 'report.pdf');
+    const result = await handleConvertDocument(
+      { file: 'data', convertTo: 'pdf', reportName: 'contract', outputPath: undefined }, client, undefined,
+      { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 });
+
+    // HTTP-mode delivery → EmbeddedResource whose uri carries the filename.
+    expect(result.content[0].resource.uri).toContain('contract.pdf');
+  });
+
   test('accepts advanced convertTo object', async () => {
     const client = makeClient();
     const convertTo = { formatName: 'pdf' as const, formatOptions: { EncryptFile: true } };
