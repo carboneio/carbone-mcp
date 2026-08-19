@@ -36,6 +36,10 @@ if (!KEY) { console.error('Set CARBONE_API_KEY (or CARBONE_TEST_API_KEY).'); pro
 //   API_URL  — which Carbone API that server talks to. We only control it in stdio mode; for a
 //              remote MCP server it is whatever that deployment was configured with.
 const MCP_URL = process.env.MCP_URL ?? (TARGET === 'prod' ? PROD_MCP_URL : 'http://localhost:3000');
+// Which server entry stdio spawns. Defaults to the local build; point it at an installed package
+// (…/node_modules/carbone-mcp/dist/index.js) to battle-test the PUBLISHED tarball — the working tree
+// and the packed artifact are not the same thing, and `files`/build config can diverge between them.
+const MCP_BIN = process.env.MCP_BIN ?? 'dist/index.js';
 const API_URL = IS_STDIO ? (process.env.CARBONE_BASE_URL ?? PROD_API_URL) : null;
 // A remote MCP is assumed to be pointed at a real account; in stdio we know for sure.
 const HITS_PROD_API = IS_STDIO ? API_URL === PROD_API_URL : true;
@@ -43,7 +47,7 @@ const HITS_PROD_API = IS_STDIO ? API_URL === PROD_API_URL : true;
 async function makeTransport() {
   if (IS_STDIO) {
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
-    return new StdioClientTransport({ command: 'node', args: ['dist/index.js'], env: { ...process.env, CARBONE_API_KEY: KEY } });
+    return new StdioClientTransport({ command: 'node', args: [MCP_BIN], env: { ...process.env, CARBONE_API_KEY: KEY } });
   }
   const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
   return new StreamableHTTPClientTransport(new URL(MCP_URL), { requestInit: { headers: { Authorization: `Bearer ${KEY}` } } });
@@ -87,7 +91,7 @@ function track(r) { const s = r.structuredContent ?? {}; const k = s.id ?? s.tem
 
 async function run() {
   console.log(`\n=== Battle test (full matrix) — target=${TARGET} ===`);
-  console.log(`    MCP server : ${IS_STDIO ? 'local build (dist/index.js)' : MCP_URL}`);
+  console.log(`    MCP server : ${IS_STDIO ? MCP_BIN : MCP_URL}`);
   console.log(`    Carbone API: ${API_URL ?? 'whatever the remote MCP server is configured with'}`);
   if (HITS_PROD_API) {
     console.log('    ⚠  Real Carbone account: this run uploads ~4 templates and bills real renders,');
