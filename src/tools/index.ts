@@ -19,6 +19,14 @@ import {
 } from './render.js';
 
 import {
+  inspectTemplateToolName,
+  inspectTemplateDescriptionFor,
+  inspectTemplateSchemaFor,
+  inspectTemplateOutputSchema,
+  handleInspectTemplate,
+} from './inspect.js';
+
+import {
   listTemplatesToolName,
   listTemplatesDescription,
   listTemplatesSchema,
@@ -73,6 +81,7 @@ const updateTemplateMetadataInput  = z.object(updateTemplateMetadataSchema);
 const updateTemplateMetadataOutput = z.object(updateTemplateMetadataOutputSchema);
 const deleteTemplateInput          = z.object(deleteTemplateSchema);
 const getApiStatusOutput           = z.object(getApiStatusOutputSchema);
+const inspectTemplateOutput        = z.object(inspectTemplateOutputSchema);
 
 /**
  * The file-handling tools word their inputs per transport: local paths only resolve in stdio, so over HTTP the
@@ -91,6 +100,8 @@ function buildTransportTools(io: IoModes) {
     convertDocumentInput:       z.object(convertDocumentSchemaFor(io)),
     renderDocumentDescription:  renderDocumentDescriptionFor(io),
     renderDocumentInput:        z.object(renderDocumentSchemaFor(io)),
+    inspectTemplateDescription: inspectTemplateDescriptionFor(io),
+    inspectTemplateInput:       z.object(inspectTemplateSchemaFor(io)),
     uploadTemplateInput:        z.object(uploadTemplateSchemaFor(io)),
     downloadTemplateInput:      z.object(downloadTemplateSchemaFor(io)),
   };
@@ -113,7 +124,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   const io: IoModes = { allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput };
   const {
     convertDocumentDescription, convertDocumentInput, renderDocumentDescription, renderDocumentInput,
-    uploadTemplateInput, downloadTemplateInput, documentToolHints,
+    inspectTemplateDescription, inspectTemplateInput, uploadTemplateInput, downloadTemplateInput, documentToolHints,
   } = transportToolsFor(io);
 
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
@@ -156,6 +167,20 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       annotations: documentToolHints,
     },
     (args, ctx) => handleRenderDocument(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
+  );
+
+  // Runs one render whose document is never fetched: nothing is written locally nor changed in the account,
+  // so it is read-only and repeatable on both transports.
+  server.registerTool(
+    inspectTemplateToolName,
+    {
+      title: 'Inspect Template',
+      description: inspectTemplateDescription,
+      inputSchema: inspectTemplateInput,
+      outputSchema: inspectTemplateOutput,
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    (args, ctx) => handleInspectTemplate(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
 
   server.registerTool(

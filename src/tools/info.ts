@@ -54,6 +54,7 @@ const capabilitiesText = (io: IoModes) => `# Carbone — Document Generation & C
 |----------------------------|----------------------------------------------------------|
 | convert_document           | Convert a document to another format (tags kept as is)   |
 | render_document            | Generate a document from a template + JSON data          |
+| inspect_template           | List a template's tags and get a matching sample dataset |
 | list_templates             | List stored templates (filter by category, search, limit)|
 | list_categories            | List all template categories in your account             |
 | list_tags                  | List all tags used across your templates                 |
@@ -143,13 +144,13 @@ Two modes — choose based on whether you need to reuse the template:
 **Template data tags (quick reference):**
 - \`{d.customer.name}\`            — simple field access
 - \`{c.company}\`                  — complement data (static/shared values passed via \`complement\`)
-- \`{d.price:formatC(EUR)}\`       — currency formatter
+- \`{d.price:formatC()}\`          — currency, formatted per \`lang\`; converted from \`currencySource\` to \`currencyTarget\` when set
 - \`{d.date:formatD(YYYY-MM-DD)}\` — date formatter
 - \`{d.items[i].description}\`     — array loop start
 - \`{d.items[i+1]}\`               — array loop end
 - \`{t(label)}\`                     — translation tag (requires \`lang\` + \`translations\`)
 - \`{d.status:ifEQ(active):show(Yes):elseShow(No)}\` — conditional (inline value)
-- \`{d.show:ifEQ(true):showBegin}\` … \`{d.show:ifEQ(true):showEnd}\` — conditional block
+- \`{d.toBuy:ifEQ(true):showBegin}\` … \`{d.toBuy:showEnd}\` — conditional block
 
 > For the full syntax reference — all formatters, conditions, loops, and translations — load \`carbone.skill\` (see Documentation).
 

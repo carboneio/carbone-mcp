@@ -60,6 +60,7 @@ const TRANS = b64('<!DOCTYPE html><html><body><p>{t(hi)}, {d.name}! {d.status:co
 const COMP = b64('<!DOCTYPE html><html><body><p>{c.company} — {d.x}</p></body></html>');
 const CUR = b64('<!DOCTYPE html><html><body>{d.p:formatC()}</body></html>');
 const DATE = b64('<!DOCTYPE html><html><body>{d.d:formatD(YYYY-MM-DD)}</body></html>');
+const INSPECT = b64('<!DOCTYPE html><html><body><h1>{d.name}</h1><ul><li>{d.items[i].x}</li><li>{d.items[i+1].x}</li></ul></body></html>');
 
 let pass = 0, fail = 0;
 const created = [];
@@ -109,10 +110,12 @@ async function run() {
     check('capabilities tools/resources/completions', !!caps?.tools && !!caps?.resources && !!caps?.completions);
     check('instructions present', !!CLIENT.getInstructions?.());
     const { tools } = await CLIENT.listTools();
-    check('11 tools, titles, annotations, outputSchema', tools.length === 11
+    check('12 tools, titles, annotations, outputSchema', tools.length === 12
       && tools.find((t) => t.name === 'convert_document')?.title === 'Convert Document'
       && tools.find((t) => t.name === 'delete_template')?.annotations?.destructiveHint === true
-      && !!tools.find((t) => t.name === 'list_templates')?.outputSchema);
+      && !!tools.find((t) => t.name === 'list_templates')?.outputSchema
+      && tools.find((t) => t.name === 'inspect_template')?.annotations?.readOnlyHint === true
+      && !!tools.find((t) => t.name === 'inspect_template')?.outputSchema);
     check('4 static resources + templates/{id}', (await CLIENT.listResources()).resources.length === 4
       && (await CLIENT.listResourceTemplates()).resourceTemplates.some((r) => r.uriTemplate === 'carbone://templates/{id}'));
 
@@ -226,7 +229,16 @@ async function run() {
     const rOut = await call('render_document', { template: INV, data: { customer: 'S', total: 1 }, convertTo: 'pdf', converter: 'C', outputPath: `/tmp/bt-r-${Date.now()}.pdf` });
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(rOut).includes('bytes') : (rOut.isError && text(rOut).includes('stdio')));
 
-    // ── upload matrix ──────────────────────────────────────────────────────────────
+    // ── inspect: the undocumented isDebugActive render option ─────────────────────────
+    // {t()} translation tags are not listed by Carbone, so the fixture has none; its {d.items[i].x} loop must be.
+    console.log('\n[inspect_template]');
+    const insp = await call('inspect_template', { template: INSPECT });
+    const inspS = insp.structuredContent ?? {};
+    check('inline: lists {d.name} and {d.items[i].x}', ['{d.name}', '{d.items[i].x}'].every((t) => inspS.tags?.includes(t)), why(insp));
+    check('inline: sample.data has name and items', !!inspS.sample?.data && 'name' in inspS.sample.data && 'items' in inspS.sample.data, why(insp));
+    check('inspect XOR neither rejected', (await call('inspect_template', {})).isError === true);
+
+        // ── upload matrix ──────────────────────────────────────────────────────────────
     console.log('\n[upload_template]');
     const upV = track(await call('upload_template', { template: INV, name: `BattleTest-ver ${Date.now()}`, category: 'bt-cat', tags: ['bt'], comment: 'battle', versioning: true }));
     const id = upV.id, versionId = upV.versionId;
@@ -255,6 +267,8 @@ async function run() {
     console.log('\n[stored-template ops]');
     check('render by templateId', text(await call('render_document', { templateId: id, data: { customer: 'ById', total: 5 }, convertTo: 'html' })).includes('ById'));
     check('render by versionId', text(await call('render_document', { templateId: versionId, data: { customer: 'ByVer', total: 5 }, convertTo: 'html' })).includes('ByVer'));
+    const inspId = await call('inspect_template', { templateId: id });
+    check('inspect by templateId lists {d.customer}', !!inspId.structuredContent?.tags?.includes('{d.customer}'), why(inspId));
     check('download by id', !(await call('download_template', { templateId: id })).isError);
     check('download by versionId', !(await call('download_template', { templateId: versionId })).isError);
     check('download asAttachment = resource', typeOf(await call('download_template', { templateId: id, asAttachment: true })) === 'resource');

@@ -7,7 +7,9 @@ import {
   CarboneRateLimitError,
   CarboneValidationError,
 } from './errors.js';
-import type { ApiStatus, TemplateListItem, TemplateListResponse, UpdateTemplateResult, UploadTemplateResult } from './types.js';
+import type {
+  ApiStatus, TemplateDebugInfo, TemplateListItem, TemplateListResponse, UpdateTemplateResult, UploadTemplateResult,
+} from './types.js';
 
 export interface CarboneClientConfig {
   /** API key for the Carbone API. Optional when using per-call options (e.g. HTTP mode). */
@@ -229,6 +231,43 @@ export class CarboneClient {
     }
 
     return this.handleBinaryResponse(response);
+  }
+
+  /**
+   * Inspect a template: the tags it uses and a sample dataset matching its structure.
+   *
+   * - Stored template:  POST /render/{templateId}
+   * - Inline template:  POST /render/template  (template sent as base64 in body)
+   *
+   * Runs one render with the undocumented `isDebugActive` option, in JSON mode (no `download=true`), so the
+   * response carries `data.debug` and the document is left unfetched. No convertTo: the output keeps the
+   * template format, the least work for Carbone. Exactly one of `templateId` or `template` must be provided.
+   */
+  async inspectTemplate(params: { templateId?: string; template?: string }, options?: CallOptions): Promise<TemplateDebugInfo> {
+    const body: Record<string, unknown> = { data: {}, isDebugActive: true };
+    if (params.template) body['template'] = params.template;
+    const endpoint = params.template ? '/render/template' : `/render/${encodeURIComponent(params.templateId!)}`;
+
+    const response = await this.request(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, options);
+
+    let debug: unknown;
+    try {
+      debug = ((await response.json()) as { data?: { debug?: unknown } } | null)?.data?.debug;
+    } catch {
+      // Not JSON: handled as a missing debug object below.
+    }
+    if (debug === null || typeof debug !== 'object' || Array.isArray(debug)) {
+      throw new CarboneError(
+        'This Carbone server did not return inspection data: its version does not support template inspection. ' +
+        'Read the tags from the template file instead (download_template fetches a stored one).',
+        response.status
+      );
+    }
+    return debug as TemplateDebugInfo;
   }
 
   /**

@@ -34,7 +34,7 @@ describe('stdio: one message may be up to MCP_MAX_BODY_BYTES', () => {
       // The message was read and the tool ran: it only failed on the unreachable Carbone API.
       expect(r.isError).toBe(true);
       expect((r.content as Array<{ text: string }>)[0]!.text).toMatch(/Could not reach the Carbone API/);
-      expect((await client.listTools()).tools).toHaveLength(11);
+      expect((await client.listTools()).tools).toHaveLength(12);
     } finally {
       await client.close();
     }

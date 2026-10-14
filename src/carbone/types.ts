@@ -54,3 +54,16 @@ export interface ApiStatus {
   version: string;
   message: string;
 }
+
+/**
+ * `data.debug` of a render with the undocumented `isDebugActive` option (POST /render/…, JSON mode).
+ * Measured on api.carbone.io: { markers: string[], sample: { data, complement }, error: {}, signatures: [], metrics }.
+ * Every field is left loose: inspect_template normalises it before it reaches the output schema.
+ */
+export interface TemplateDebugInfo {
+  markers?: unknown;
+  sample?: unknown;
+  error?: unknown;
+  signatures?: unknown;
+  [key: string]: unknown;
+}

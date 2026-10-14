@@ -27,6 +27,8 @@ export const SERVER_INSTRUCTIONS =
   '- Use convert_document to convert an existing file between formats (no data injection).\n' +
   '- Use render_document to merge JSON data into a Carbone template ({d.field} tags): pass a ' +
   'templateId for a stored template, or an inline template for a one-shot render.\n' +
+  '- Don\'t know which data a template expects? Call inspect_template first: it lists the template\'s tags and ' +
+  'returns a sample JSON dataset matching its structure.\n' +
   '- Writing, editing, or validating a Carbone template? Load the Carbone Skill first — Carbone tags are ' +
   'a unique language (NOT Mustache/Handlebars/Jinja), so never guess syntax; the Skill is the source of ' +
   'truth for tags, formatters, loops, and conditions: https://carbone.io/documentation/developer/ai/skills.md ' +

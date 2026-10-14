@@ -45,6 +45,7 @@ describe('handleGetCapabilities', () => {
 
     expect(text).toContain('convert_document');
     expect(text).toContain('render_document');
+    expect(text).toContain('inspect_template');
     expect(text).toContain('list_templates');
     expect(text).toContain('list_categories');
     expect(text).toContain('list_tags');

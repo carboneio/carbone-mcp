@@ -25,7 +25,10 @@ export const STDIO_IO: IoModes = { allowLocalPath: true, allowFileOutput: true }
 export function inputForms(io: IoModes): string {
   return io.allowLocalPath
     ? 'Three input forms are accepted: ' +
-      '(1) Local file path — absolute or relative, e.g. "/home/user/report.docx" or "./invoice.xlsx". ' +
+      '(1) Local file path — absolute, e.g. "/Users/me/report.docx" (or "C:\\Users\\me\\report.docx" on Windows), ' +
+      'or under the home directory, e.g. "~/report.docx". A relative path must start with "./" or "../" and resolves ' +
+      'against the server process\'s working directory, which is rarely yours: prefer an absolute path. ' +
+      'A bare file name such as "report.docx" is NOT a path: it would be sent as base64 content. ' +
       '(2) HTTPS URL — the file is downloaded automatically, e.g. "https://example.com/file.pptx". ' +
       '(3) Base64-encoded string — the raw file content encoded as base64. '
     : 'Two input forms are accepted: ' +
@@ -33,6 +36,11 @@ export function inputForms(io: IoModes): string {
       '(2) Base64-encoded string — the raw file content encoded as base64. ' +
       'Local file paths are NOT accepted — this server is reached over HTTP, so a path would resolve on the ' +
       'server\'s disk rather than yours and is rejected. Upload the bytes as base64, or host the file at a URL. ';
+}
+
+/** A valid file value for examples: an absolute local path in stdio, an HTTPS URL over HTTP. */
+export function exampleFile(name: string, io: IoModes): string {
+  return io.allowLocalPath ? `/Users/me/${name}` : `https://example.com/${name}`;
 }
 
 /** Short form of the same idea, for prose that lists the accepted forms inline. */

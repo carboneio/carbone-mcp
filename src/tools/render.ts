@@ -10,6 +10,9 @@ import { type IoModes, STDIO_IO, inputForms, inputFormsShort, jsonRefForms, outp
 
 export const renderDocumentToolName = 'render_document';
 
+/** Returned when not exactly one of templateId / template is given (render_document, inspect_template). */
+export const TEMPLATE_XOR_MESSAGE = 'Provide either templateId or template, not both (and not neither).';
+
 export function renderDocumentDescriptionFor(io: IoModes): string {
   return 'Generate a document by merging a Carbone template with JSON data. ' +
     'Two modes: (1) pass templateId to use a previously uploaded template; ' +
@@ -65,7 +68,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Access fields with {d.fieldName} tags. ' +
         'Nested objects: {d.customer.name}. ' +
         'Array loops: {d.items[i].description} … {d.items[i+1]}. ' +
-        'Conditionals: {d.status == "active" ? "Yes" : "No"}. ' +
+        'Conditions: {d.status:ifEQ(active):show(Yes):elseShow(No)}. ' +
         'Optional: if omitted, {} is sent, so every tag resolves to empty ("Hello {d.name}!" becomes "Hello !"). ' +
         'To keep the tags as written instead, pass keepTags: true (and no data). ' +
         'Instead of inlining a large dataset, you may pass a STRING reference to the JSON: ' +
@@ -119,11 +122,12 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .string()
       .optional()
       .describe(
-        'Carbone alias expressions evaluated once before rendering, available everywhere in the template. ' +
-        'Used to pre-compute reusable values or shorten repetitive paths. ' +
-        'Syntax: "{#aliasName = expression}". ' +
-        'Example: "{#fullName = d.firstName + \\" \\" + d.lastName}{#total = d.price * d.qty}". ' +
-        'Aliases are then used in the template as {#fullName}, {#total}. ' +
+        'Carbone alias definitions applied to the whole template, as if written in it. An alias is a shortcut to a ' +
+        'data path, not a variable: it stores no value and computes nothing (no arithmetic, no concatenation). ' +
+        'Define with {#alias = d.path}, optionally with $parameters: {#mealOf($weekday) = d[weekday = $weekday]}. ' +
+        'Use them in the template with {$alias}, e.g. {$mealOf(2).name}. ' +
+        'Example: "{#buyer = d.order.customer}", then {$buyer.name} in the template renders d.order.customer.name. ' +
+        'To store a computed value, use the :set formatter instead. ' +
         'Documentation: https://carbone.io/documentation/design/substitutions/aliases.html#alias'
       ),
 
@@ -381,7 +385,7 @@ export async function handleRenderDocument(
   if ((args.templateId != null) === (args.template != null)) {
     return {
       isError: true,
-      content: [{ type: 'text' as const, text: 'Provide either templateId or template, not both (and not neither).' }],
+      content: [{ type: 'text' as const, text: TEMPLATE_XOR_MESSAGE }],
     };
   }
 

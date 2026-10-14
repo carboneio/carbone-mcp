@@ -6,7 +6,7 @@ import {
 import { resolveFileInput } from '../utils/file.js';
 import { deliver, withReportName, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
-import { type IoModes, STDIO_IO, inputForms, inputFormsShort, outputPathDescription } from './inputForms.js';
+import { type IoModes, STDIO_IO, exampleFile, inputForms, inputFormsShort, outputPathDescription } from './inputForms.js';
 
 export const convertDocumentToolName = 'convert_document';
 
@@ -16,16 +16,11 @@ export function convertDocumentDescriptionFor(io: IoModes): string {
     'proof a template in another format (DOCX template → PDF, or DOCX → ODT while it stays a template). ' +
     'The source file can be ' + inputFormsShort(io) + '. ' +
     'Use render_document instead when you need data injection ({d.field} tags resolved), translations, or batch generation. ' +
-    'Common conversions: ' +
-    'DOCX → PDF (file: "report.docx", convertTo: "pdf"; add converter: "I" for the fastest conversion), ' +
-    'XLSX → PDF (file: "data.xlsx", convertTo: "pdf"), ' +
-    'PPTX → PDF (file: "slides.pptx", convertTo: "pdf"), ' +
-    'HTML → PDF (file: "page.html", convertTo: "pdf", converter: "C" for full CSS/JS rendering), ' +
-    'DOCX → HTML (file: "doc.docx", convertTo: "html"), ' +
-    'XLSX → CSV (file: "sheet.xlsx", convertTo: "csv"), ' +
-    'PDF → PNG (file: "doc.pdf", convertTo: "png"), ' +
-    'PPTX → PNG (first slide as image), ' +
-    'MD → PDF (file: "readme.md", convertTo: "pdf").';
+    'Example: { "file": "' + exampleFile('report.docx', io) + '", "convertTo": "pdf" }' +
+    (io.allowLocalPath ? ' (a bare file name such as "report.docx" is not a path). ' : '. ') +
+    'Common conversions: DOCX → PDF (add converter: "I" for the fastest conversion), XLSX → PDF, PPTX → PDF, ' +
+    'HTML → PDF (converter: "C" for full CSS/JS rendering), DOCX → HTML, XLSX → CSV, PDF → PNG, ' +
+    'PPTX → PNG (first slide as image), MD → PDF.';
 }
 
 /** Default (stdio) wording. */

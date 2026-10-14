@@ -163,11 +163,11 @@ describe('HTTP transport serves both protocol eras', () => {
     beforeAll(async () => { client = await connect(key, mode); });
     afterAll(async () => { await client.close(); });
 
-    test(`negotiates the ${era} era and lists all 11 tools`, async () => {
+    test(`negotiates the ${era} era and lists all 12 tools`, async () => {
       expect(client.getProtocolEra()).toBe(era);
       if (era === 'modern') expect(client.getNegotiatedProtocolVersion()).toBe(MODERN);
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(11);
+      expect(tools).toHaveLength(12);
     });
 
     test(`advertises static tool and resource lists (${era === 'modern' ? 'server/discover' : 'initialize'})`, () => {
@@ -356,7 +356,7 @@ describe('stdio transport serves both protocol eras', () => {
       expect(client.getProtocolEra()).toBe(era);
       if (era === 'modern') expect(client.getNegotiatedProtocolVersion()).toBe(MODERN);
       expect(client.getServerCapabilities()).toEqual(CAPABILITIES);
-      expect((await client.listTools()).tools).toHaveLength(11);
+      expect((await client.listTools()).tools).toHaveLength(12);
       const result = await client.callTool({ name: 'list_templates', arguments: {} });
       expect(result.structuredContent).toMatchObject({ templates: [{ id: '1' }], hasMore: false });
       expect(lastAuthFor('/templates')).toBe(`Bearer ${STDIO_KEY}`);

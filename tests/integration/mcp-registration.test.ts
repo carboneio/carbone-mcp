@@ -54,9 +54,9 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(client.getInstructions()).toContain('get_capabilities');
   });
 
-  test('tools/list exposes all 11 tools with titles, annotations, and outputSchema', async () => {
+  test('tools/list exposes all 12 tools with titles, annotations, and outputSchema', async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(11);
+    expect(tools).toHaveLength(12);
 
     const convert = tools.find((t) => t.name === 'convert_document');
     expect(convert?.title).toBe('Convert Document');
@@ -65,6 +65,27 @@ describe('MCP registration surface (in-process, no API key)', () => {
 
     expect(tools.find((t) => t.name === 'delete_template')?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === 'list_templates')?.outputSchema).toBeTruthy();
+  });
+
+  test('inspect_template: read-only annotations, templateId XOR template input, and its outputSchema', async () => {
+    type Schema = { properties?: Record<string, { type?: string }>; required?: string[] };
+    const { tools } = await client.listTools();
+    const inspect = tools.find((t) => t.name === 'inspect_template')!;
+    expect(inspect.title).toBe('Inspect Template');
+    expect(inspect.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
+    expect(inspect.description).toMatch(/before render_document/);
+    expect(inspect.description).toMatch(/\{t\(\)\} translation tags are not listed/);
+
+    const input = inspect.inputSchema as Schema;
+    expect(Object.keys(input.properties ?? {}).sort()).toEqual(['template', 'templateId']);
+    expect(input.required ?? []).toEqual([]); // exactly one of the two, checked by the handler
+    expect((input.properties?.['template'] as { description?: string }).description).toMatch(/Local file path —/); // stdio
+
+    const output = inspect.outputSchema as Schema;
+    expect(output.required?.sort()).toEqual(['sample', 'tags']);
+    expect(output.properties?.['tags']?.type).toBe('array');
+    expect(output.properties?.['sample']?.type).toBe('object');
+    expect(Object.keys(output.properties ?? {}).sort()).toEqual(['error', 'sample', 'signatures', 'tags']);
   });
 
   test('convert_document / render_document advertise the OpenAPI-synced enums and limits', async () => {
@@ -162,6 +183,10 @@ describe('structured output passes SDK output-schema validation (live API respon
     updateTemplate: async () => ({
       name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'], deployedAt: null, versionId: '4dc8abc',
     }),
+    // POST /render/template with isDebugActive (live shape), plus nulls an older or on-premise API might send.
+    inspectTemplate: async () => ({
+      markers: ['{d.name}', null, '{d.items[i].x}'], sample: null, error: null, signatures: null, metrics: { renderTime: 3 },
+    }),
     // POST /template with versioning.
     uploadTemplate: async () => ({
       id: '1530905183164918624', versionId: '929a', templateId: '929a', type: 'html',
@@ -205,6 +230,20 @@ describe('structured output passes SDK output-schema validation (live API respon
     expect(result.structuredContent).toEqual({
       versionId: '4dc8abc', name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'],
     });
+  });
+
+  test('inspect_template: nulls and extra fields in the debug object pass the output schema', async () => {
+    const result = await client.callTool({ name: 'inspect_template', arguments: { template: 'aGVsbG8=' } });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ tags: ['{d.name}', '{d.items[i].x}'], sample: {} });
+  });
+
+  test('tools/list over HTTP: inspect_template offers no local path either', async () => {
+    const { tools } = await client.listTools();
+    const inspect = tools.find((t) => t.name === 'inspect_template')!;
+    expect(inspect.description).toMatch(/local file paths are not accepted over HTTP/);
+    expect((inspect.inputSchema.properties as Record<string, { description?: string }>)['template']?.description)
+      .not.toMatch(/Local file path —/);
   });
 
   test('upload_template: the live versioned response passes', async () => {
@@ -258,7 +297,7 @@ describe('HTTP mode: no URL is fetched for a caller without credentials', () => 
 
   afterAll(() => new Promise<void>((resolve) => listener.close(() => resolve())));
 
-  test('render, convert and upload refuse before downloading anything', async () => {
+  test('render, convert, upload and inspect refuse before downloading anything', async () => {
     // Cloud API, no server key, no Bearer token. allowPrivateNetwork is ON so that, without the
     // auth-first check, the loopback URL WOULD be fetched — the zero-hit count is the proof.
     const carbone = new CarboneClient({ transport: 'http', baseUrl: CarboneClient.CLOUD_API_URL });
@@ -268,6 +307,7 @@ describe('HTTP mode: no URL is fetched for a caller without credentials', () => 
       { name: 'render_document', arguments: { template: url, data: url, complement: url } },
       { name: 'convert_document', arguments: { file: url, convertTo: 'pdf' } },
       { name: 'upload_template', arguments: { template: url, name: 'x' } },
+      { name: 'inspect_template', arguments: { template: url } },
     ];
     for (const call of calls) {
       const r = await client.callTool(call);
@@ -276,5 +316,55 @@ describe('HTTP mode: no URL is fetched for a caller without credentials', () => 
     }
     expect(hits).toBe(0);
     await client.close();
+  });
+});
+
+/** Every string in a tools/list payload (descriptions, titles, nested schema descriptions, …). */
+function strings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(strings);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(strings);
+  return [];
+}
+
+/**
+ * The model writes templates from these texts, so they must only show syntax documented on carbone.io:
+ * formatters (https://carbone.io/documentation/design/formatters/currency.md), aliases
+ * (…/substitutions/aliases.md), conditions (…/conditions/inline-conditions.md, conditional-blocks.md).
+ */
+describe('model-facing texts only show valid Carbone syntax', () => {
+  test.each([['stdio', STDIO_CTX], ['HTTP', HTTP_CTX]])('%s: tools/list, get_capabilities and instructions', async (_name, ctx) => {
+    const client = await connect(new CarboneClient({ apiKey: 'unused' }), ctx);
+    const { tools } = await client.listTools();
+    const capabilities = (await client.callTool({ name: 'get_capabilities', arguments: {} })).content as Array<{ text: string }>;
+    const texts = [...strings(tools), capabilities[0]!.text, client.getInstructions() ?? ''];
+    await client.close();
+
+    for (const text of texts) {
+      // :formatC(precisionOrFormat, targetCurrency): a currency code is never its first argument.
+      expect(text).not.toMatch(/formatC\(\s*'?[A-Z]{3}'?\s*\)/);
+      // Aliases are defined with {#alias = d.path} and used with {$alias}: {#name} alone is not a reference.
+      expect(text).not.toMatch(/\{#[^}=]*\}/);
+      // No ternary (or any "?") inside a tag: conditions are formatters (ifEQ/show/elseShow, showBegin/showEnd).
+      expect(text).not.toMatch(/\{[dc][.[][^{}]*\?[^{}]*\}/);
+      expect(text).not.toMatch(/\?\s*"[^"]*"\s*:\s*"/);
+      // showEnd / hideEnd close the block without repeating the condition.
+      expect(text).not.toMatch(/:if[A-Z]{2}\([^)]*\):(showEnd|hideEnd)/);
+      // A file example is an absolute path, a ~/ path or a URL: a bare name would be read as base64.
+      expect(text).not.toMatch(/"?file"?: "(?!\/|~\/|https:\/\/)[^"]+"/);
+    }
+    // The alias wording itself: defined with {#… = …}, used with {$…}.
+    const variableStr = (tools.find((t) => t.name === 'render_document')!.inputSchema.properties as Record<string, { description: string }>)['variableStr']!.description;
+    expect(variableStr).toMatch(/\{#alias = d\.path\}/);
+    expect(variableStr).toMatch(/\{\$alias\}/);
+  });
+
+  test('convert_document\'s example uses a valid input form for each transport', async () => {
+    for (const [ctx, example] of [[STDIO_CTX, '"/Users/me/report.docx"'], [HTTP_CTX, '"https://example.com/report.docx"']] as const) {
+      const client = await connect(new CarboneClient({ apiKey: 'unused' }), ctx);
+      const convert = (await client.listTools()).tools.find((t) => t.name === 'convert_document')!;
+      expect(convert.description).toContain(`{ "file": ${example}, "convertTo": "pdf" }`);
+      await client.close();
+    }
   });
 });

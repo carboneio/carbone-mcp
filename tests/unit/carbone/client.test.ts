@@ -725,6 +725,66 @@ describe('CarboneClient', () => {
     });
   });
 
+  // ── inspectTemplate ─────────────────────────────────────────────────────────
+
+  describe('inspectTemplate', () => {
+    // The live api.carbone.io response of a render with isDebugActive (JSON mode).
+    const DEBUG = {
+      markers: ['{d.customer.name}', '{d.total:formatN(2)}', '{d.items[i].label}', '{d.items[i+1].label}', '{c.company}'],
+      sample: { data: { total: 0, customer: { name: 'name1' }, items: [{ label: 'label2' }] }, complement: { company: 'company3' } },
+      error: {},
+      signatures: [],
+      metrics: { renderTime: 12 },
+    };
+
+    test('inline template: POST /render/template without download, body { data: {}, isDebugActive, template }', async () => {
+      const spy = mockFetch({ _json: { success: true, data: { renderId: 'r.html', debug: DEBUG } } });
+
+      const result = await client.inspectTemplate({ template: 'base64abc==' });
+
+      expect(spy).toHaveBeenCalledWith('https://api.carbone.io/render/template', expect.objectContaining({ method: 'POST' }));
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      // No convertTo: the template format is kept (the least work); no other render option either.
+      expect(body).toEqual({ data: {}, isDebugActive: true, template: 'base64abc==' });
+      expect(result).toEqual(DEBUG);
+    });
+
+    test('stored template: POST /render/{encoded id} without download, and no template in the body', async () => {
+      const spy = mockFetch({ _json: { success: true, data: { renderId: 'r.html', debug: DEBUG } } });
+
+      await client.inspectTemplate({ templateId: '../template/abc?download=true' });
+
+      expect(spy).toHaveBeenCalledWith(
+        'https://api.carbone.io/render/..%2Ftemplate%2Fabc%3Fdownload%3Dtrue',
+        expect.objectContaining({ method: 'POST' })
+      );
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ data: {}, isDebugActive: true });
+    });
+
+    test('forwards the per-call apiKey', async () => {
+      const spy = mockFetch({ _json: { success: true, data: { debug: DEBUG } } });
+
+      await client.inspectTemplate({ templateId: 'tpl1' }, { apiKey: 'per-call' });
+
+      const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer per-call');
+    });
+
+    test.each([
+      ['no debug object (Carbone without the feature)', { success: true, data: { renderId: 'r.html' } }],
+      ['debug: null', { success: true, data: { renderId: 'r.html', debug: null } }],
+      ['no data at all', { success: true }],
+    ])('throws a clear CarboneError when the response has %s', async (_label, json) => {
+      mockFetch({ _json: json });
+
+      const err = await client.inspectTemplate({ templateId: 'tpl1' }).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(CarboneError);
+      expect((err as Error).message).toMatch(/did not return inspection data/);
+    });
+  });
+
   // ── uploadTemplate ──────────────────────────────────────────────────────────
 
   describe('uploadTemplate', () => {
