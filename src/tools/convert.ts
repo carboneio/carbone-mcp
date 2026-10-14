@@ -65,8 +65,11 @@ export function convertDocumentSchemaFor(io: IoModes) {
       .boolean()
       .optional()
       .describe(
-        'If true, Carbone recomputes pagination and refreshes the table of contents at the end of the conversion. ' +
-        'Carbone\'s own PDF → PDF/A-4 example uses it: { "hardRefresh": true, ' +
+        'If true, Carbone runs the converter even when the output format equals the input format, and recomputes ' +
+        'pagination and the table of contents at the end of the conversion. Needed for PDF → PDF: without it Carbone ' +
+        'returns the PDF unchanged and formatOptions (password, permissions, watermarks, PDF/A, …) are NOT applied. ' +
+        'This server sets it automatically when the input is a PDF, convertTo is "pdf" and formatOptions are given; ' +
+        'pass false to opt out. Example (PDF → PDF/A-4): { "hardRefresh": true, ' +
         '"convertTo": { "formatName": "pdf", "formatOptions": { "SelectPdfVersion": 4 } } }.'
       ),
 
@@ -113,6 +116,24 @@ export function convertDocumentSchemaFor(io: IoModes) {
 /** Default (stdio) wording — also the shape the validation schemas derive from. */
 export const convertDocumentSchema = convertDocumentSchemaFor(STDIO_IO);
 
+/** "%PDF-" is the PDF header; its base64 form is "JVBERi0". The resolved input is always base64. */
+function isPdfBase64(base64: string): boolean {
+  return Buffer.from(base64.slice(0, 8), 'base64').subarray(0, 5).toString('latin1') === '%PDF-';
+}
+
+/**
+ * PDF → PDF only applies formatOptions when hardRefresh is set: without it Carbone hands the PDF back
+ * unchanged, so a password, permissions, watermarks or PDF/A are silently dropped (measured live:
+ * EncryptFile without hardRefresh returns an unencrypted PDF). It is turned on only when formatOptions are
+ * present: a plain "pdf" target has nothing to apply, and the pass-through returns the file untouched,
+ * whereas forcing the converter would only cost time and re-render the document.
+ */
+export function needsPdfHardRefresh(templateBase64: string, convertTo: z.infer<typeof convertDocumentSchema.convertTo>): boolean {
+  if (typeof convertTo !== 'object' || convertTo.formatName !== 'pdf') return false;
+  if (!convertTo.formatOptions || Object.keys(convertTo.formatOptions).length === 0) return false;
+  return isPdfBase64(templateBase64);
+}
+
 export async function handleConvertDocument(
   args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: (typeof CONVERTERS)[number]; reportName?: string; hardRefresh?: boolean; outputPath?: string; asAttachment?: boolean; returnLink?: boolean; egressAuthorization?: string },
   client: CarboneClient,
@@ -131,7 +152,8 @@ export async function handleConvertDocument(
       allowLocalPath: fileCtx?.allowFileInput ?? false,
       allowPrivateNetwork: fileCtx?.allowPrivateNetwork ?? false,
     });
-    const result = await client.convertDocument({ ...rest, template, returnLink }, options);
+    const hardRefresh = rest.hardRefresh ?? (needsPdfHardRefresh(template, args.convertTo) ? true : undefined);
+    const result = await client.convertDocument({ ...rest, hardRefresh, template, returnLink }, options);
 
     return deliver(withReportName(result, reportName, args.convertTo), args.convertTo, {
       outputPath, asAttachment, allowFileOutput: fileCtx?.allowFileOutput ?? false,

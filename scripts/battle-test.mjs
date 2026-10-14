@@ -148,6 +148,17 @@ async function run() {
     check('preserves Carbone tags (no templating)', text(cKeep).includes('{d.customer}') && text(cKeep).includes('{d.total:formatN(2)}'), why(cKeep));
     check('reportName', /bt-conv/.test(IS_STDIO ? text(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', reportName: 'bt-conv' })) : uriOf(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', reportName: 'bt-conv' }))));
     check('hardRefresh PDF → PDF applies formatOptions', isPdf(await call('convert_document', { file: INV, convertTo: { formatName: 'pdf', formatOptions: { Watermarks: [{ text: 'X', opacity: 0.2 }] } }, converter: 'C', hardRefresh: true })));
+    // PDF → PDF only applies formatOptions with hardRefresh (without it Carbone hands the PDF back unchanged).
+    // The server sets hardRefresh itself for a PDF input + pdf target with formatOptions, so a caller who just
+    // asks to password-protect a PDF must get an encrypted file back without knowing about hardRefresh.
+    const pdfIn = blobOf(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', asAttachment: true }));
+    if (pdfIn) {
+      const pdfEnc = await call('convert_document', { file: pdfIn, convertTo: { formatName: 'pdf', formatOptions: { EncryptFile: true, DocumentOpenPassword: 's3cret' } }, asAttachment: true });
+      const pdfEncrypted = Buffer.from(blobOf(pdfEnc), 'base64').includes('/Encrypt');
+      check('PDF → PDF + EncryptFile is encrypted (hardRefresh set automatically)', pdfEncrypted, pdfEncrypted ? '' : (why(pdfEnc) || '→ NOT ENCRYPTED'));
+    } else {
+      note('PDF fixture', 'could not be produced — skipped');
+    }
     const cOut = await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', outputPath: `/tmp/bt-c-${Date.now()}.pdf` });
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(cOut).includes('bytes') : (cOut.isError && text(cOut).includes('stdio')));
 

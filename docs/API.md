@@ -51,7 +51,7 @@ Convert this HTML to PDF: <h1>Hello</h1>
 Render /path/to/report.pdf as a PNG thumbnail
 ```
 
-> **PDF as input:** a PDF converts to `docx`, `odt`, `html` or `txt`, to an image (`png`, `jpg`, `webp`), or is re-saved as `pdf` (e.g. to add a password, watermarks or PDF/A).
+> **PDF as input:** a PDF converts to `docx`, `odt`, `html` or `txt`, to an image (`png`, `jpg`, `webp`), or is re-saved as `pdf` (e.g. to add a password, watermarks or PDF/A: the server sets `hardRefresh` for you, without which Carbone would return the PDF unchanged).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -59,7 +59,7 @@ Render /path/to/report.pdf as a PNG thumbnail
 | `convertTo` | string \| object | ✅ | Target format (see [Supported Output Formats](#supported-output-formats)) or advanced object. Valid outputs depend on the input format; `doc`, `xls` and `ppt` are output-only |
 | `converter` | `L` \| `O` \| `C` \| `I` | ❌ | Converter engine (default: `L` LibreOffice) |
 | `reportName` | string | ❌ | Name of the delivered file, **without** extension: the server names it `<reportName>.<ext>` (attachment name, and the default saved file name in stdio). Carbone ignores `reportName` on a pure conversion (the file would stay `report.<ext>`), so the MCP applies it, literally — tags are not resolved. Ignored with `returnLink` and `outputPath` |
-| `hardRefresh` | boolean | ❌ | Recompute pagination and the table of contents at the end of the conversion (used in Carbone's PDF → PDF/A-4 example) |
+| `hardRefresh` | boolean | ❌ | Run the converter even when the output format equals the input format, and recompute pagination and the table of contents. Needed for **PDF → PDF**: without it Carbone returns the PDF unchanged and `formatOptions` (password, permissions, watermarks, PDF/A…) are not applied. **Set automatically** when the input is a PDF, `convertTo` is `pdf` and `formatOptions` are given; pass `false` to opt out |
 | `outputPath` | string | ❌ | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | ❌ | Return the bytes as a downloadable attachment instead of inline |
 | `returnLink` | boolean | ❌ | Return a public **one-time** download URL instead of the file |

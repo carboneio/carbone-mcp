@@ -38,6 +38,7 @@ Changes since 1.6.1. **BREAKING** marks what can break a 1.6.1 user.
 
 ### Fixed
 
+- **PDF → PDF silently skipped `formatOptions`.** Asked to password-protect, watermark or convert an existing PDF to PDF/A, `convert_document` returned the PDF unchanged and unencrypted, with no error: Carbone only runs the converter on a PDF → PDF conversion when `hardRefresh` is set (measured live). The server now sets `hardRefresh` itself when the input is a PDF, `convertTo` is `pdf` and `formatOptions` are given; an explicit `hardRefresh: false` is respected. A plain `"pdf"` target is left alone (the file is returned untouched, as before). The `hardRefresh` description says when it is needed.
 - **`convert_document` `reportName` now takes effect.** Carbone resolves `reportName` during templating, so on a pure conversion it ignored it and the file stayed `report.<ext>`. The server now names the delivered file `<reportName>.<ext>` itself (attachment name, and the default saved file name in stdio). Same for `render_document` with `keepTags`.
 - **Wrong deletion guidance.** The tools said `expireAt = 42000000000` deletes a template immediately; that "now" value only exists for `deployedAt`, so following the advice scheduled the deletion for the year 3300. `delete_template` takes effect immediately; `expireAt` schedules a deletion (`0` = never; on update, `0` cancels one).
 - `update_template_metadata` with a Template ID patches only the currently deployed version; it was described as updating all versions.
