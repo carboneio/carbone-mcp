@@ -2,18 +2,19 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
 import type { FileContext } from './output.js';
+import type { IoModes } from './inputForms.js';
 
 import {
   convertDocumentToolName,
-  convertDocumentDescription,
-  convertDocumentSchema,
+  convertDocumentDescriptionFor,
+  convertDocumentSchemaFor,
   handleConvertDocument,
 } from './convert.js';
 
 import {
   renderDocumentToolName,
-  renderDocumentDescription,
-  renderDocumentSchema,
+  renderDocumentDescriptionFor,
+  renderDocumentSchemaFor,
   handleRenderDocument,
 } from './render.js';
 
@@ -33,7 +34,7 @@ import {
   handleListTags,
   uploadTemplateToolName,
   uploadTemplateDescription,
-  uploadTemplateSchema,
+  uploadTemplateSchemaFor,
   uploadTemplateOutputSchema,
   handleUploadTemplate,
   updateTemplateMetadataToolName,
@@ -47,7 +48,7 @@ import {
   handleDeleteTemplate,
   downloadTemplateToolName,
   downloadTemplateDescription,
-  downloadTemplateSchema,
+  downloadTemplateSchemaFor,
   handleDownloadTemplate,
 } from './templates.js';
 
@@ -65,19 +66,50 @@ import {
 // (a fresh McpServer each time), and the SDK deprecates passing raw shapes to registerTool.
 const listTemplatesInput           = z.object(listTemplatesSchema);
 const listTemplatesOutput          = z.object(listTemplatesOutputSchema);
-const convertDocumentInput         = z.object(convertDocumentSchema);
-const renderDocumentInput          = z.object(renderDocumentSchema);
 const listCategoriesOutput         = z.object(listCategoriesOutputSchema);
 const listTagsOutput               = z.object(listTagsOutputSchema);
-const uploadTemplateInput          = z.object(uploadTemplateSchema);
 const uploadTemplateOutput         = z.object(uploadTemplateOutputSchema);
 const updateTemplateMetadataInput  = z.object(updateTemplateMetadataSchema);
 const updateTemplateMetadataOutput = z.object(updateTemplateMetadataOutputSchema);
 const deleteTemplateInput          = z.object(deleteTemplateSchema);
-const downloadTemplateInput        = z.object(downloadTemplateSchema);
 const getApiStatusOutput           = z.object(getApiStatusOutputSchema);
 
+/**
+ * The file-handling tools word their inputs per transport: local paths only resolve in stdio, so over HTTP the
+ * descriptions must not offer them, nor outputPath (see inputForms.ts). Each variant is built and wrapped once,
+ * on first use, then cached: there are only two in practice (stdio, HTTP), whereas registerTools() runs per request.
+ */
+function buildTransportTools(io: IoModes) {
+  return {
+    convertDocumentDescription: convertDocumentDescriptionFor(io),
+    convertDocumentInput:       z.object(convertDocumentSchemaFor(io)),
+    renderDocumentDescription:  renderDocumentDescriptionFor(io),
+    renderDocumentInput:        z.object(renderDocumentSchemaFor(io)),
+    uploadTemplateInput:        z.object(uploadTemplateSchemaFor(io)),
+    downloadTemplateInput:      z.object(downloadTemplateSchemaFor(io)),
+  };
+}
+
+const transportTools = new Map<string, ReturnType<typeof buildTransportTools>>();
+
+/** The cached transport-dependent descriptions and input schemas for these I/O modes (exported for tests). */
+export function transportToolsFor(io: IoModes): ReturnType<typeof buildTransportTools> {
+  const key = `${io.allowLocalPath}:${io.allowFileOutput}`;
+  let tools = transportTools.get(key);
+  if (!tools) {
+    tools = buildTransportTools(io);
+    transportTools.set(key, tools);
+  }
+  return tools;
+}
+
 export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext): void {
+  const io: IoModes = { allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput };
+  const {
+    convertDocumentDescription, convertDocumentInput, renderDocumentDescription, renderDocumentInput,
+    uploadTemplateInput, downloadTemplateInput,
+  } = transportToolsFor(io);
+
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
   // badges and help models reason about which tools are read-only, repeatable, or destructive.
   // - readOnlyHint:   does not modify stored state (generation/listing/status).
@@ -204,6 +236,6 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       description: getCapabilitiesDescription,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    () => handleGetCapabilities()
+    () => handleGetCapabilities(io)
   );
 }

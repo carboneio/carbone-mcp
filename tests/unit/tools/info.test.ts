@@ -1,3 +1,4 @@
+import { STDIO_IO } from '../../../src/tools/inputForms.js';
 import { describe, test, expect, vi } from 'vitest';
 import { handleGetApiStatus, handleGetCapabilities } from '../../../src/tools/info.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
@@ -33,14 +34,14 @@ describe('handleGetApiStatus', () => {
 
 describe('handleGetCapabilities', () => {
   test('returns text content', () => {
-    const result = handleGetCapabilities();
+    const result = handleGetCapabilities(STDIO_IO);
 
     expect(result.content).toHaveLength(1);
     expect(result.content[0].type).toBe('text');
   });
 
   test('lists all tool names', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     expect(text).toContain('convert_document');
     expect(text).toContain('render_document');
@@ -56,7 +57,7 @@ describe('handleGetCapabilities', () => {
   });
 
   test('lists all resource URIs', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     expect(text).toContain('carbone://templates');
     expect(text).toContain('carbone://categories');
@@ -65,7 +66,7 @@ describe('handleGetCapabilities', () => {
   });
 
   test('includes documentation links', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     expect(text).toContain('carbone.io');
     expect(text).toContain('carbone.skill');
@@ -76,7 +77,7 @@ describe('handleGetCapabilities', () => {
   });
 
   test('documents webhookUrl for async and batch rendering', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     expect(text).toContain('webhookUrl');
     expect(text).toContain('asynchronous');
@@ -84,13 +85,13 @@ describe('handleGetCapabilities', () => {
   });
 
   test('documents convertTo parameter for output format', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     expect(text).toContain('convertTo');
   });
 
   test('stays in sync with the code: exact convertTo list, every converter, no stale advice', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     const formatsLine = text.split('\n').find((line) => line.startsWith(`${OUTPUT_FORMATS[0]}, `));
     expect(formatsLine?.split(', ')).toEqual([...OUTPUT_FORMATS]);
@@ -107,7 +108,7 @@ describe('handleGetCapabilities', () => {
   });
 
   test('mentions LLM authoring capabilities', () => {
-    const { text } = result(handleGetCapabilities());
+    const { text } = result(handleGetCapabilities(STDIO_IO));
 
     expect(text).toContain('carbone.skill');
     expect(text).toContain('DOCX / XLSX / PPTX');

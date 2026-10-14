@@ -478,6 +478,31 @@ describe('CarboneClient', () => {
       );
     });
 
+    test('sends data:{} by default so tags resolve to empty', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({ templateId: 'tpl1' });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.data).toEqual({});
+    });
+
+    test('keepTags omits data entirely so templating is skipped', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({ templateId: 'tpl1', convertTo: 'pdf', keepTags: true });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect('data' in body).toBe(false);
+      expect(body.convertTo).toBe('pdf');
+    });
+
     test('includes convertTo when convertTo is provided', async () => {
       const spy = mockFetch({
         headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
@@ -803,6 +828,17 @@ describe('CarboneClient', () => {
 
       expect(result.filename).toBe('template.docx');
       expect(result.buffer.length).toBe(100);
+    });
+
+    test('sample:true requests /template/{id}_sample.json, the suffix outside the encoded id', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="tpl 1_sample.json"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await client.downloadTemplate('tpl 1', { sample: true });
+
+      expect(spy).toHaveBeenCalledWith('https://api.carbone.io/template/tpl%201_sample.json', expect.any(Object));
     });
   });
 

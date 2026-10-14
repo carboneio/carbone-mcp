@@ -9,6 +9,8 @@ Give Claude, ChatGPT, and other AI assistants the power to:
 - Fill PDF forms programmatically
 - Create batch documents — invoices, certificates, contracts, payslips — in one request
 - Add watermarks, passwords, encryption, and PDF/A compliance
+- Pick the PDF engine per request: LibreOffice, OnlyOffice, Chromium, or Carbone ICE (`converter: "I"` — the fastest DOCX and ODT (beta) → PDF engine; like OnlyOffice and Chromium it supports the PDF password, permission and watermark options, while LibreOffice supports them all)
+- Convert documents while keeping Carbone tags intact — proof a template in another format without resolving it
 - Handle localization: multi-language, currency conversion, timezone formatting
 
 Get your free API key at [account.carbone.io](https://account.carbone.io).

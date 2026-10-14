@@ -7,7 +7,7 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
 
 vi.mock('node:fs/promises', () => ({ writeFile: vi.fn() }));
 
-import { saveOrReject, deliverDocument, deliver, oneTimeLinkResult } from '../../../src/tools/output.js';
+import { saveOrReject, deliverDocument, deliver, oneTimeLinkResult, withReportName } from '../../../src/tools/output.js';
 import { writeOutputFile } from '../../../src/utils/file.js';
 import { writeFile } from 'node:fs/promises';
 
@@ -119,5 +119,29 @@ describe('oneTimeLinkResult', () => {
     expect(text).toContain('https://api.carbone.io/render/X.pdf');
     expect(text).toContain('ONCE');
     expect(text).toContain('do NOT fetch');
+  });
+});
+
+describe('withReportName (reportName applied by the MCP when Carbone skips templating)', () => {
+  const bytes = { buffer: Buffer.from('x'), filename: 'report.pdf' };
+
+  test('names the file <reportName>.<ext>, keeping Carbone\'s extension', () => {
+    expect(withReportName(bytes, 'contract', 'pdf').filename).toBe('contract.pdf');
+    expect(withReportName({ ...bytes, filename: 'report.txt' }, 'notes', { formatName: 'txt' }).filename).toBe('notes.txt');
+  });
+
+  test('falls back to the target format when the returned filename has no extension', () => {
+    expect(withReportName({ ...bytes, filename: 'document' }, 'contract', 'docx').filename).toBe('contract.docx');
+  });
+
+  test('does not double a matching extension, and neutralises path separators and control characters', () => {
+    expect(withReportName(bytes, 'contract.PDF', 'pdf').filename).toBe('contract.PDF');
+    expect(withReportName(bytes, '../etc/x\\y\n', 'pdf').filename).toBe('.._etc_x_y_.pdf');
+  });
+
+  test('leaves results without bytes, and an unset reportName, unchanged', () => {
+    const link = { renderId: 'r1' };
+    expect(withReportName(link, 'contract', 'pdf')).toBe(link);
+    expect(withReportName(bytes, undefined, 'pdf')).toBe(bytes);
   });
 });

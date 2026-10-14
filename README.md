@@ -10,7 +10,7 @@ Give Claude, ChatGPT, and other AI assistants the power to:
 - 🔄 **Document Conversion** — 100+ format combinations (PDF, DOCX, XLSX, PNG, HTML, CSV…)
 - 📄 **Template Engine** — Generate documents from JSON data with `{d.field}` tags
 - 📚 **Template Library** — Upload, version, categorize, and manage reusable templates
-- 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines
+- 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines (LibreOffice, OnlyOffice, Chromium, Carbone ICE)
 - 🌍 **Localization** — Multi-language support, currency conversion, timezone handling
 - ⚡ **Batch Generation** — Create up to 100 documents per request on Carbone Cloud (async, delivered to your webhook)
 
@@ -397,7 +397,7 @@ Items:
 | Web / Text | HTML, XHTML, TXT, MD, XML, IDML |
 | Images | PNG, JPG / JPEG, WEBP, GIF, TIFF, BMP, SVG, EMF, WMF, EPS |
 
-Valid outputs depend on the input format.
+Valid outputs depend on the input format. DOC, XLS and PPT are output-only: Carbone reads XML-based and text-based documents (plus PDF), so re-save a legacy binary Office file as DOCX, XLSX or PPTX before converting or rendering it.
 
 Full conversion matrix: [carbone.io/documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type)
 

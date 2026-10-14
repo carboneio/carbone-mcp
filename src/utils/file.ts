@@ -180,7 +180,7 @@ const MIME_TYPES: Record<string, string> = {
   md:       'text/markdown',
   markdown: 'text/markdown',
   xml:      'application/xml',
-  json:     'application/json', // template sample downloads (download_template "<id>_sample.json")
+  json:     'application/json', // template sample downloads (download_template sample: true)
   rtf:      'application/rtf',
   // Images
   png:  'image/png',

@@ -33,8 +33,8 @@ export const SERVER_INSTRUCTIONS =
   '(get_capabilities links the loadable .skill file).\n' +
   '- Manage stored templates with upload_template, list_templates, update_template_metadata, ' +
   'download_template, and delete_template.\n' +
-  '- File inputs accept a local path, an HTTPS URL, or a base64 string. In stdio (local) mode, pass ' +
-  'outputPath to save large outputs to disk instead of returning them inline.\n' +
+  '- File inputs accept an HTTPS URL or a base64 string, and a local path in stdio (local) mode only, where ' +
+  'outputPath also saves large outputs to disk instead of returning them inline.\n' +
   '- Docs are LLM-friendly: replace .html with .md on any carbone.io doc URL for Markdown, or load ' +
   'https://carbone.io/llms.txt (index) / https://carbone.io/llms-full.txt (full corpus).';
 

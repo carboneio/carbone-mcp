@@ -20,10 +20,19 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
+# Claude Code
+.claude/
+
 # Logs
 *.log
 npm-debug.log*
 carbone-mcp-specification.md
 *.pem
+account-openapi.yml
 
 .claude
+
+# Packaging / scratch
+*.tgz
+.npm/
+tmp/

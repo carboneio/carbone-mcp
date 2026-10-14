@@ -121,6 +121,11 @@ describe('ConvertDocumentSchema', () => {
 });
 
 describe('RenderDocumentSchema', () => {
+  test('keepTags is accepted alone and rejected together with data', () => {
+    expect(RenderDocumentSchema.safeParse({ templateId: 'tpl1', keepTags: true }).success).toBe(true);
+    expect(RenderDocumentSchema.safeParse({ templateId: 'tpl1', keepTags: true, data: {} }).success).toBe(false);
+  });
+
   test('accepts required fields', () => {
     const result = RenderDocumentSchema.parse({
       templateId: 'tpl123',
@@ -354,6 +359,12 @@ describe('UpdateTemplateSchema', () => {
 
   test('rejects a negative expireAt', () => {
     expect(UpdateTemplateSchema.safeParse({ templateId: 'tpl1', expireAt: -1 }).success).toBe(false);
+  });
+
+  test('accepts the deprecated id alias, alone or matching moveToTemplateId; rejects a mismatch', () => {
+    expect(UpdateTemplateSchema.safeParse({ templateId: 'sha-v1', id: '123' }).success).toBe(true);
+    expect(UpdateTemplateSchema.safeParse({ templateId: 'sha-v1', id: '123', moveToTemplateId: '123' }).success).toBe(true);
+    expect(UpdateTemplateSchema.safeParse({ templateId: 'sha-v1', id: '123', moveToTemplateId: '456' }).success).toBe(false);
   });
 
   test('name, comment and category: 200 characters accepted, 201 rejected', () => {

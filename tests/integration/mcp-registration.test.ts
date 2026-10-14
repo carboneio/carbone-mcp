@@ -82,6 +82,10 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(render['batchOutput']?.enum).toEqual(['zip', 'pdf']);
     expect(render['failOn']?.items?.enum).toEqual(['IMAGE_URL_ERROR']);
     expect(render['preReleaseFeatureIn']?.type).toBe('integer');
+    // 1.6.0 parameters kept on the v2 surface.
+    expect(render['keepTags']?.type).toBe('boolean');
+    expect(convert['reportName']?.type).toBe('string');
+    expect(props('download_template')['sample']?.type).toBe('boolean');
   });
 
   test('no tool presents 42000000000 as an expireAt value (that NOW sentinel exists only for deployedAt)', async () => {
@@ -112,7 +116,8 @@ describe('MCP registration surface (in-process, no API key)', () => {
       expect(p.properties?.['expireAt']?.minimum).toBe(0);
     }
     expect(upd.properties).toHaveProperty('moveToTemplateId');
-    expect(upd.properties).not.toHaveProperty('id'); // the API body field `id` is only exposed as moveToTemplateId
+    // The API body field `id` is documented as moveToTemplateId; `id` stays only as the deprecated 1.6.0 alias.
+    expect((upd.properties?.['id'] as { description?: string } | undefined)?.description).toMatch(/^DEPRECATED: the 1\.6\.0 name of moveToTemplateId/);
     expect((update.outputSchema as Schema | undefined)?.required).toEqual(['versionId']);
     expect((upload.outputSchema as Schema | undefined)?.properties).toHaveProperty('deployedAt');
     expect((upload.outputSchema as Schema | undefined)?.properties).toHaveProperty('templateExtension');
@@ -172,6 +177,19 @@ describe('structured output passes SDK output-schema validation (live API respon
 
   afterAll(async () => {
     await client.close();
+  });
+
+  test('tools/list over HTTP offers no local path and marks outputPath unavailable', async () => {
+    const { tools } = await client.listTools();
+    for (const name of ['convert_document', 'render_document', 'download_template']) {
+      const tool = tools.find((t) => t.name === name)!;
+      const props = tool.inputSchema.properties as Record<string, { description?: string }>;
+      expect(props['outputPath']?.description, name).toMatch(/^NOT AVAILABLE/);
+    }
+    const convert = tools.find((t) => t.name === 'convert_document')!;
+    expect(convert.description).toMatch(/local file paths are not accepted over HTTP/);
+    expect((convert.inputSchema.properties as Record<string, { description?: string }>)['file']?.description)
+      .not.toMatch(/Local file path —/);
   });
 
   test('update_template_metadata: "deployedAt": null in the API response is not an error', async () => {

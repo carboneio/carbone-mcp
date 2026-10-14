@@ -31,7 +31,18 @@ Full parameter reference for all 11 tools exposed by the Carbone MCP server.
 
 Convert a document to another format without storing a template. This is a **pure conversion**: no data is sent, so Carbone tags such as `{d.name}` are kept as written (use `render_document` to fill them).
 
-**File input:** local path, HTTPS URL, or base64 string. Input formats: DOCX, DOC, XLSX, XLS, PPTX, PPT, PDF, ODT, ODS, ODP, ODG, RTF, TXT, CSV, HTML, XHTML, MD, IDML, XML.
+**File input:** local path (stdio only), HTTPS URL, or base64 string.
+
+> **Accepted formats.** `convert_document` and `render_document` use the same Carbone endpoint and the same
+> format validation, so they accept the same inputs: XML-based and text-based documents, plus PDF — `DOCX`,
+> `XLSX`, `PPTX`, `ODT`, `ODS`, `ODP`, `ODG`, `HTML`, `XHTML`, `XML`, `SVG`, `IDML`, `MD`, `TXT`, `CSV`,
+> `RTF`, `PDF`. The legacy **binary** formats `DOC`, `XLS` and `PPT` are **rejected as input** (415, error `w118`)
+> even though Carbone can produce them as output — re-save them as `DOCX`/`XLSX`/`PPTX` first.
+
+> **Carbone tags are preserved.** Converting a DOCX template to PDF shows the tags as written — that is how
+> you proof a template's layout, or convert a template between formats (DOCX → ODT) while it stays a template.
+> Use `render_document` to resolve tags into real values, or `render_document` with `keepTags` to proof a
+> stored template.
 
 ```
 Convert /path/to/report.docx to PDF
@@ -45,8 +56,9 @@ Render /path/to/report.pdf as a PNG thumbnail
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `file` | string | ✅ | File path, HTTPS URL, or base64 string |
-| `convertTo` | string \| object | ✅ | Target format (see [Supported Output Formats](#supported-output-formats)) or advanced object. Valid outputs depend on the input format |
+| `convertTo` | string \| object | ✅ | Target format (see [Supported Output Formats](#supported-output-formats)) or advanced object. Valid outputs depend on the input format; `doc`, `xls` and `ppt` are output-only |
 | `converter` | `L` \| `O` \| `C` \| `I` | ❌ | Converter engine (default: `L` LibreOffice) |
+| `reportName` | string | ❌ | Name of the delivered file, **without** extension: the server names it `<reportName>.<ext>` (attachment name, and the default saved file name in stdio). Carbone ignores `reportName` on a pure conversion (the file would stay `report.<ext>`), so the MCP applies it, literally — tags are not resolved. Ignored with `returnLink` and `outputPath` |
 | `hardRefresh` | boolean | ❌ | Recompute pagination and the table of contents at the end of the conversion (used in Carbone's PDF → PDF/A-4 example) |
 | `outputPath` | string | ❌ | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | ❌ | Return the bytes as a downloadable attachment instead of inline |
@@ -55,7 +67,7 @@ Render /path/to/report.pdf as a PNG thumbnail
 
 **`converter` options** (used whenever the format changes, not only for PDF):
 - `L` — LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- `I` — Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over `O` for DOCX from Carbone v5.15.0
+- `I` — Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over `O` for DOCX from Carbone v5.15.0 ([limitations](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
 - `O` — OnlyOffice: DOCX, XLSX, PPTX → PDF
 - `C` — Chromium: HTML → PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max
 
@@ -117,10 +129,11 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, `{}` is sent, so every tag resolves to empty; to convert a file and keep its tags, use `convert_document` |
+| `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, `{}` is sent: templating still runs, so every tag resolves to an **empty string**; to keep the tags, use `keepTags` (or `convert_document` for a file) |
+| `keepTags` | boolean | Skip templating entirely and leave every tag **as literal text** (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Mutually exclusive with `data` — passing both is rejected |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`); same values and `formatOptions` as `convert_document` |
 | `converter` | `L` \| `O` \| `C` \| `I` | Converter engine (see `convert_document`) |
-| `reportName` | string | Output filename **without extension** (Carbone appends it), supports Carbone tags (e.g. `"{d.client}-invoice"`) |
+| `reportName` | string | Output filename **without extension** (Carbone appends it), supports Carbone tags (e.g. `"{d.client}-invoice"`). With `keepTags`, Carbone ignores it (no templating), so the server names the file `<reportName>.<ext>` itself, literally |
 | `failOn` | string[] | Conditions that stop the render with an error (Carbone v5.15.0+). `["IMAGE_URL_ERROR"]`: an image that cannot be downloaded from its URL fails the render instead of showing a broken-image placeholder |
 | `preReleaseFeatureIn` | integer | Pre-release feature level for this render only (e.g. `5000000`) |
 | `outputPath` | string | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
@@ -156,9 +169,12 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `batchSplitBy` | string | One document per object of an array: `"d"` when `data` is itself an array, or `"d.items"` for a direct child array |
+| `batchSplitBy` | string | One document per object of an array: `"d"` when `data` is itself an array, or `"d.items"` for a direct child array. At most 100 objects on Carbone Cloud |
 | `batchOutput` | `"zip"` \| `"pdf"` | `"zip"` (default): one archive of all documents. `"pdf"`: the PDFs concatenated into one file (requires `convertTo: "pdf"`) |
 | `batchReportName` | string | Name of each file in the ZIP, **without extension**, Carbone tags allowed (e.g. `"invoice-{d.id}"`). Ignored with `batchOutput: "pdf"`. From Carbone v5.14, an index is appended to every file when two names collide |
+
+> Batch is **always asynchronous** — `webhookUrl` is required. Carbone returns immediately and POSTs the
+> `renderId` to your URL when the bundle is ready.
 
 ### Pass JSON by reference
 
@@ -266,6 +282,7 @@ Rename, re-categorise, tag, deploy, schedule the deletion of, or move **one** te
 |---|---|---|---|
 | `templateId` | string | ✅ | Template ID (patches only its **currently deployed** version) or Version ID (patches that exact version) |
 | `moveToTemplateId` | string? | ❌ | **Structural change:** moves the patched version to this other Template ID (the API's `id` body field). Pass the Version ID as `templateId`; with a Template ID, its deployed version is moved and that Template ID falls back to its next most recent version |
+| `id` | string? | ❌ | **Deprecated** — the 1.6.0 name of `moveToTemplateId`, still accepted. Passing both with different values is rejected |
 | `name` | string? | ❌ | New display name, max 200 chars |
 | `comment` | string? | ❌ | New free-text comment, max 200 chars |
 | `category` | string? | ❌ | New category, max 200 chars |
@@ -301,7 +318,8 @@ Download the original template file (DOCX, XLSX, etc.), or the JSON sample data 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `templateId` | string | ✅ | Template ID (downloads deployed version) or Version ID (downloads exact version). Use `<id>_sample.json` to download the JSON sample data stored with it, returned inline as JSON |
+| `templateId` | string | ✅ | Template ID (downloads deployed version) or Version ID (downloads exact version) |
+| `sample` | boolean? | ❌ | `true` downloads the JSON sample dataset stored with the template (the `sample` passed to `upload_template`) instead of the template file, returned inline as JSON. Errors if the template has no sample |
 | `outputPath` | string? | ❌ | **stdio only** — save the file to this local path |
 | `asAttachment` | boolean? | ❌ | Return the file as a downloadable attachment instead of inline |
 
@@ -433,6 +451,6 @@ Web/Text:                html, xhtml, txt, md, xml, idml
 Images:                  png, jpg, jpeg, webp, gif, tiff, bmp, svg, emf, wmf, eps
 ```
 
-Valid outputs depend on the input format. `zip` is not an output format: batch archives come from `batchOutput`.
+Valid outputs depend on the input format. `doc`, `xls` and `ppt` are output-only (rejected as input). `zip` is not an output format: batch archives come from `batchOutput`.
 
 Full conversion matrix: [carbone.io documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type)

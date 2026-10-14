@@ -20,14 +20,22 @@ export { OUTPUT_FORMATS, CONVERTERS, OutputFormatSchema } from './formats.js';
  */
 export const ConvertDocumentSchema = z.object(convertDocumentSchema);
 
-export const RenderDocumentSchema = z.object(renderDocumentSchema).refine(
-  (d) => (d.templateId != null) !== (d.template != null),
-  { message: 'Provide either templateId or template, not both', path: ['templateId'] }
-);
+export const RenderDocumentSchema = z.object(renderDocumentSchema)
+  .refine(
+    (d) => (d.templateId != null) !== (d.template != null),
+    { message: 'Provide either templateId or template, not both', path: ['templateId'] }
+  )
+  .refine(
+    (d) => !(d.keepTags && d.data != null),
+    { message: 'keepTags:true skips templating, so data cannot be injected', path: ['keepTags'] }
+  );
 
 export const UploadTemplateSchema = z.object(uploadTemplateSchema);
 
-export const UpdateTemplateSchema = z.object(updateTemplateMetadataSchema);
+export const UpdateTemplateSchema = z.object(updateTemplateMetadataSchema).refine(
+  (d) => d.id === undefined || d.moveToTemplateId === undefined || d.id === d.moveToTemplateId,
+  { message: 'id is the deprecated name of moveToTemplateId: pass only moveToTemplateId', path: ['id'] }
+);
 
 export const DeleteTemplateSchema = z.object(deleteTemplateSchema);
 

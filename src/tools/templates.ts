@@ -4,6 +4,8 @@ import type { UploadTemplateResult } from '../carbone/types.js';
 import { resolveFileInput } from '../utils/file.js';
 import { deliverDocument, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
+import { INPUT_FORMATS_DESCRIPTION } from '../validation/formats.js';
+import { type IoModes, STDIO_IO, inputForms, outputPathDescription } from './inputForms.js';
 
 // ─── list_templates ──────────────────────────────────────────────────────────
 
@@ -42,7 +44,7 @@ export const listTemplatesSchema = {
     .optional()
     .describe(
       'Filter by upload origin: 0 = API, 1 = Carbone Studio, 2 = Salesforce integration, ' +
-      '3 = Odoo integration, 4 = HubSpot integration.'
+      '3 = Odoo integration, 4 = HubSpot integration. Templates uploaded through this MCP server are origin 0.'
     ),
   includeVersions: z
     .boolean()
@@ -58,7 +60,7 @@ export const listTemplatesSchema = {
     .min(1)
     .max(100)
     .optional()
-    .describe('Maximum number of results to return. Must be between 1 and 100 (Carbone API limit). Default: 100.'),
+    .describe('Maximum number of results to return, between 1 and 100 (Carbone API limit). Default: 100. Use cursor to page beyond that.'),
   cursor: z
     .string()
     .optional()
@@ -114,7 +116,8 @@ export const uploadTemplateDescription =
   'and rendering by Template ID uses the version with the most recent deployedAt. ' +
   'A result deployedAt of 0 means the version is not explicitly deployed: if another version of the same ' +
   'Template ID is deployed, renders by Template ID keep using that one. ' +
-  'Accepted formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown, PDF, and more.';
+  'Accepted formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, XML, SVG, IDML, Markdown, TXT, CSV, RTF and PDF ' +
+  '(not the legacy binary DOC, XLS or PPT).';
 
 export const uploadTemplateOutputSchema = {
   id: z.string().optional().describe('Stable Template ID (when versioning is enabled).'),
@@ -131,94 +134,96 @@ export const uploadTemplateOutputSchema = {
     .describe('UTC Unix timestamp of deployment; 0 means this version is not explicitly deployed.'),
 };
 
-export const uploadTemplateSchema = {
-  template: z
-    .string()
-    .min(1)
-    .describe(
-      'The template file. Accepts a local file path (e.g. /home/user/invoice.docx), ' +
-      'a URL (https://example.com/template.docx), or a base64-encoded string. ' +
-      'Supported formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown (MD), PDF, and more. ' +
-      'Full list: https://carbone.io/documentation/developer/http-api/generate-reports.md'
-    ),
-  name: z
-    .string()
-    .min(1)
-    .max(200)
-    .optional()
-    .describe(
-      'Display name for the template, max 200 characters (e.g. "Invoice Template", "NDA Contract"). ' +
-      'Optional but recommended: list_templates shows it and its search matches it.'
-    ),
-  id: z
-    .string()
-    .optional()
-    .describe(
-      'Existing Template ID (64-bit format) to add this upload to its version history. ' +
-      'If omitted, a new Template ID is generated. ' +
-      'Providing a Version ID (SHA-256) is not allowed and will cause an error.'
-    ),
-  versioning: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe(
-      'Enable template versioning (default: true). ' +
-      'When true, a stable Template ID is generated and multiple versions can be managed under it. ' +
-      'When false, behaves as legacy mode and returns only a templateId (SHA-256 hash) and templateExtension.'
-    ),
-  category: z
-    .string()
-    .max(200)
-    .optional()
-    .describe('Group templates into folders/categories, max 200 characters (e.g. "invoices", "legal", "hr").'),
-  comment: z
-    .string()
-    .max(200)
-    .optional()
-    .describe('Free-text comment to describe the template version or its purpose, max 200 characters.'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'Labels shown by list_tags (e.g. ["sales", "billing", "v2"]); list_templates cannot filter by tag. ' +
-      'Duplicates are removed and the list is sorted; the whole list is limited to 100 characters (about 8 tags of 9 characters).'
-    ),
-  sample: z
-    .array(
-      z.strictObject({
-        data:         z.record(z.string(), z.unknown()).optional().describe('JSON dataset for {d.} tags.'),
-        complement:   z.record(z.string(), z.unknown()).optional().describe('Extra data for {c.} tags.'),
-        translations: z.record(z.string(), z.unknown()).optional().describe('Localization map for {t()} tags.'),
-        enum:         z.record(z.string(), z.unknown()).optional().describe('Enumerations for :convEnum() formatter.'),
-      })
-    )
-    .max(1)
-    .optional()
-    .describe(
-      'Sample input data attached to the template for testing in Carbone Studio: an array with at most ONE object, ' +
-      'whose keys data, complement, translations and enum are all optional. Example: [{ "data": { "name": "Acme" } }].'
-    ),
-  deployedAt: z
-    .number()
-    .int()
-    .optional()
-    .describe(
-      'UTC Unix timestamp (seconds) to set as the deployment time for this version. ' +
-      'Carbone uses the version with the most recent deployedAt when rendering via Template ID. ' +
-      'Use 42000000000 to deploy immediately (special "NOW" sentinel value). Future values are not allowed.'
-    ),
-  expireAt: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe(
-      'Schedule deletion at a UTC Unix timestamp (seconds); 0 (default) means the template never expires. ' +
-      'After that time it is no longer listed, downloadable or renderable (404), and the file is purged after ' +
-      'the retention delay. To remove a template now, use delete_template.'
-    ),
-};
+export function uploadTemplateSchemaFor(io: IoModes) {
+  return {
+    template: z
+      .string()
+      .min(1)
+      .describe(
+        'The template file. ' + inputForms(io) + INPUT_FORMATS_DESCRIPTION
+      ),
+    name: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe(
+        'Display name for the template, max 200 characters (e.g. "Invoice Template", "NDA Contract"). ' +
+        'Optional but recommended: list_templates shows it and its search matches it.'
+      ),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Existing Template ID (64-bit format) to add this upload to its version history. ' +
+        'If omitted, a new Template ID is generated. ' +
+        'Providing a Version ID (SHA-256) is not allowed and will cause an error.'
+      ),
+    versioning: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        'Enable template versioning (default: true). ' +
+        'When true, a stable Template ID is generated and multiple versions can be managed under it. ' +
+        'When false, behaves as legacy mode and returns only a templateId (SHA-256 hash) and templateExtension.'
+      ),
+    category: z
+      .string()
+      .max(200)
+      .optional()
+      .describe('Group templates into folders/categories, max 200 characters (e.g. "invoices", "legal", "hr").'),
+    comment: z
+      .string()
+      .max(200)
+      .optional()
+      .describe('Free-text comment to describe the template version or its purpose, max 200 characters.'),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Labels shown by list_tags (e.g. ["sales", "billing", "v2"]); list_templates cannot filter by tag. ' +
+        'Duplicates are removed and the list is sorted; the whole list is limited to 100 characters (about 8 tags of 9 characters).'
+      ),
+    sample: z
+      .array(
+        z.strictObject({
+          data:         z.record(z.string(), z.unknown()).optional().describe('JSON dataset for {d.} tags.'),
+          complement:   z.record(z.string(), z.unknown()).optional().describe('Extra data for {c.} tags.'),
+          translations: z.record(z.string(), z.unknown()).optional().describe('Localization map for {t()} tags.'),
+          enum:         z.record(z.string(), z.unknown()).optional().describe('Enumerations for :convEnum() formatter.'),
+        })
+      )
+      .max(1)
+      .optional()
+      .describe(
+        'Sample input data attached to the template for testing in Carbone Studio: an array with at most ONE object, ' +
+        'whose keys data, complement, translations and enum are all optional. Example: [{ "data": { "name": "Acme" } }].'
+      ),
+    deployedAt: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'UTC Unix timestamp (seconds) to set as the deployment time for this version. ' +
+        'Carbone uses the version with the most recent deployedAt when rendering via Template ID. ' +
+        'Use 42000000000 to deploy immediately (special "NOW" sentinel value). Future values are not allowed.'
+      ),
+    expireAt: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'Schedule deletion at a UTC Unix timestamp (seconds); 0 (default) means the template never expires. ' +
+        'After that time it is no longer listed, downloadable or renderable (404), and the file is purged after ' +
+        'the retention delay. To remove a template now, use delete_template.'
+      ),
+  };
+}
+
+/** Default (stdio) wording — also the shape the validation schemas derive from. */
+export const uploadTemplateSchema = uploadTemplateSchemaFor(STDIO_IO);
 
 export async function handleUploadTemplate(
   args: {
@@ -329,6 +334,14 @@ export const updateTemplateMetadataSchema = {
       'that Template ID falls back to its next most recent version (or stops resolving if none is left). ' +
       'Fails if the move creates a deployedAt conflict at the destination. Only use it when the user asks to move a version.'
     ),
+  id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'DEPRECATED: the 1.6.0 name of moveToTemplateId, kept so existing callers keep working. Use moveToTemplateId; ' +
+      'passing both with different values is rejected.'
+    ),
   name: z.string().max(200).optional().describe('New display name, max 200 characters.'),
   comment: z.string().max(200).optional().describe('New free-text comment, max 200 characters.'),
   category: z.string().max(200).optional().describe('New category, max 200 characters.'),
@@ -366,6 +379,8 @@ export async function handleUpdateTemplateMetadata(
   args: {
     templateId:  string;
     moveToTemplateId?: string;
+    /** Deprecated 1.6.0 alias of moveToTemplateId. */
+    id?:         string;
     name?:       string;
     comment?:    string;
     category?:   string;
@@ -376,10 +391,22 @@ export async function handleUpdateTemplateMetadata(
   client: CarboneClient,
   options?: CallOptions
 ) {
+  // moveToTemplateId is the API body field `id` (renamed so it is not confused with templateId). 1.6.0 exposed it
+  // as `id`, still accepted as a deprecated alias: either one maps to the body `id`, never two different values.
+  const { moveToTemplateId, id: deprecatedId, ...fields } = args;
+  if (moveToTemplateId !== undefined && deprecatedId !== undefined && moveToTemplateId !== deprecatedId) {
+    return {
+      isError: true,
+      content: [{
+        type: 'text' as const,
+        text: `Conflicting destinations: moveToTemplateId "${moveToTemplateId}" and id "${deprecatedId}". ` +
+          'id is the deprecated name of moveToTemplateId: pass only moveToTemplateId.',
+      }],
+    };
+  }
+
   try {
-    // moveToTemplateId is the API body field `id` (renamed so it is not confused with templateId).
-    const { moveToTemplateId, ...fields } = args;
-    const result = await client.updateTemplate({ ...fields, id: moveToTemplateId }, options);
+    const result = await client.updateTemplate({ ...fields, id: moveToTemplateId ?? deprecatedId }, options);
 
     // Keep only the declared fields: the output schema rejects unknown keys. Treat null as absent too:
     // the live API echoes "deployedAt": null even when it was not sent, which the schema would reject.
@@ -531,46 +558,60 @@ export const downloadTemplateDescription =
   'Download the original source file of a stored Carbone template (e.g. the DOCX, XLSX, PPTX, or HTML file that was uploaded). ' +
   'Use this to inspect, edit, or back up a template. ' +
   'Pass a Template ID to download the currently deployed version, or a Version ID to download a specific version. ' +
-  'Append "_sample.json" to either ID to download the JSON sample data stored with it instead.';
+  'Set sample: true to get the JSON sample dataset stored with the template instead of the template file.';
 
-export const downloadTemplateSchema = {
-  templateId: z
-    .string()
-    .min(1)
-    .describe(
-      'Template ID (64-bit) or Version ID (SHA-256) to download. ' +
-      'Template ID — downloads the currently deployed version of the template. ' +
-      'Version ID — downloads that exact version regardless of deployment status. ' +
-      'Both formats are returned by upload_template and list_templates. ' +
-      'Use "<id>_sample.json" (e.g. "1234567890_sample.json") to get the sample data (JSON) stored with it.'
-    ),
-  outputPath: z
-    .string()
-    .optional()
-    .describe(
-      'Optional local file path to save the template file to (e.g. "/home/user/template.docx" or "~/template.docx"). ' +
-      'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
-      'the file inline. Local (stdio) mode only; rejected in HTTP mode.'
-    ),
-  asAttachment: z
-    .boolean()
-    .optional()
-    .describe(
-      'If true, return the template as a downloadable file attachment (base64 resource) instead of inline ' +
-      'text/image. Useful in HTTP mode where outputPath is unavailable. Default: false. Ignored when outputPath is set.'
-    ),
-};
+export function downloadTemplateSchemaFor(io: IoModes) {
+  return {
+    templateId: z
+      .string()
+      .min(1)
+      .describe(
+        'Template ID (64-bit) or Version ID (SHA-256) to download. ' +
+        'Template ID — downloads the currently deployed version of the template. ' +
+        'Version ID — downloads that exact version regardless of deployment status. ' +
+        'Both formats are returned by upload_template and list_templates.'
+      ),
+    sample: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, download the JSON SAMPLE DATASET saved with the template (the "sample" array passed to ' +
+        'upload_template) instead of the template file, returned as inline JSON text by default, of the form ' +
+        '[{ "data": {...}, "complement": {...}, "translations": {...}, "enum": {...} }] (each key optional). ' +
+        'Use it to recover the example data a template expects before calling render_document. ' +
+        'Errors if the template was uploaded without a sample.'
+      ),
+    outputPath: z
+      .string()
+      .optional()
+      .describe(outputPathDescription('template file', io)),
+    asAttachment: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, return the template as a downloadable file attachment (base64 resource) instead of inline ' +
+        'text/image. Useful in HTTP mode where outputPath is unavailable. Default: false. Ignored when outputPath is set.'
+      ),
+  };
+}
+
+/** Default (stdio) wording — also the shape the validation schemas derive from. */
+export const downloadTemplateSchema = downloadTemplateSchemaFor(STDIO_IO);
 
 export async function handleDownloadTemplate(
-  args: { templateId: string; outputPath?: string; asAttachment?: boolean },
+  args: { templateId: string; outputPath?: string; asAttachment?: boolean; sample?: boolean },
   client: CarboneClient,
   options?: CallOptions,
   fileCtx?: FileContext
 ) {
   try {
-    const result = await client.downloadTemplate(args.templateId, options);
-    // A sample ("<id>_sample.json") is JSON; take the extension from the request, as the returned filename may lack it.
-    const ext = args.templateId.endsWith('_sample.json') ? 'json' : (result.filename.split('.').pop() ?? 'bin');
+    // An ID already carrying the "_sample.json" path suffix (the raw API form) is treated like sample: true.
+    const sample = args.sample === true || args.templateId.endsWith('_sample.json');
+    const templateId = sample ? args.templateId.replace(/_sample\.json$/, '') : args.templateId;
+    const result = await client.downloadTemplate(templateId, { ...options, sample });
+    // A sample is JSON whatever the template's own type: take the extension from the request (delivered inline as
+    // application/json), as the returned filename may lack it.
+    const ext = sample ? 'json' : (result.filename.split('.').pop() ?? 'bin');
 
     return deliverDocument({
       buffer: result.buffer,

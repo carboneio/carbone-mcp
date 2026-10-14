@@ -208,6 +208,62 @@ describe('handleRenderDocument', () => {
     );
   });
 
+  test('keepTags forwards to client and skips templating', async () => {
+    const client = makeClient();
+    await handleRenderDocument({ templateId: 'tpl1', convertTo: 'pdf', keepTags: true }, client);
+
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ keepTags: true }),
+      undefined
+    );
+  });
+
+  test('keepTags + reportName: the MCP names the file (Carbone ignores reportName without templating)', async () => {
+    const client = makeClient(Buffer.from('pdf'), 'report.pdf');
+    const http = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 };
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', convertTo: 'pdf', keepTags: true, reportName: 'proof' }, client, undefined, http);
+
+    expect((result.content[0] as { resource: { uri: string } }).resource.uri).toBe('file://proof.pdf');
+  });
+
+  test('without keepTags, reportName is left to Carbone (sent, file name not rewritten)', async () => {
+    const client = makeClient(Buffer.from('pdf'), 'invoice-42.pdf');
+    const http = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 };
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', data: { id: 42 }, convertTo: 'pdf', reportName: 'invoice-{d.id}' }, client, undefined, http);
+
+    expect(vi.mocked(client.renderDocument).mock.calls[0][0]).toMatchObject({ reportName: 'invoice-{d.id}' });
+    expect((result.content[0] as { resource: { uri: string } }).resource.uri).toBe('file://invoice-42.pdf');
+  });
+
+  test('rejects keepTags combined with data', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', data: { a: 1 }, keepTags: true }, client);
+
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as { text: string }).text).toMatch(/keepTags/);
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
+  });
+
+  test('rejects batchOutput:pdf without convertTo:pdf', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument(
+      { template: 'abc', data: {}, batchSplitBy: 'd.items', batchOutput: 'pdf', convertTo: 'docx' }, client);
+
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
+  });
+
+  test('allows batchOutput:pdf with convertTo:pdf', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument(
+      { template: 'abc', data: {}, batchSplitBy: 'd.items', batchOutput: 'pdf', convertTo: 'pdf' }, client);
+
+    expect(result.isError).toBeUndefined();
+  });
+
   test('returns isError on client error', async () => {
     const client = {
       renderDocument: vi.fn().mockRejectedValue(new CarboneError('Render failed', 422)),

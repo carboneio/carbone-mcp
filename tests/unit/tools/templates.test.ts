@@ -377,6 +377,33 @@ describe('handleUpdateTemplateMetadata', () => {
     expect(vi.mocked(client.updateTemplate).mock.calls[0][0]).not.toHaveProperty('moveToTemplateId');
   });
 
+  test('accepts the deprecated 1.6.0 id as an alias of moveToTemplateId', async () => {
+    const client = makeClient();
+    await handleUpdateTemplateMetadata({ templateId: 'sha-v1', id: '1234567890' }, client);
+
+    expect(vi.mocked(client.updateTemplate)).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: 'sha-v1', id: '1234567890' }), undefined);
+  });
+
+  test('accepts id and moveToTemplateId together when they agree', async () => {
+    const client = makeClient();
+    const result = await handleUpdateTemplateMetadata(
+      { templateId: 'sha-v1', id: '1234567890', moveToTemplateId: '1234567890' }, client);
+
+    expect(result.isError).toBeUndefined();
+    expect(vi.mocked(client.updateTemplate).mock.calls[0][0]).toMatchObject({ id: '1234567890' });
+  });
+
+  test('rejects id and moveToTemplateId with different values, without calling the API', async () => {
+    const client = makeClient();
+    const result = await handleUpdateTemplateMetadata(
+      { templateId: 'sha-v1', id: '111', moveToTemplateId: '222' }, client);
+
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as { text: string }).text).toMatch(/moveToTemplateId "222" and id "111"/);
+    expect(vi.mocked(client.updateTemplate)).not.toHaveBeenCalled();
+  });
+
   test('returns isError on client error', async () => {
     const client = {
       updateTemplate: vi.fn().mockRejectedValue(new CarboneNotFoundError('Template')),
@@ -516,7 +543,16 @@ describe('handleDownloadTemplate', () => {
     const client = makeClient();
     await handleDownloadTemplate({ templateId: 'tpl1' }, client);
 
-    expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1', undefined);
+    expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith(
+      'tpl1', expect.objectContaining({ sample: false }));
+  });
+
+  test('sample:true requests the sample dataset', async () => {
+    const client = makeClient();
+    await handleDownloadTemplate({ templateId: 'tpl1', sample: true }, client);
+
+    expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith(
+      'tpl1', expect.objectContaining({ sample: true }));
   });
 
   test('returns EmbeddedResource for DOCX download', async () => {
@@ -548,24 +584,32 @@ describe('handleDownloadTemplate', () => {
     expect(result.content[0].type).toBe('resource');
   });
 
-  describe('"<id>_sample.json" sample download (returned filename without extension)', () => {
+  describe('sample download (returned filename without extension)', () => {
     const sampleClient = () => ({
       downloadTemplate: vi.fn().mockResolvedValue({ buffer: Buffer.from('[{"data":{"a":1}}]'), filename: 'document' }),
     }) as unknown as CarboneClient;
     const stdio = { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 100 };
 
-    test('is delivered inline as JSON text', async () => {
+    test('sample:true is delivered inline as JSON text', async () => {
       const client = sampleClient();
-      const result = await handleDownloadTemplate({ templateId: 'tpl1_sample.json' }, client, undefined, stdio);
+      const result = await handleDownloadTemplate({ templateId: 'tpl1', sample: true }, client, undefined, stdio);
 
-      expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1_sample.json', undefined);
+      expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1', { sample: true });
+      expect(result.content[0]).toEqual({ type: 'text', text: '[{"data":{"a":1}}]' });
+    });
+
+    test('a raw "<id>_sample.json" id is treated as sample:true (suffix not doubled)', async () => {
+      const client = sampleClient();
+      const result = await handleDownloadTemplate({ templateId: 'tpl1_sample.json', sample: true }, client, undefined, stdio);
+
+      expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1', { sample: true });
       expect(result.content[0]).toEqual({ type: 'text', text: '[{"data":{"a":1}}]' });
     });
 
     test('outputPath (stdio) saves it as json', async () => {
       vi.mocked(writeOutputFile).mockResolvedValue({ path: '/tmp/sample.json', size: 18 });
       const result = await handleDownloadTemplate(
-        { templateId: 'tpl1_sample.json', outputPath: '/tmp/sample.json' }, sampleClient(), undefined, stdio
+        { templateId: 'tpl1', sample: true, outputPath: '/tmp/sample.json' }, sampleClient(), undefined, stdio
       );
 
       expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/tmp/sample.json', expect.any(Buffer));
@@ -574,7 +618,7 @@ describe('handleDownloadTemplate', () => {
 
     test('asAttachment labels it application/json', async () => {
       const result = await handleDownloadTemplate(
-        { templateId: 'tpl1_sample.json', asAttachment: true }, sampleClient(), undefined, stdio
+        { templateId: 'tpl1', sample: true, asAttachment: true }, sampleClient(), undefined, stdio
       );
 
       expect(result.content[0]).toMatchObject({ type: 'resource', resource: { mimeType: 'application/json' } });

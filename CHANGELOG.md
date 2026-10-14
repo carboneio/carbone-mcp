@@ -6,52 +6,50 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-Parked on a branch, not published — waiting for MCP client ecosystem (Claude Desktop, Cursor, VS Code, etc.) to adopt SDK v2 / protocol 2026-07-28 before this becomes the default.
+Changes since 1.6.0. **BREAKING** marks what can break a 1.6.0 user.
 
 ### Changed
 
-- **Migrated to MCP TypeScript SDK v2** (`@modelcontextprotocol/server` and `@modelcontextprotocol/client` 2.3.1, `@modelcontextprotocol/node` 2.1.1). The MCP specification published a new major revision, [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog), and the TypeScript SDK split the monolithic `@modelcontextprotocol/sdk` (v1) package into `@modelcontextprotocol/client`, `@modelcontextprotocol/server`, and `@modelcontextprotocol/node`. Migrated using the official codemod, plus manual fixes for context-parameter destructuring and a couple of output-only tool schemas that needed wrapping in `z.object(...)` to hit the non-deprecated `registerTool` overload. v1 continues to receive security patches for at least 6 months, so this is not urgent — it was done ahead of time to have it ready once the ecosystem catches up.
+- **Migrated to MCP TypeScript SDK v2** (`@modelcontextprotocol/server` and `@modelcontextprotocol/client` 2.3.1, `@modelcontextprotocol/node` 2.1.1). The MCP specification published a new major revision, [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog), and the TypeScript SDK split the monolithic `@modelcontextprotocol/sdk` (v1) package into `@modelcontextprotocol/client`, `@modelcontextprotocol/server`, and `@modelcontextprotocol/node`. Migrated using the official codemod, plus manual fixes for context-parameter destructuring and a couple of output-only tool schemas that needed wrapping in `z.object(...)` to hit the non-deprecated `registerTool` overload.
 - **Serves MCP protocol 2026-07-28 and 2025-era clients, on both transports.** Clients that negotiate 2026-07-28 (discovery via `server/discover`, a `_meta` envelope on every request, no session) are served alongside clients that open with the 2025-era `initialize` handshake, which keep working unmodified. stdio serves either era on its connection; HTTP decides per request and stays stateless for both.
-- HTTP: `GET` and `DELETE` on the MCP endpoint are now answered `405` (stateless server: no standalone SSE stream, no sessions). Previously a `GET` opened an SSE stream that never ended and a `DELETE` returned `200`.
+- **BREAKING: minimum Node.js version raised from 18 to 20.3** (SDK v2 requires Node 20; aborting upstream calls on cancellation uses `AbortSignal.any`, added in 20.3).
+- **BREAKING (HTTP): `GET` and `DELETE` on the MCP endpoint are now answered `405`** (stateless server: no standalone SSE stream, no sessions). Previously a `GET` opened an SSE stream that never ended and a `DELETE` returned `200`.
 - HTTP: a malformed or empty JSON body now gets `400` with JSON-RPC parse error `-32700` (a malformed body was a `500`).
 - HTTP: CORS now allows the `Mcp-Protocol-Version`, `Mcp-Method` and `Mcp-Name` request headers sent by 2026-07-28 clients.
 - Tools and resources no longer advertise `listChanged`: the lists are static and never change, so clients have no reason to keep an idle change-notification stream (`subscriptions/listen`) open.
 - Cancelling a request — closing the HTTP response stream, or `notifications/cancelled` on stdio — now aborts the upstream Carbone API call instead of leaving it running until it completes or times out.
 - HTTP startup prints a warning when a server-level `CARBONE_API_KEY` is set and `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` is `false`, since requests without a Bearer key then spend that key. The key itself is never printed.
-- Minimum Node.js version raised from 18 to 20.3 (SDK v2 requires Node 20; aborting upstream calls on cancellation uses `AbortSignal.any`, added in 20.3).
-- **BREAKING: `convert_document` is now a pure conversion.** It no longer sends `data`, so Carbone skips templating and tags such as `{d.name}` are kept as written; they used to resolve to empty. Use `render_document` to fill them.
-- **BREAKING: output formats synced with the Carbone OpenAPI (v5.15.0) and checked live.** `convertTo` no longer accepts `zip` (batch archives come from `batchOutput`) or `cdr`, and now accepts `doc`, `xls`, `ppt`, `ott`, `ots`, `otp`, `dbf`, `dif`, `emf`, `wmf` and `eps` (36 formats). Valid outputs depend on the input format.
+- **BREAKING: output formats synced with the Carbone OpenAPI (v5.15.0) and checked live.** `convertTo` no longer accepts `zip` (batch archives come from `batchOutput`) or `cdr`, and now also accepts `ott`, `ots`, `otp`, `dbf`, `dif`, `emf`, `wmf` and `eps` (36 formats, `doc`/`xls`/`ppt` included). Valid outputs depend on the input format.
 - **BREAKING: `egressAuthorization` is limited to 511 characters** (was 512), as the API requires.
-- **BREAKING: `batchOutput` only accepts `"zip"` or `"pdf"`.** `"pdf"` concatenates the generated PDFs and requires `convertTo: "pdf"`.
-- **BREAKING: `update_template_metadata` reports the patched version.** Its text is now "Template metadata updated for version …" (was "Template metadata updated successfully.") and it returns structured output. Moving a version to another Template ID uses the new `moveToTemplateId` parameter (the API's `id` body field).
+- **BREAKING: `update_template_metadata` reports the patched version.** Its text is now "Template metadata updated for version …" (was "Template metadata updated successfully.") and it returns structured output. Moving a version to another Template ID is documented as `moveToTemplateId` (the API's `id` body field); the 1.6.0 parameter `id` is still accepted as a deprecated alias, and passing both with different values is rejected.
 - **BREAKING: template inputs follow the API.** `name` is optional on `upload_template`; `name`, `comment` and `category` are limited to 200 characters (upload and update); `sample` takes at most one object, whose keys `data`, `complement`, `translations` and `enum` are all optional (other keys are rejected); `expireAt` must be ≥ 0.
 - **BREAKING: error messages changed.** They carry the Carbone API message and its code, e.g. `Document generation failed (Carbone w101): …`, followed by a hint (see Fixed). Library users: a 500 with an API message throws `CarboneGenerationError`, timeouts and network failures throw `CarboneConnectionError` (the original error is in `originalError`), and `CarboneClient.updateTemplate` returns the response data instead of `void`.
-- Internal: every tool input and output schema is wrapped with `z.object(...)` once, at module scope, so all tools use the non-deprecated `registerTool` overload. `tools/list` is byte-identical.
+- Converter `I` (Carbone ICE) now also takes ODT input (beta), as Carbone v5.15.0 does, and is recommended over `O` for DOCX → PDF.
+- Tool descriptions follow the transport in the tool-level text too (`convert_document`, `render_document`), not only in the parameters, and the server instructions say local paths and `outputPath` work in stdio only.
+- Internal: every tool input and output schema is wrapped with `z.object(...)` once, so all tools use the non-deprecated `registerTool` overload; the transport-dependent schemas are built once per transport and cached, not per HTTP request.
 
 ### Added
 
 - `MCP_ALLOWED_ORIGINS` (HTTP only) — comma-separated browser `Origin` hostnames allowed in addition to `localhost`, `127.0.0.1` and `[::1]` (e.g. `app.example.com`). Hostnames only, without scheme or port; `<scheme>://*` (e.g. `moz-extension://*`) allows a browser-extension scheme. Invalid entries stop the server at startup.
-- Converter `I` (Carbone ICE) on `render_document` and `convert_document`: the fastest DOCX and ODT (beta) → PDF converter, recommended over `O` for DOCX from Carbone v5.15.0.
 - `render_document`: `failOn` (`["IMAGE_URL_ERROR"]`, Carbone v5.15.0+: fail the render when an image cannot be downloaded from its URL) and `preReleaseFeatureIn`.
-- `convert_document`: `hardRefresh`.
-- `update_template_metadata`: `moveToTemplateId`, and structured output (`versionId` plus the updated fields echoed by Carbone).
+- `update_template_metadata`: structured output (`versionId` plus the updated fields echoed by Carbone).
 - `upload_template` output: `deployedAt` (`0` = not explicitly deployed), `createdAt`, and `templateExtension` (versioning disabled).
-- `download_template`: `<id>_sample.json` downloads the JSON sample data stored with a template, returned inline as JSON.
 - Error messages include the Carbone API error code (`wNNN`).
 
 ### Fixed
 
+- **Correction to 1.6.0: ICE applies PDF security options.** The 1.6.0 warning that converter `I` "silently ignores PDF security options" no longer holds: verified with Carbone v5.15, `EncryptFile` / `DocumentOpenPassword` produce an encrypted PDF with `I`, as with `L`. The descriptions now say that `O`, `C` and `I` support the Security and Watermark PDF options (only `L` supports all of them).
+- **`convert_document` `reportName` now takes effect.** Carbone resolves `reportName` during templating, so on a pure conversion it ignored it and the file stayed `report.<ext>`. The server now names the delivered file `<reportName>.<ext>` itself (attachment name, and the default saved file name in stdio). Same for `render_document` with `keepTags`.
 - **Wrong deletion guidance.** The tools said `expireAt = 42000000000` deletes a template immediately; that "now" value only exists for `deployedAt`, so following the advice scheduled the deletion for the year 3300. `delete_template` takes effect immediately; `expireAt` schedules a deletion (`0` = never; on update, `0` cancels one).
 - `update_template_metadata` with a Template ID patches only the currently deployed version; it was described as updating all versions.
 - `formatOptions` examples used keys the API does not have (`DocumentPermissionPassword`, `fontsize`, `ConvertSlideshow`, `density`) and allowed 5 watermarks (the maximum is 4). They now use the API's keys: `RestrictPermissions` + `PermissionPassword`, `size`, `PixelWidth` / `PixelHeight`, …
-- Converter guidance: OnlyOffice is no longer presented as "highest fidelity", the converter applies whenever the format changes (not only for PDF), and `O`, `C` and `I` support only the Security and Watermark PDF options.
-- Batch guidance: `batchReportName` examples no longer include an extension (Carbone appends it), `batchSplitBy` documents `"d"` / `"d.items"` and the 100-object limit on Carbone Cloud, and the "zip with `batchSplitBy`" advice is gone.
+- Converter guidance: OnlyOffice is no longer presented as "highest fidelity", and the converter applies whenever the format changes (not only for PDF).
+- Batch guidance: `batchReportName` examples no longer include an extension (Carbone appends it), and the "zip with `batchSplitBy`" advice is gone.
 - Async (webhook) guidance: the tool returns only Carbone's acceptance message; the webhook receives `{ success, data: { renderId } }` and its server downloads the document from `GET /render/{renderId}`. `returnLink` is ignored when `webhookUrl` is set.
 - 500 render errors (`w101`, `w117`) were reported as a Carbone outage, so agents retried deterministic template, data or format errors. They now read "Document generation failed" with a hint (e.g. the conversion matrix); "temporarily unavailable, try again" is kept for a 500 without message and for 502–504.
 - 401 advice always pointed to `CARBONE_API_KEY`, even in HTTP mode; it now matches the transport (`Authorization: Bearer <key>` in HTTP). 400, 413 and 422 errors keep the API's detail.
 - Timeouts and network failures read "Unexpected error: …"; they now read "Carbone API request timed out after N s." and "Could not reach the Carbone API at <host>: <code>." (never the key or headers).
-- `list_templates` `origin` documents all values: `0` API, `1` Studio, `2` Salesforce, `3` Odoo, `4` HubSpot.
-- `convert_document` no longer claims PNG, JPG or SVG inputs; stale documentation links are updated; `get_capabilities` matches all of the above (its format list is built from the code).
+- Input formats are listed once, the same for every file/template parameter and `get_capabilities`: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, XML, SVG, IDML, MD, TXT, CSV, RTF, PDF. `convert_document` no longer lists PNG and JPG as inputs. Stale documentation links are updated; `get_capabilities` builds its output format list from the code.
 
 ### Security
 
@@ -60,6 +58,40 @@ Parked on a branch, not published — waiting for MCP client ecosystem (Claude D
   - `@modelcontextprotocol/client` GHSA-6qxp-vccf-f47h (high; an OAuth client could send credentials to an authorization server chosen by the MCP server) — removed by the bump to 2.3.1. The server itself makes no OAuth client calls.
   - `hono` (high, several advisories) and `@hono/node-server` (moderate, GHSA-frvp-7c67-39w9), pulled in by `@modelcontextprotocol/node` — updated in the lockfile to `hono` 4.13.13 and `@hono/node-server` 1.19.17. The affected features (JSX rendering, JWT and cache middleware, `serve-static` on Windows, …) are not used by this server.
   - Dev only: `vitest` / `@vitest/mocker` GHSA-82fw-gwwq-j7x9 (moderate) — `vitest` and `@vitest/coverage-v8` bumped to 4.1.11.
+
+---
+
+## [1.6.0] — 2026-08-19
+
+### Added
+
+- **Carbone ICE converter** — `converter: "I"` on `render_document` and `convert_document` (Carbone API v5.14.0). Carbone's own DOCX → PDF engine, up to 60x faster than LibreOffice on a 1000-page DOCX. **DOCX → PDF only**; any other input or output format is rejected.
+
+  ⚠️ **ICE silently ignores PDF security options.** `EncryptFile`, `DocumentOpenPassword` and `RestrictPermissions` are accepted but never applied — the PDF comes back readable by anyone, with no error. Only `Watermarks` work. Use `L` whenever a password or restricted permissions are required.
+
+  Also unsupported: WEBP and EMF/WMF images, table of contents, SmartArt, complex charts, footnotes/endnotes, comments, tracked changes, form fields, equations, bookmarks and links. A missing font falls back to Noto Sans.
+
+- `render_document` — `keepTags` skips templating and leaves every tag as literal text (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Rejected together with `data`.
+
+- `convert_document` — `reportName` (output filename, extension appended by Carbone) and `hardRefresh` (forces the converter to run when the output format equals the input format — needed for PDF → PDF so `formatOptions` such as watermark, password and PDF/A actually apply).
+
+- `convert_document` / `render_document` — `doc`, `xls` and `ppt` added as output formats. Carbone writes the legacy binary Office formats even though it cannot read them back, so they are output-only (all three verified against the API).
+
+- `convert_document` — corrected the input format list. Carbone reads XML-based and text-based documents only, so the legacy binary formats `DOC`, `XLS` and `PPT` are rejected as input (`w118`) even though Carbone can produce them as output; `RTF` and `PDF` are accepted. Conversion and templating share one endpoint and one validation, so their accepted inputs are identical.
+
+- `render_document` — `batchOutput` now accepts `"pdf"` (concatenates the batch into one continuous PDF; requires `convertTo: "pdf"`) alongside `"zip"`. `batchSplitBy` accepts `"d"` when the data itself is the array. Carbone Cloud allows 1–100 objects per batch.
+
+- `download_template` — `sample: true` returns the JSON sample dataset stored with the template (`GET /template/{id}_sample.json`) instead of the template file. Sample data could be uploaded but never read back.
+
+- `update_template_metadata` — `id` moves a version under a different Template ID.
+
+- `list_templates` — the `origin` filter documents all five values: 0 = API, 1 = Studio, 2 = Salesforce, 3 = Odoo, 4 = HubSpot (only 0 and 1 were listed).
+
+### Changed
+
+- **Tool descriptions now follow the transport.** Over HTTP they no longer offer "local file path" as an input form — those have been rejected since 1.5.0, so the model was being told about a call that could only fail — and `outputPath` is marked unavailable with `asAttachment` / `returnLink` named instead. stdio wording is unchanged.
+
+- **`convert_document` now preserves Carbone tags.** It previously sent `data: {}`, which ran templating against an empty dataset and blanked every tag — so converting a DOCX template to PDF silently destroyed every `{d.field}`. The field is now omitted entirely, which skips templating (Carbone 5.9.0+). Conversion changes a document's format; it does not template. Use `render_document` to resolve tags.
 
 ---
 

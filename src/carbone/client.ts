@@ -100,8 +100,10 @@ export class CarboneClient {
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { renderId: string }> {
-    // Pure conversion: `data` is omitted, so Carbone (v5) skips templating and tags such as {d.name} are kept.
-    // Sending `data: {}` would run templating instead and blank every tag.
+    // Pure conversion: `data` is deliberately NOT sent, so Carbone (carbone-version 5) skips templating and tags
+    // such as {d.name} survive untouched. Sending `data: {}` would run templating against an empty dataset and
+    // blank every tag. No reportName either: Carbone resolves it during templating, so a pure conversion ignores
+    // it (verified live: the file stays "report.<ext>"); convert_document names the delivered file itself.
     const body: Record<string, unknown> = {
       template: params.template,
       convertTo: params.convertTo,
@@ -161,12 +163,14 @@ export class CarboneClient {
     failOn?: string[];
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
+    keepTags?: boolean;
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string } | { renderId: string }> {
-    // Default data to {} and always send it, so rendering always runs templating (tags without data resolve
-    // to empty). Omitting `data` would make Carbone skip templating: that pure conversion is convertDocument's job.
-    const body: Record<string, unknown> = { data: params.data ?? {} };
+    // `data` drives the templating pass, so it is always sent: defaulting to {} resolves every tag to an
+    // empty string, which is what "render with no data" means. keepTags omits the field entirely instead:
+    // from carbone-version 5 that skips templating and leaves every tag intact (proofing a stored template).
+    const body: Record<string, unknown> = params.keepTags ? {} : { data: params.data ?? {} };
     if (params.template)                   body['template']       = params.template;
     if (params.convertTo)                  body['convertTo']      = params.convertTo;
     if (params.converter)                  body['converter']      = params.converter;
@@ -312,16 +316,17 @@ export class CarboneClient {
   }
 
   /**
-   * Download a template file.
-   * GET /template/{id}
+   * Download a template file, or with `sample` the JSON sample dataset stored with it.
+   * GET /template/{id}  |  GET /template/{id}_sample.json
    */
   async downloadTemplate(
     templateId: string,
-    options?: CallOptions
+    options?: CallOptions & { sample?: boolean }
   ): Promise<{ buffer: Buffer; filename: string }> {
-    const response = await this.request(`/template/${encodeURIComponent(templateId)}`, {
-      method: 'GET',
-    }, options);
+    // The sample dataset uploaded alongside a template is served from the same path with a
+    // "_sample.json" suffix. The id itself is encoded; the suffix is ours, so it stays outside.
+    const path = `/template/${encodeURIComponent(templateId)}${options?.sample ? '_sample.json' : ''}`;
+    const response = await this.request(path, { method: 'GET' }, options);
     return this.handleBinaryResponse(response);
   }
 

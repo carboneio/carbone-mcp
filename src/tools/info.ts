@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { formatError } from '../utils/errors.js';
-import { OUTPUT_FORMATS } from '../validation/formats.js';
+import { INPUT_FORMATS, OUTPUT_FORMATS } from '../validation/formats.js';
+import { type IoModes, inputFormsShort, jsonRefForms } from './inputForms.js';
 
 // ─── get_api_status ───────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ export const getCapabilitiesDescription =
 
 export const getCapabilitiesSchema = {};
 
-const CAPABILITIES_TEXT = `# Carbone — Document Generation & Conversion
+const capabilitiesText = (io: IoModes) => `# Carbone — Document Generation & Conversion
 
 ## Tools available
 
@@ -83,9 +84,9 @@ Invoice, Quote/Proposal, Purchase order, Pay slip, Delivery note, Offer letter, 
 
 ## 1. Document Conversion (no template needed)
 
-Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags such as \`{d.name}\` are kept as written (use \`render_document\` to fill them).
+Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags such as \`{d.name}\` are kept as written (use \`render_document\` to fill them). That makes it the way to proof a template in another format (DOCX template → PDF), or to convert a template while it stays a template (DOCX → ODT). \`render_document\` can also skip templating with \`keepTags: true\`, to proof a STORED template by \`templateId\`.
 
-**Accepted file input:** local path, HTTPS URL, or base64 string. Input formats: DOCX, DOC, XLSX, XLS, PPTX, PPT, PDF, ODT, ODS, ODP, ODG, RTF, TXT, CSV, HTML, XHTML, MD, IDML, XML.
+**Accepted file input:** ${inputFormsShort(io)}. Rendering and conversion accept the same input formats: ${INPUT_FORMATS.join(', ')}. The legacy binary formats DOC, XLS and PPT are rejected as input (re-save them as DOCX/XLSX/PPTX), although Carbone can produce them.
 
 **Common conversions** (valid outputs depend on the input format):
 - DOCX / XLSX / PPTX / ODT / ODS / ODP / ODG → PDF
@@ -130,12 +131,12 @@ Two modes — choose based on whether you need to reuse the template:
 3. Call \`render_document\` with \`templateId\`, your JSON data, and \`convertTo\` (e.g. \`"pdf"\`)
 
 **Mode B — Inline template (one-shot, no storage):**
-1. Call \`render_document\` with \`template\` (file path, URL, or base64), your JSON data, and \`convertTo\`
+1. Call \`render_document\` with \`template\` (${inputFormsShort(io)}), your JSON data, and \`convertTo\`
 2. The template is uploaded and rendered in a single request — no Template ID is returned
 
 **Output format:** \`convertTo\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
-**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). It is optional: without it, {} is sent and every tag resolves to empty (to convert a file and keep its tags, use \`convert_document\`). \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: a local file path (stdio only), an HTTPS URL, or base64 to a JSON file — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
+**Passing data:** \`data\` is an inline JSON object — or a top-level array (\`{d[i].field}\`). It is optional: without it, {} is sent and every tag resolves to empty (to keep the tags as written, pass \`keepTags: true\` without data, or use \`convert_document\` for a file). \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: ${jsonRefForms(io)} — read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
 
 **External resources behind auth:** if a template fetches a protected external image/PDF, or you call a secured webhook, pass \`egressAuthorization\` (e.g. "Bearer abc123", max 511 chars) — Carbone sends it as the \`authorization\` header on those outbound requests. Also available on convert_document (for HTML→PDF assets). For webhooks, webhookHeaders.authorization overrides it.
 
@@ -174,7 +175,7 @@ Two modes — choose based on whether you need to reuse the template:
 
 ${OUTPUT_FORMATS.join(', ')}
 
-Valid outputs depend on the input format: see the conversion matrix above.
+Valid outputs depend on the input format: see the conversion matrix above. \`doc\`, \`xls\` and \`ppt\` are output-only.
 
 ---
 
@@ -184,7 +185,7 @@ Valid outputs depend on the input format: see the conversion matrix above.
 - Rendering by Template ID uses the version with the most recent \`deployedAt\`. To deploy a version, call \`update_template_metadata\` with templateId = its Version ID and deployedAt = 42000000000 (now).
 - \`update_template_metadata\` with a Template ID patches only its currently deployed version; with a Version ID, that exact version.
 - Deletion: \`delete_template\` takes effect immediately (no longer listed, downloadable or renderable). \`expireAt\` schedules a deletion at a Unix timestamp instead; 0 means never (on update, 0 cancels a scheduled deletion).
-- \`download_template\` with \`<id>_sample.json\` returns the JSON sample data stored with a template.
+- \`download_template\` with \`sample: true\` returns the JSON sample data stored with a template.
 
 ---
 
@@ -210,8 +211,8 @@ Compatible with any AI assistant that supports the Agent Skills standard (agents
 - GitHub repository:    https://github.com/carboneio/carbone-skill
 `;
 
-export function handleGetCapabilities() {
+export function handleGetCapabilities(io: IoModes) {
   return {
-    content: [{ type: 'text' as const, text: CAPABILITIES_TEXT }],
+    content: [{ type: 'text' as const, text: capabilitiesText(io) }],
   };
 }

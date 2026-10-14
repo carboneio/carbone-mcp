@@ -125,6 +125,23 @@ describe('handleConvertDocument', () => {
     );
   });
 
+  test('does not send reportName to Carbone (ignored without templating)', async () => {
+    const client = makeClient();
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', reportName: 'contract' }, client);
+
+    expect(vi.mocked(client.convertDocument).mock.calls[0][0]).not.toHaveProperty('reportName');
+  });
+
+  test('applies reportName to the delivered filename (API cannot, templating is skipped)', async () => {
+    const client = makeClient(Buffer.from('pdf bytes'), 'report.pdf');
+    const result = await handleConvertDocument(
+      { file: 'data', convertTo: 'pdf', reportName: 'contract', outputPath: undefined }, client, undefined,
+      { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 });
+
+    // HTTP-mode delivery → EmbeddedResource whose uri carries the filename.
+    expect((result.content[0] as { resource: { uri: string } }).resource.uri).toBe('file://contract.pdf');
+  });
+
   test('accepts advanced convertTo object', async () => {
     const client = makeClient();
     const convertTo = { formatName: 'pdf' as const, formatOptions: { EncryptFile: true } };
