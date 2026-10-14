@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { IncomingMessage } from 'node:http';
 import { extractBearerToken, parseBody } from '../../../src/server/http.js';
@@ -14,11 +14,11 @@ function makeReq(headers: Record<string, string> = {}): IncomingMessage {
  * Build a mock streaming IncomingMessage that emits body chunks then ends,
  * or emits an error if `error` is provided.
  */
-function makeStreamReq(body: Buffer | null, error?: Error): IncomingMessage {
-  const req = new EventEmitter() as IncomingMessage;
+function makeStreamReq(body: Buffer | Buffer[] | null, error?: Error): IncomingMessage {
+  const req = Object.assign(new EventEmitter(), { pause: vi.fn() }) as unknown as IncomingMessage;
   setImmediate(() => {
     if (error) { req.emit('error', error); return; }
-    if (body)  req.emit('data', body);
+    for (const chunk of Array.isArray(body) ? body : body ? [body] : []) req.emit('data', chunk);
     req.emit('end');
   });
   return req;
@@ -84,6 +84,13 @@ describe('parseBody', () => {
     const body = Buffer.from('x'.repeat(100));
     const req = makeStreamReq(body);
     await expect(parseBody(req, 10)).rejects.toThrow('Request body too large');
+  });
+
+  test('stops reading as soon as the limit is passed (no draining of the rest)', async () => {
+    const req = makeStreamReq([Buffer.alloc(8), Buffer.alloc(8), Buffer.alloc(8)]);
+    await expect(parseBody(req, 10)).rejects.toThrow('Request body too large');
+    expect(req.pause).toHaveBeenCalledTimes(1);
+    expect(req.listenerCount('data'), 'the data listener is removed at the limit').toBe(0);
   });
 
   test('rejects when the request stream emits an error', async () => {

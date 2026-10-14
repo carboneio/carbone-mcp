@@ -52,8 +52,9 @@ export const INPUT_FORMATS_DESCRIPTION =
 export const CONVERTER_DESCRIPTION =
   'Converter engine, used whenever the format changes (not only for PDF). If omitted, "L" is used. ' +
   '"L" LibreOffice: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options. ' +
-  '"I" Carbone ICE: DOCX and ODT (beta) to PDF; the fastest, recommended over "O" for DOCX from v5.15.0 ' +
-  '(limitations: ' + DOCS + '#converters-carbone-ice-limitations). ' +
+  '"I" Carbone ICE: DOCX and ODT (beta) to PDF; the fastest, recommended over "O" for DOCX from v5.15.0. ' +
+  'ICE does not convert WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, form fields ' +
+  'or equations, and a missing font falls back to Noto Sans (' + DOCS + '#converters-carbone-ice-limitations). ' +
   '"O" OnlyOffice: DOCX, XLSX, PPTX to PDF. ' +
   '"C" Chromium: HTML to PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max. ' +
   '"O", "C" and "I" support only the Security (passwords, permissions) and Watermark PDF options. ' +

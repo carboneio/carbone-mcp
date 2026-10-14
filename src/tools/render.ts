@@ -403,6 +403,9 @@ export async function handleRenderDocument(
   }
 
   try {
+    // Authenticate first: a caller without credentials must not be able to trigger any URL download.
+    client.assertCanAuthenticate(options);
+
     // Gates apply to the template AND every by-reference JSON param (data, complement, …).
     const resolveOpts = {
       isCloud: client.isCloud,

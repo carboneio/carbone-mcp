@@ -99,7 +99,7 @@ Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags
 
 **Converter engines** (\`converter\`, used whenever the format changes, not only for PDF):
 - \`L\` LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- \`I\` Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over \`O\` for DOCX from v5.15.0
+- \`I\` Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over \`O\` for DOCX from v5.15.0. Not converted by ICE: WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, form fields, equations; a missing font falls back to Noto Sans (https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations)
 - \`O\` OnlyOffice: DOCX, XLSX, PPTX → PDF
 - \`C\` Chromium: HTML → PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max
 - \`O\`, \`C\` and \`I\` support only the Security (passwords, permissions) and Watermark PDF options.

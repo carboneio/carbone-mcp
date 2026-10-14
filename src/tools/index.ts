@@ -81,6 +81,12 @@ const getApiStatusOutput           = z.object(getApiStatusOutputSchema);
  */
 function buildTransportTools(io: IoModes) {
   return {
+    // The tools that return a document (render, convert, download_template) write a local file in stdio
+    // (outputPath, or a fresh temp file by default), so they are not read-only there: each call may create
+    // a new file (not idempotent), but never overwrites one (not destructive). Over HTTP they write nothing.
+    documentToolHints: io.allowFileOutput
+      ? { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+      : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     convertDocumentDescription: convertDocumentDescriptionFor(io),
     convertDocumentInput:       z.object(convertDocumentSchemaFor(io)),
     renderDocumentDescription:  renderDocumentDescriptionFor(io),
@@ -107,7 +113,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   const io: IoModes = { allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput };
   const {
     convertDocumentDescription, convertDocumentInput, renderDocumentDescription, renderDocumentInput,
-    uploadTemplateInput, downloadTemplateInput,
+    uploadTemplateInput, downloadTemplateInput, documentToolHints,
   } = transportToolsFor(io);
 
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
@@ -116,6 +122,8 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   // - idempotentHint: same args produce the same effect when repeated.
   // - destructiveHint: only meaningful when readOnlyHint is false; true for delete.
   // - openWorldHint:  calls the external Carbone API (false only for the local capabilities tool).
+  // render, convert and download_template take per-transport hints (documentToolHints, see buildTransportTools).
+
   server.registerTool(
     listTemplatesToolName,
     {
@@ -134,7 +142,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       title: 'Convert Document',
       description: convertDocumentDescription,
       inputSchema: convertDocumentInput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: documentToolHints,
     },
     (args, ctx) => handleConvertDocument(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
@@ -145,7 +153,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       title: 'Generate Document',
       description: renderDocumentDescription,
       inputSchema: renderDocumentInput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: documentToolHints,
     },
     (args, ctx) => handleRenderDocument(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
@@ -213,7 +221,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       title: 'Download Template',
       description: downloadTemplateDescription,
       inputSchema: downloadTemplateInput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: documentToolHints,
     },
     (args, ctx) => handleDownloadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );

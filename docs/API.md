@@ -67,7 +67,7 @@ Render /path/to/report.pdf as a PNG thumbnail
 
 **`converter` options** (used whenever the format changes, not only for PDF):
 - `L` — LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- `I` — Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over `O` for DOCX from Carbone v5.15.0 ([limitations](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
+- `I` — Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over `O` for DOCX from Carbone v5.15.0. Not converted by ICE, per [Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations): WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, form fields and equations; a missing font falls back to Noto Sans
 - `O` — OnlyOffice: DOCX, XLSX, PPTX → PDF
 - `C` — Chromium: HTML → PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max
 
@@ -212,7 +212,7 @@ Override the default with these optional parameters:
 
 | Parameter | Behaviour |
 |---|---|
-| `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. In HTTP mode it is rejected (the file would land on the server, not your machine). |
+| `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. The path must not exist yet: an existing file (or symlink) is never overwritten, and the new file is readable by the current user only (`0600`). In HTTP mode it is rejected (the file would land on the server, not your machine). |
 | `asAttachment` | Return the bytes as an `EmbeddedResource` download attachment for **any** format (including text/images), instead of inlining. |
 | `returnLink` | Render without returning the bytes; instead return Carbone's public download URL (`<API URL>/render/{renderId}`). The link is **one-time and short-lived** — Carbone deletes the file after the first download — so pass it to the end user and do **not** fetch it yourself. Works in both transports. Mutually exclusive with `outputPath` / `asAttachment`; ignored when `webhookUrl` is set. |
 
@@ -392,7 +392,7 @@ MCP_TRANSPORT=http MCP_PORT=3000 node dist/index.js
 |---|---|---|
 | `MCP_PORT` | `3000` | Listening port |
 | `MCP_PATH` | `/` | MCP endpoint path. Cannot be `/health` (reserved). |
-| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB, matches Carbone Cloud limit). Returns HTTP 413 when exceeded. |
+| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum size of one incoming MCP message (60 MB, matches Carbone Cloud limit): an HTTP request body, answered `413` as soon as the limit is passed, or one stdio message. |
 | `MCP_ALLOWED_ORIGINS` | `localhost`, `127.0.0.1`, `[::1]` | Browser `Origin` hostnames allowed in addition to the localhost default — comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). Invalid entries stop the server at startup. |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Require `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server — anyone reaching the port can spend it). Set `true` to require per-client keys. No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs to resolve to private/internal addresses. Off by default to block SSRF. |

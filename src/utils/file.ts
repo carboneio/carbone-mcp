@@ -1,6 +1,8 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { request as httpRequest, type IncomingMessage } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import { isIP, type LookupFunction } from 'node:net';
 
 export type FormatArg = string | { formatName: string };
 
@@ -47,12 +49,14 @@ export interface ResolveFileOptions {
 /**
  * True when an IP literal belongs to a range that must never be reachable from a user-supplied URL:
  * loopback, private (RFC1918), link-local (incl. 169.254.169.254 cloud metadata), CGNAT, multicast,
- * and reserved space — for both IPv4 and IPv6 (including IPv4-mapped IPv6).
+ * and reserved space — for both IPv4 and IPv6. IPv6 is compared on its 16 bytes, so every notation of
+ * the same address (hex, dotted, compressed) gets the same answer, and an IPv4 address embedded in an
+ * IPv6 one (mapped, compatible, NAT64, 6to4) is checked against the IPv4 rules.
  */
 export function isBlockedIp(ip: string): boolean {
   const version = isIP(ip);
   if (version === 4) return isBlockedIpv4(ip);
-  if (version === 6) return isBlockedIpv6(ip.toLowerCase());
+  if (version === 6) return isBlockedIpv6(ipv6Bytes(ip));
   return true; // not a valid IP literal — reject rather than guess
 }
 
@@ -73,72 +77,182 @@ function isBlockedIpv4(ip: string): boolean {
   return false;
 }
 
-function isBlockedIpv6(ip: string): boolean {
-  if (ip === '::' || ip === '::1') return true;              // unspecified + loopback
-  // IPv4-mapped (::ffff:1.2.3.4) / IPv4-compatible — validate the embedded v4 address.
-  const mapped = ip.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped?.[1]) return isBlockedIpv4(mapped[1]);
-  if (/^f[cd]/.test(ip)) return true;                        // fc00::/7 unique-local
-  if (/^fe[89ab]/.test(ip)) return true;                     // fe80::/10 link-local
-  if (/^ff/.test(ip)) return true;                           // ff00::/8 multicast
+/** Parse a valid IPv6 literal (as accepted by net.isIP) into its 16 bytes. A zone id ("%eth0") is ignored. */
+function ipv6Bytes(ip: string): number[] {
+  let text = ip.split('%')[0]!.toLowerCase();
+  // A trailing dotted IPv4 part (::ffff:1.2.3.4) becomes the last two hex groups.
+  const dotted = text.match(/^(.*:)(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dotted) {
+    const [a, b, c, d] = dotted.slice(2).map(Number) as [number, number, number, number];
+    text = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  // Expand the single "::" (if any) to the missing zero groups.
+  const [left, right] = text.split('::') as [string, string | undefined];
+  const head = left ? left.split(':') : [];
+  const tail = right ? right.split(':') : [];
+  const groups = right === undefined ? head : [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail];
+  return groups.flatMap((g) => {
+    const n = parseInt(g, 16);
+    return [n >> 8, n & 0xff];
+  });
+}
+
+/** True when bytes[from, to) are all zero. */
+function zeros(bytes: number[], from: number, to: number): boolean {
+  return bytes.slice(from, to).every((b) => b === 0);
+}
+
+/** Check the IPv4 address held in bytes[at, at+4) against the IPv4 rules. */
+function embeddedIpv4Blocked(bytes: number[], at: number): boolean {
+  return isBlockedIpv4(bytes.slice(at, at + 4).join('.'));
+}
+
+function isBlockedIpv6(b: number[]): boolean {
+  // ::/96 IPv4-compatible (also covers :: unspecified and ::1 loopback, which embed 0.0.0.0 / 0.0.0.1).
+  if (zeros(b, 0, 12)) return embeddedIpv4Blocked(b, 12);
+  // ::ffff:0:0/96 IPv4-mapped (::ffff:7f00:1 is 127.0.0.1).
+  if (zeros(b, 0, 10) && b[10] === 0xff && b[11] === 0xff) return embeddedIpv4Blocked(b, 12);
+  // ::ffff:0:0:0/96 IPv4-translated (SIIT).
+  if (zeros(b, 0, 8) && b[8] === 0xff && b[9] === 0xff && zeros(b, 10, 12)) return embeddedIpv4Blocked(b, 12);
+  // 64:ff9b::/96 NAT64 well-known prefix — the gateway connects to the embedded IPv4 address.
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && zeros(b, 4, 12)) {
+    return embeddedIpv4Blocked(b, 12);
+  }
+  // 64:ff9b:1::/48 local-use NAT64 (RFC 8215) — operator-internal by definition.
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && b[4] === 0x00 && b[5] === 0x01) return true;
+  // 2002::/16 6to4 — the IPv4 address follows the prefix.
+  if (b[0] === 0x20 && b[1] === 0x02) return embeddedIpv4Blocked(b, 2);
+  // 2001::/32 Teredo — tunnels to an (obfuscated) IPv4 endpoint; never a legitimate template host.
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x00 && b[3] === 0x00) return true;
+  if ((b[0]! & 0xfe) === 0xfc) return true;                   // fc00::/7 unique-local
+  if (b[0] === 0xfe && (b[1]! & 0xc0) === 0x80) return true;  // fe80::/10 link-local
+  if (b[0] === 0xfe && (b[1]! & 0xc0) === 0xc0) return true;  // fec0::/10 site-local (deprecated)
+  if (b[0] === 0xff) return true;                             // ff00::/8 multicast
   return false;
 }
 
+function refusal(target: string, address: string): Error {
+  return new Error(
+    `Refusing to fetch ${target} — it resolves to a private or internal address (${address}). ` +
+    'Set CARBONE_ALLOW_PRIVATE_NETWORK=true to allow internal hosts on a trusted deployment.'
+  );
+}
+
+/** Resolves a hostname to every address it has (the system resolver by default; injectable for tests). */
+export type HostResolver = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+
+const systemResolver: HostResolver = (hostname) => lookup(hostname, { all: true });
+
 /**
- * Reject a URL that targets internal infrastructure, resolving DNS so a hostname cannot hide a
- * private address. Every redirect hop is validated through this same function.
+ * Build the `lookup` hook handed to http(s).request, so DNS is resolved exactly once per connection:
+ * every returned address is validated, and only then are the addresses given to the socket. The
+ * address connected to is therefore always an address that passed isBlockedIp — a DNS server that
+ * answers differently on a second query (DNS rebinding) never gets that second query.
  *
- * Residual risk: a DNS rebind between this check and connect() is theoretically possible; the short
- * fetch timeout and the fact that every hop is re-validated keep the window impractically small.
+ * `target` names the host in error messages; it must not be text taken from a remote response.
  */
-async function assertUrlAllowed(rawUrl: string, allowPrivateNetwork: boolean): Promise<void> {
+export function guardedLookup(target: string, resolver: HostResolver = systemResolver): LookupFunction {
+  return (hostname, options, callback) => {
+    resolver(hostname)
+      .then(
+        (all) => {
+          const family = options.family === 4 || options.family === 6 ? options.family : 0;
+          const addresses = family ? all.filter((a) => a.family === family) : all;
+          if (addresses.length === 0) throw new Error(`Could not resolve host ${target}.`);
+          const blocked = all.find((a) => isBlockedIp(a.address));
+          if (blocked) throw refusal(target, blocked.address);
+          return addresses;
+        },
+        () => { throw new Error(`Could not resolve host ${target}.`); }
+      )
+      .then(
+        (addresses) => options.all
+          ? callback(null, addresses)
+          : callback(null, addresses[0]!.address, addresses[0]!.family),
+        (err: NodeJS.ErrnoException) => callback(err, '')
+      );
+  };
+}
+
+/**
+ * Validate a URL before connecting: http(s) only, and — unless private networks are allowed — an
+ * IP-literal host must not be internal. IP literals skip DNS (and therefore the lookup hook), so they
+ * are checked here; hostnames are checked by guardedLookup at connect time. Returns the lookup hook
+ * to use for the connection (none when private networks are allowed).
+ */
+function assertUrlAllowed(url: URL, target: string, allowPrivateNetwork: boolean): LookupFunction | undefined {
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`Unsupported URL scheme for ${target} — only http and https are allowed.`);
+  }
+  if (allowPrivateNetwork) return undefined;
+
+  const host = url.hostname.replace(/^\[|\]$/g, ''); // strip brackets from IPv6 literals
+  if (isIP(host)) {
+    if (isBlockedIp(host)) throw refusal(target, host);
+    return undefined;
+  }
+  return guardedLookup(target);
+}
+
+/** Issue one GET, without following redirects. Resolves once the response headers have arrived. */
+function requestOnce(url: URL, signal: AbortSignal, lookupHook: LookupFunction | undefined): Promise<IncomingMessage> {
+  const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
+  return new Promise((resolve, reject) => {
+    const req = send(url, {
+      method: 'GET',
+      // A fresh agent per request: no pooled socket from an earlier connection is ever reused.
+      agent: false,
+      signal,
+      // identity: the byte count enforced below is the byte count of the file itself.
+      headers: { 'User-Agent': 'carbone-mcp', Accept: '*/*', 'Accept-Encoding': 'identity' },
+      ...(lookupHook ? { lookup: lookupHook } : {}),
+    }, resolve);
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/**
+ * GET a user-supplied URL, following redirects manually so each hop is re-checked against
+ * assertUrlAllowed (an allowed host must not be able to redirect into internal space).
+ * Redirect targets come from the remote server, so error messages never quote them.
+ */
+async function fetchGuarded(rawUrl: string, allowPrivateNetwork: boolean, signal: AbortSignal): Promise<IncomingMessage> {
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
     throw new Error(`Invalid URL: ${rawUrl}`);
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`Unsupported URL scheme "${url.protocol}" — only http and https are allowed.`);
-  }
-  if (allowPrivateNetwork) return;
-
-  const host = url.hostname.replace(/^\[|\]$/g, ''); // strip brackets from IPv6 literals
-  const addresses = isIP(host)
-    ? [host]
-    : (await lookup(host, { all: true }).catch(() => {
-        throw new Error(`Could not resolve host "${host}".`);
-      })).map((a) => a.address);
-
-  for (const address of addresses) {
-    if (isBlockedIp(address)) {
-      throw new Error(
-        `Refusing to fetch "${url.origin}" — it resolves to a private or internal address (${address}). ` +
-        'Set CARBONE_ALLOW_PRIVATE_NETWORK=true to allow internal hosts on a trusted deployment.'
-      );
-    }
-  }
-}
-
-/**
- * Fetch a validated URL, following redirects manually so each hop is re-checked against
- * assertUrlAllowed (an allowed host must not be able to redirect into internal space).
- */
-async function fetchGuarded(rawUrl: string, allowPrivateNetwork: boolean): Promise<Response> {
-  let target = rawUrl;
+  let target = `"${url.origin}"`;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    await assertUrlAllowed(target, allowPrivateNetwork);
-    const response = await fetch(target, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
-    });
-    if (response.status < 300 || response.status > 399) return response;
+    const response = await requestOnce(url, signal, assertUrlAllowed(url, target, allowPrivateNetwork));
+    const status = response.statusCode ?? 0;
+    const location = response.headers.location;
+    if (status < 300 || status > 399 || !location) return response;
 
-    const location = response.headers.get('location');
-    if (!location) return response;
-    target = new URL(location, target).toString(); // resolve relative redirects, then re-validate
+    response.destroy(); // the redirect body is never needed
+    try {
+      url = new URL(location, url); // resolve relative redirects, then re-validate
+    } catch {
+      throw new Error('Invalid redirect location while downloading from URL.');
+    }
+    target = 'the redirect target';
   }
   throw new Error(`Too many redirects (>${MAX_REDIRECTS}) while downloading from URL.`);
+}
+
+/** Read a response body, aborting as soon as it grows past maxBytes (Content-Length is not trusted). */
+async function readBodyWithinLimit(response: IncomingMessage, maxBytes: number, isCloud: boolean): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let received = 0;
+  for await (const chunk of response as AsyncIterable<Buffer>) {
+    received += chunk.length;
+    // Throwing out of the loop destroys the response, so the rest of the body is never read.
+    assertWithinLimit(received, maxBytes, isCloud);
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, received);
 }
 
 function assertWithinLimit(bytes: number, maxBytes: number, isCloud: boolean): void {
@@ -224,32 +338,40 @@ export async function resolveFileInput(input: string, options?: ResolveFileOptio
   const allowLocalPath = options?.allowLocalPath ?? false;
   const allowPrivateNetwork = options?.allowPrivateNetwork ?? false;
 
-  // Remote URL — SSRF-guarded (private/internal addresses blocked, every redirect hop re-validated)
-  // and hard-timed-out so a slow/unresponsive host can't stall the request.
+  // Remote URL — SSRF-guarded (private/internal addresses blocked at connect time, every redirect hop
+  // re-validated), size-capped while streaming, and hard-timed-out (one deadline for every hop and the
+  // body) so a slow/unresponsive host can't stall the request.
   if (input.startsWith('http://') || input.startsWith('https://')) {
-    let response: Response;
+    const signal = AbortSignal.timeout(URL_FETCH_TIMEOUT_MS);
     try {
-      response = await fetchGuarded(input, allowPrivateNetwork);
+      const response = await fetchGuarded(input, allowPrivateNetwork, signal);
+      const status = response.statusCode ?? 0;
+      if (status < 200 || status > 299) {
+        response.destroy();
+        // Status code only: the reason phrase is chosen by the remote server and is not repeated.
+        throw new Error(`Failed to download file from URL: HTTP ${status}.`);
+      }
+      // Reject early when the server declares an oversized body…
+      const declared = Number(response.headers['content-length']);
+      if (Number.isFinite(declared) && declared > maxBytes) {
+        response.destroy();
+        assertWithinLimit(declared, maxBytes, isCloud);
+      }
+      // …and count the bytes actually received, in case Content-Length was missing or understated.
+      const buffer = await readBodyWithinLimit(response, maxBytes, isCloud);
+      return buffer.toString('base64');
     } catch (err) {
-      if (err instanceof Error && err.name === 'TimeoutError') {
+      if (signal.aborted) {
         throw new Error(
           `Timed out after ${URL_FETCH_TIMEOUT_MS / 1000}s downloading file from URL: ${input}`
         );
       }
+      // Network, TLS and HTTP-parser errors can quote remote content (e.g. certificate names), so only
+      // their fixed error code is reported. This module's own errors carry no code and pass through.
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (typeof code === 'string') throw new Error(`Could not download file from URL (${code}).`);
       throw err;
     }
-    if (!response.ok) {
-      throw new Error(
-        `Failed to download file from URL: ${response.status} ${response.statusText}`
-      );
-    }
-    // Reject early when the server declares an oversized body…
-    const declared = Number(response.headers?.get('content-length'));
-    if (Number.isFinite(declared) && declared > 0) assertWithinLimit(declared, maxBytes, isCloud);
-    const buffer = Buffer.from(await response.arrayBuffer());
-    // …and again after download, in case Content-Length was missing or understated.
-    assertWithinLimit(buffer.length, maxBytes, isCloud);
-    return buffer.toString('base64');
   }
 
   // Local file path: absolute (/…), relative (./… or ../…), home (~), or Windows (C:\…)
@@ -312,21 +434,37 @@ export async function resolveJsonInput(
 
   try {
     return JSON.parse(text);
-  } catch (err) {
+  } catch {
+    // Fixed text on purpose: JSON.parse errors quote the input, which may be a fetched URL body or a
+    // local file — repeating it would hand that content back to the caller.
     throw new Error(
-      `Invalid JSON for "${field}": ${err instanceof Error ? err.message : String(err)}. ` +
+      `Invalid JSON for "${field}": the content is not valid JSON. ` +
       'Pass an inline JSON object/array, or a local path / HTTPS URL / base64 string pointing to a JSON file.'
     );
   }
 }
 
-/** Write a document buffer to a local path (expanding a leading ~), returning the resolved path and size. */
+/**
+ * Write a document buffer to a NEW local file (expanding a leading ~), returning the resolved path and
+ * size. The file is created exclusively ('wx'): an existing file — or a symlink, even a dangling one —
+ * at that path is never overwritten or followed. It is readable by the current user only (0o600), since
+ * generated documents often carry personal or business data.
+ */
 export async function writeOutputFile(
   outputPath: string,
   buffer: Buffer
 ): Promise<{ path: string; size: number }> {
   const resolvedPath = expandHome(outputPath);
-  await writeFile(resolvedPath, buffer);
+  try {
+    await writeFile(resolvedPath, buffer, { flag: 'wx', mode: 0o600 });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException | undefined)?.code === 'EEXIST') {
+      throw new Error(
+        `Output file ${resolvedPath} already exists — refusing to overwrite it. Choose a new file name for outputPath.`
+      );
+    }
+    throw err;
+  }
   return { path: resolvedPath, size: buffer.length };
 }
 

@@ -8,13 +8,14 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
 import { handleConvertDocument } from '../../../src/tools/convert.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
-import { CarboneError } from '../../../src/carbone/errors.js';
+import { CarboneAuthError, CarboneError } from '../../../src/carbone/errors.js';
 
 const makeClient = (
   buffer = Buffer.from('pdf content'),
   filename = 'output.pdf'
 ) =>
   ({
+    assertCanAuthenticate: vi.fn(),
     convertDocument: vi.fn().mockResolvedValue({ buffer, filename }),
     renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
   }) as unknown as CarboneClient;
@@ -61,6 +62,7 @@ describe('handleConvertDocument', () => {
 
   test('returnLink: returns a one-time download URL (renders with download=false)', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       convertDocument: vi.fn().mockResolvedValue({ renderId: 'RID123.pdf' }),
       renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
     } as unknown as CarboneClient;
@@ -165,6 +167,7 @@ describe('handleConvertDocument', () => {
 
   test('returns isError on client error', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       convertDocument: vi.fn().mockRejectedValue(new CarboneError('Conversion failed', 422)),
     } as unknown as CarboneClient;
 
@@ -172,5 +175,20 @@ describe('handleConvertDocument', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].type).toBe('text');
+  });
+
+  test('checks authentication BEFORE resolving the file (no URL is fetched without credentials)', async () => {
+    vi.mocked(resolveFileInput).mockClear();
+    const client = {
+      assertCanAuthenticate: vi.fn(() => { throw new CarboneAuthError('No API key provided.'); }),
+      convertDocument: vi.fn(),
+    } as unknown as CarboneClient;
+
+    const result = await handleConvertDocument({ file: 'https://example.com/doc.docx', convertTo: 'pdf' }, client);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].type === 'text' && result.content[0].text).toContain('Authentication failed');
+    expect(resolveFileInput).not.toHaveBeenCalled();
+    expect(vi.mocked(client.convertDocument)).not.toHaveBeenCalled();
   });
 });

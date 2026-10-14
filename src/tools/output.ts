@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, basename, extname } from 'node:path';
 import {
@@ -82,9 +82,15 @@ export async function deliverDocument(params: {
 
   // Binary, no explicit delivery requested.
   if (params.allowFileOutput) {
-    // stdio: save to a temp file (persistent, re-openable — no fragile one-time link).
-    const path = join(tmpdir(), basename(params.filename) || `carbone-output.${fmt}`);
-    await writeFile(path, params.buffer);
+    // stdio: save to a temp file (persistent, re-openable — no fragile one-time link). Each document
+    // gets its own fresh private directory (mkdtemp, 0o700), so the shared temp dir is never written
+    // directly: no existing file is overwritten and no planted symlink is followed.
+    const name = basename(params.filename);
+    const dir = await mkdtemp(join(tmpdir(), 'carbone-mcp-'));
+    const { path } = await writeOutputFile(
+      join(dir, name && name !== '.' && name !== '..' ? name : `carbone-output.${fmt}`),
+      params.buffer
+    );
     return {
       content: [{
         type: 'text',

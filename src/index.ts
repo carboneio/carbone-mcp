@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from 'module';
-import { serveStdio } from '@modelcontextprotocol/server/stdio';
+import { serveStdio, StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { McpServer } from '@modelcontextprotocol/server';
 import { CarboneClient } from './carbone/client.js';
 import { loadConfig } from './server/config.js';
@@ -50,6 +50,9 @@ async function main() {
     registerResources(server, client);
     return server;
   }, {
+    // The SDK caps one stdio message at 10 MB (STDIO_DEFAULT_MAX_BUFFER_SIZE) and closes the session past it.
+    // Use the same limit as an HTTP request body instead, so an inline base64 file accepted over HTTP works here too.
+    transport: new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: config.maxBodyBytes }),
     onerror: (error) => process.stderr.write(`[carbone-mcp] MCP error: ${error.message}\n`),
   });
 

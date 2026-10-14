@@ -64,6 +64,35 @@ describe('CarboneClient', () => {
     });
   });
 
+  // ── assertCanAuthenticate (checked before any input is resolved) ─────────────
+
+  describe('assertCanAuthenticate', () => {
+    test('applies the same rule as a real call, without making any request', () => {
+      const spy = vi.spyOn(globalThis, 'fetch');
+      const cloud = CarboneClient.CLOUD_API_URL;
+      const cases: Array<[string, CarboneClient, { apiKey?: string } | undefined, boolean]> = [
+        ['HTTP, cloud, no key at all',                        new CarboneClient({ transport: 'http', baseUrl: cloud }), { apiKey: undefined }, false],
+        ['HTTP, cloud, per-call key',                         new CarboneClient({ transport: 'http', baseUrl: cloud }), { apiKey: 'k' }, true],
+        ['HTTP, cloud, server key (shared-key default)',      new CarboneClient({ transport: 'http', apiKey: 'op' }), { apiKey: undefined }, true],
+        ['HTTP, server key, requireClientAuth, no bearer',    new CarboneClient({ transport: 'http', apiKey: 'op', requireClientAuth: true }), undefined, false],
+        ['HTTP, server key, requireClientAuth, bearer',       new CarboneClient({ transport: 'http', apiKey: 'op', requireClientAuth: true }), { apiKey: 'k' }, true],
+        ['HTTP, on-premise base URL, no key',                 new CarboneClient({ transport: 'http', baseUrl: 'http://carbone.internal:4000' }), undefined, true],
+        ['stdio, env key',                                    new CarboneClient({ apiKey: 'env' }), undefined, true],
+      ];
+      for (const [name, c, options, allowed] of cases) {
+        const run = () => c.assertCanAuthenticate(options);
+        if (allowed) expect(run, name).not.toThrow();
+        else expect(run, name).toThrow(CarboneAuthError);
+      }
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    test('cannot be bypassed with skipAuthCheck', () => {
+      const c = new CarboneClient({ transport: 'http' });
+      expect(() => c.assertCanAuthenticate({ skipAuthCheck: true })).toThrow(CarboneAuthError);
+    });
+  });
+
   // ── Stateless auth (per-call options) ────────────────────────────────────────
 
   describe('per-call apiKey (stateless auth)', () => {

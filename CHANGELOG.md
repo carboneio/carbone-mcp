@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-Changes since 1.6.0. **BREAKING** marks what can break a 1.6.0 user.
+Changes since 1.6.1. **BREAKING** marks what can break a 1.6.1 user.
 
 ### Changed
 
@@ -24,7 +24,7 @@ Changes since 1.6.0. **BREAKING** marks what can break a 1.6.0 user.
 - **BREAKING: `update_template_metadata` reports the patched version.** Its text is now "Template metadata updated for version …" (was "Template metadata updated successfully.") and it returns structured output. Moving a version to another Template ID is documented as `moveToTemplateId` (the API's `id` body field); the 1.6.0 parameter `id` is still accepted as a deprecated alias, and passing both with different values is rejected.
 - **BREAKING: template inputs follow the API.** `name` is optional on `upload_template`; `name`, `comment` and `category` are limited to 200 characters (upload and update); `sample` takes at most one object, whose keys `data`, `complement`, `translations` and `enum` are all optional (other keys are rejected); `expireAt` must be ≥ 0.
 - **BREAKING: error messages changed.** They carry the Carbone API message and its code, e.g. `Document generation failed (Carbone w101): …`, followed by a hint (see Fixed). Library users: a 500 with an API message throws `CarboneGenerationError`, timeouts and network failures throw `CarboneConnectionError` (the original error is in `originalError`), and `CarboneClient.updateTemplate` returns the response data instead of `void`.
-- Converter `I` (Carbone ICE) now also takes ODT input (beta), as Carbone v5.15.0 does, and is recommended over `O` for DOCX → PDF.
+- Converter `I` (Carbone ICE) is recommended over `O` for DOCX → PDF, as from Carbone v5.15.0.
 - Tool descriptions follow the transport in the tool-level text too (`convert_document`, `render_document`), not only in the parameters, and the server instructions say local paths and `outputPath` work in stdio only.
 - Internal: every tool input and output schema is wrapped with `z.object(...)` once, so all tools use the non-deprecated `registerTool` overload; the transport-dependent schemas are built once per transport and cached, not per HTTP request.
 
@@ -38,7 +38,6 @@ Changes since 1.6.0. **BREAKING** marks what can break a 1.6.0 user.
 
 ### Fixed
 
-- **Correction to 1.6.0: ICE applies PDF security options.** The 1.6.0 warning that converter `I` "silently ignores PDF security options" no longer holds: verified with Carbone v5.15, `EncryptFile` / `DocumentOpenPassword` produce an encrypted PDF with `I`, as with `L`. The descriptions now say that `O`, `C` and `I` support the Security and Watermark PDF options (only `L` supports all of them).
 - **`convert_document` `reportName` now takes effect.** Carbone resolves `reportName` during templating, so on a pure conversion it ignored it and the file stayed `report.<ext>`. The server now names the delivered file `<reportName>.<ext>` itself (attachment name, and the default saved file name in stdio). Same for `render_document` with `keepTags`.
 - **Wrong deletion guidance.** The tools said `expireAt = 42000000000` deletes a template immediately; that "now" value only exists for `deployedAt`, so following the advice scheduled the deletion for the year 3300. `delete_template` takes effect immediately; `expireAt` schedules a deletion (`0` = never; on update, `0` cancels one).
 - `update_template_metadata` with a Template ID patches only the currently deployed version; it was described as updating all versions.
@@ -54,10 +53,35 @@ Changes since 1.6.0. **BREAKING** marks what can break a 1.6.0 user.
 ### Security
 
 - **Origin validation on the HTTP MCP endpoint (BREAKING for browser-based clients).** As the 2026-07-28 spec requires, a request whose `Origin` header is present but not allowed is now rejected with `403` before anything runs, so a malicious web page cannot reach a locally running server (DNS rebinding) and spend its key. Allowed by default: `localhost`, `127.0.0.1`, `[::1]`, on any port. **Browser-based clients served from any other origin get `403` until their hostname is listed in `MCP_ALLOWED_ORIGINS`.** Requests without an `Origin` header — desktop, CLI and server-side clients — are unaffected.
-- **Resolved the dependency advisories reported by `npm audit`.**
-  - `@modelcontextprotocol/client` GHSA-6qxp-vccf-f47h (high; an OAuth client could send credentials to an authorization server chosen by the MCP server) — removed by the bump to 2.3.1. The server itself makes no OAuth client calls.
-  - `hono` (high, several advisories) and `@hono/node-server` (moderate, GHSA-frvp-7c67-39w9), pulled in by `@modelcontextprotocol/node` — updated in the lockfile to `hono` 4.13.13 and `@hono/node-server` 1.19.17. The affected features (JSX rendering, JWT and cache middleware, `serve-static` on Windows, …) are not used by this server.
-  - Dev only: `vitest` / `@vitest/mocker` GHSA-82fw-gwwq-j7x9 (moderate) — `vitest` and `@vitest/coverage-v8` bumped to 4.1.11.
+- `npm audit` reports 0 vulnerabilities with the SDK v2 packages: `@modelcontextprotocol/client` 2.3.1 is not affected by GHSA-6qxp-vccf-f47h, the advisory 1.6.1 cleared in the v1 SDK. Dev only: `vitest` / `@vitest/mocker` GHSA-82fw-gwwq-j7x9 (moderate) — `vitest` and `@vitest/coverage-v8` bumped to 4.1.11.
+
+---
+
+## [1.6.1] — 2026-10-14
+
+Security release. **Upgrade now if you run the server in HTTP mode** (self-hosted or Docker, reachable by remote clients); those deployments are the most exposed. stdio users (Claude Desktop, Claude Code, Cursor, … on your own machine) should upgrade too, for the `outputPath` fixes.
+
+### Security
+
+- **URL inputs could reach internal addresses (critical, HTTP mode).** The private-network guard on URL inputs (`template`, `file`, and the by-reference JSON params such as `data`) did not recognise some IPv6 notations of internal addresses, including IPv4 addresses written inside an IPv6 address, and a hostname could be validated against one DNS answer and then connected using another (DNS rebinding). Every IPv4 and IPv6 notation is now checked on the address itself, and the check runs on the exact address the connection uses. Redirects are still re-checked at every hop. `CARBONE_ALLOW_PRIVATE_NETWORK=true` keeps its meaning.
+- **Unauthenticated HTTP requests could trigger URL downloads (medium, HTTP mode).** `render_document`, `convert_document` and `upload_template` downloaded their URL inputs before checking whether the caller had an API key. They now check credentials first: a call without an API key (where one is required) fails before anything is downloaded. Authenticated calls are unchanged.
+- **Error messages could echo remote content (medium).** A failed download repeated the remote server's status text, and an invalid JSON input repeated part of the content it had fetched or read. Errors now report only the HTTP status code, a fixed error code, or a fixed message, so nothing chosen by a remote server is passed back to the assistant.
+- **Downloads are size-capped while they stream.** A response without a `Content-Length` (or with a wrong one) was held in memory in full before the `CARBONE_MAX_FILE_BYTES` check. The download now stops as soon as the limit is passed.
+- **`outputPath` could overwrite existing files (medium, stdio).** Saving a document replaced any file already at that path, and followed symbolic links. A path that already exists is now refused with a message asking for a new file name. New files are readable by your user only (`0600`). The default temp-file output (no `outputPath`) now writes each document to its own new private folder, so it never replaces or follows anything already in the temp directory.
+- **MCP SDK updated to 1.32.1** (from 1.29.0). This clears advisory GHSA-6qxp-vccf-f47h (high), which concerns the SDK's OAuth client. This server does not use that client, but `npm audit --omit=dev` now reports 0 vulnerabilities.
+- **The read-only hint was wrong over stdio.** `render_document`, `convert_document` and `download_template` were marked read-only, but over stdio they write files to disk. They now report `readOnlyHint: false` (not destructive, not idempotent) over stdio, so clients that ask for confirmation before writing tools behave as expected. HTTP is unchanged (read-only, since nothing is written there).
+
+### Fixed
+
+- **The 1.6.0 warning about Carbone ICE no longer holds.** It said `converter: "I"` ignores PDF password and permission options. ICE applies the Security options (`EncryptFile`, `DocumentOpenPassword`, `RestrictPermissions`, …) and `Watermarks`; any other PDF option still requires `L`. Tool descriptions and docs are corrected, ODT is listed as an ICE input (beta on recent Carbone versions), and the ICE limitations now follow [Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations).
+
+### Changed
+
+- stdio: one incoming message may be up to `MCP_MAX_BODY_BYTES` (60 MB by default), the same limit as an HTTP request body. Without this, the updated SDK would close the session on any message over 10 MB, such as a large inline base64 file.
+- HTTP mode, from the updated SDK: a JSON-RPC batch of more than 100 messages is rejected, and a long-running streamed response carries an SSE keep-alive comment every 15 s.
+- HTTP mode: a request body over `MCP_MAX_BODY_BYTES` is answered `413` as soon as the limit is passed, and the connection is closed. The server no longer reads the rest of the body first.
+- HTTP mode: error log lines are reduced to printable ASCII, like the access log.
+- Dependencies: transitive dependencies updated to patched releases within their existing version ranges.
 
 ---
 

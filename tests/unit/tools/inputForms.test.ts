@@ -59,6 +59,14 @@ describe('transport variants are built once and cached', () => {
     expect(transportToolsFor(HTTP)).not.toBe(transportToolsFor(STDIO));
   });
 
+  test('the document tools\' annotations are part of the cached variant: not read-only over stdio', () => {
+    expect(transportToolsFor(STDIO).documentToolHints)
+      .toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
+    expect(transportToolsFor(HTTP).documentToolHints)
+      .toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
+    expect(transportToolsFor({ ...STDIO }).documentToolHints).toBe(transportToolsFor(STDIO).documentToolHints);
+  });
+
   test('tool descriptions follow the transport as well as the parameters', () => {
     const http = transportToolsFor(HTTP);
     const stdio = transportToolsFor(STDIO);
@@ -80,6 +88,23 @@ describe('input formats (live: legacy binary DOC/XLS/PPT are rejected as input)'
       expect(accepted).toMatch(/\bPDF\b/);
       expect(accepted).not.toMatch(/\b(DOC|XLS|PPT)\b/);
       expect(d).toMatch(/DOC, XLS and PPT are rejected as input/);
+    }
+  });
+});
+
+describe('converter I (Carbone ICE) wording', () => {
+  test('says ICE applies the Security and Watermark PDF options — never that it ignores them', async () => {
+    const capabilities = (await handleGetCapabilities(STDIO)).content[0]!.text;
+    for (const text of [
+      desc(convertDocumentSchemaFor(STDIO).converter),
+      desc(renderDocumentSchemaFor(STDIO).converter),
+      capabilities,
+    ]) {
+      expect(text).not.toMatch(/silently ignored|only watermarks/i);
+      expect(text).toMatch(/Security/);
+      expect(text).toMatch(/Watermarks?\b/);
+      expect(text).toMatch(/ODT/);
+      expect(text).toContain('#converters-carbone-ice-limitations');
     }
   });
 });

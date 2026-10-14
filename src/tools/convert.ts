@@ -120,6 +120,9 @@ export async function handleConvertDocument(
   fileCtx?: FileContext
 ) {
   try {
+    // Authenticate first: a caller without credentials must not be able to trigger any URL download.
+    client.assertCanAuthenticate(options);
+
     // reportName is not sent: Carbone ignores it without templating, so it is applied to the delivered file below.
     const { file, outputPath, asAttachment, returnLink, reportName, ...rest } = args;
     const template = await resolveFileInput(file, {

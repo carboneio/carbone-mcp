@@ -146,7 +146,7 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` (default, for AI clients) or `http` (for self-hosted deployments) |
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
-| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size in bytes (60 MB default, matching Carbone Cloud limit) |
+| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum size in bytes of one incoming MCP message — an HTTP request body (`413` when exceeded) or one stdio message (60 MB default, matching Carbone Cloud limit) |
 | `MCP_ALLOWED_ORIGINS` | `localhost`, `127.0.0.1`, `[::1]` | HTTP mode only — browser `Origin` hostnames allowed in addition to the localhost default: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request whose `Origin` is present but not allowed gets `403`; requests without an `Origin` (desktop, CLI, server-side clients) are unaffected. Invalid entries stop the server at startup |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — require `Authorization: Bearer <key>` on every request. **Leave `false` only if you intend a shared-key server:** with a server-level `CARBONE_API_KEY` set, requests that carry no Bearer key fall back to it, so anyone who can reach the port can spend that Carbone account. Set to `true` to require each client to bring its own key. Irrelevant when no server key is set (e.g. on-premise) |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs (templates, `data`, …) to resolve to private/internal addresses. Off by default to block SSRF (cloud metadata, `localhost`, RFC1918). Enable only on a trusted deployment with internal template hosts |
@@ -201,7 +201,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 
 | Parameter | Effect |
 |---|---|
-| `outputPath` | **stdio only** — save the output to this local path instead of returning it inline (rejected in HTTP mode) |
+| `outputPath` | **stdio only** — save the output to this local path instead of returning it inline (rejected in HTTP mode). The file must not exist yet — an existing file or symlink is never overwritten — and is created readable by you only |
 | `asAttachment` | return the bytes as a downloadable attachment for any format, instead of inline |
 | `returnLink` | return Carbone's public **one-time** download URL instead of the file — short-lived and consumed by the first download, so hand it to the user rather than fetching it yourself (works in stdio and HTTP) |
 
@@ -336,7 +336,7 @@ The `carbone` field shows backend connectivity:
 
 ⚠️ **File and URL inputs (SSRF / local files)**
 Tools accept a local path, an HTTPS URL, or base64 for `file` / `template` and the by-reference JSON params (`data`, `complement`, …). Two guards apply:
-- **URLs** are resolved and refused when they point at loopback, private (RFC1918), link-local (incl. cloud metadata `169.254.169.254`), CGNAT or reserved addresses — and every redirect hop is re-checked. Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` only on a trusted deployment that needs internal template hosts.
+- **URLs** are resolved and refused when they point at loopback, private (RFC1918), link-local (incl. cloud metadata `169.254.169.254`), CGNAT or reserved addresses, in any IPv4 or IPv6 notation (including IPv4 addresses embedded in IPv6). The check applies to the address actually connected to, so a DNS answer cannot change between check and connection, and every redirect hop is re-checked. In HTTP mode nothing is downloaded for a request that carries no API key (unless the server is set up to call Carbone without one). Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` only on a trusted deployment that needs internal template hosts.
 - **Local paths** are readable in **stdio only**, where the server already runs as you. In HTTP mode they are refused, so a remote caller can never make the server read its own filesystem.
 
 ⚠️ **Sharing a server-level API key (HTTP mode)**

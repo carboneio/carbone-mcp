@@ -396,6 +396,16 @@ export class CarboneClient {
     return { version: json.version, message: json.message };
   }
 
+  /**
+   * Throw the same CarboneAuthError an authenticated call would, without making any request.
+   * Handlers call this BEFORE resolving caller-supplied inputs (URLs, paths, by-reference JSON), so a
+   * caller who cannot authenticate cannot make the server download anything. Always enforced, even if
+   * skipAuthCheck is set.
+   */
+  assertCanAuthenticate(callOptions?: CallOptions): void {
+    this.resolveKey({ ...callOptions, skipAuthCheck: false });
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   /**

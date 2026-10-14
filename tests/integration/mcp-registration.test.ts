@@ -1,4 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { Client } from '@modelcontextprotocol/client';
 import { McpServer, InMemoryTransport } from '@modelcontextprotocol/server';
 import { CarboneClient } from '../../src/carbone/client.js';
@@ -58,7 +60,8 @@ describe('MCP registration surface (in-process, no API key)', () => {
 
     const convert = tools.find((t) => t.name === 'convert_document');
     expect(convert?.title).toBe('Convert Document');
-    expect(convert?.annotations?.readOnlyHint).toBe(true);
+    // stdio: the document tools may write a local file (outputPath / temp file), so they are not read-only.
+    expect(convert?.annotations?.readOnlyHint).toBe(false);
 
     expect(tools.find((t) => t.name === 'delete_template')?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === 'list_templates')?.outputSchema).toBeTruthy();
@@ -154,6 +157,7 @@ describe('structured output passes SDK output-schema validation (live API respon
   let client: Client;
   const carbone = {
     isCloud: true,
+    assertCanAuthenticate: () => {},
     // PATCH name + category + tags: the API echoes "deployedAt": null although it was not sent.
     updateTemplate: async () => ({
       name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'], deployedAt: null, versionId: '4dc8abc',
@@ -209,5 +213,68 @@ describe('structured output passes SDK output-schema validation (live API respon
     expect(result.structuredContent).toEqual({
       name: 'Invoice', id: '1530905183164918624', versionId: '929a', type: 'html', size: 46, createdAt: 1791957319, deployedAt: 0,
     });
+  });
+});
+
+/** Connect an in-process MCP client to a server registered with the given file context. */
+async function connect(carbone: CarboneClient, fileCtx: Parameters<typeof registerTools>[2]): Promise<Client> {
+  const server = new McpServer(serverInfo('0.0.0-test'), SERVER_OPTIONS);
+  registerTools(server, carbone, fileCtx);
+  registerResources(server, carbone);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'registration-test', version: '0' });
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  return client;
+}
+
+const STDIO_CTX = { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 1024 * 1024 };
+const HTTP_CTX = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1024 * 1024 };
+const DOCUMENT_TOOLS = ['render_document', 'convert_document', 'download_template'];
+
+describe('tool annotations follow the transport', () => {
+  test.each([
+    ['stdio', STDIO_CTX, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
+    ['HTTP', HTTP_CTX, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }],
+  ])('%s: render/convert/download_template hints', async (_name, ctx, expected) => {
+    const client = await connect(new CarboneClient({ apiKey: 'unused' }), ctx);
+    const { tools } = await client.listTools();
+    for (const name of DOCUMENT_TOOLS) {
+      expect(tools.find((t) => t.name === name)?.annotations, name).toEqual(expected);
+    }
+    await client.close();
+  });
+});
+
+describe('HTTP mode: no URL is fetched for a caller without credentials', () => {
+  let listener: Server;
+  let port = 0;
+  let hits = 0;
+
+  beforeAll(async () => {
+    listener = createServer((_req, res) => { hits++; res.end('{"a":1}'); });
+    await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
+    port = (listener.address() as AddressInfo).port;
+  });
+
+  afterAll(() => new Promise<void>((resolve) => listener.close(() => resolve())));
+
+  test('render, convert and upload refuse before downloading anything', async () => {
+    // Cloud API, no server key, no Bearer token. allowPrivateNetwork is ON so that, without the
+    // auth-first check, the loopback URL WOULD be fetched — the zero-hit count is the proof.
+    const carbone = new CarboneClient({ transport: 'http', baseUrl: CarboneClient.CLOUD_API_URL });
+    const client = await connect(carbone, { ...HTTP_CTX, allowPrivateNetwork: true });
+    const url = `http://127.0.0.1:${port}/input`;
+    const calls = [
+      { name: 'render_document', arguments: { template: url, data: url, complement: url } },
+      { name: 'convert_document', arguments: { file: url, convertTo: 'pdf' } },
+      { name: 'upload_template', arguments: { template: url, name: 'x' } },
+    ];
+    for (const call of calls) {
+      const r = await client.callTool(call);
+      expect(r.isError, call.name).toBe(true);
+      expect((r.content as Array<{ text: string }>)[0]!.text, call.name).toContain('No API key provided');
+    }
+    expect(hits).toBe(0);
+    await client.close();
   });
 });
