@@ -213,9 +213,9 @@ In HTTP mode (the Docker default), a generated PDF / Office file is returned as 
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `1.6.0` | Specific version |
-| `1.6` | Latest patch of 1.6 |
-| `1` | Latest minor of v1 |
+| `2.0.0` | Specific version |
+| `2.0` | Latest patch of 2.0 |
+| `2` | Latest minor of v2 |
 
 Supported platforms: `linux/amd64`, `linux/arm64`
 

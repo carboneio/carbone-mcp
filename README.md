@@ -398,7 +398,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 | Watermark on every PDF, or only PDF works | You use the **test** API key: it produces watermarked PDFs only. Use the production key. |
 | A file given by name (`invoice.docx`) fails | A bare name is read as base64. Pass an absolute path (stdio), a URL, or base64 ([File inputs](#file-inputs)). |
 | Rendering by Template ID still uses the old version after an upload | Renders by Template ID use the **deployed** version (most recent `deployedAt`). Deploy the new version with `update_template_metadata` (`templateId` = its Version ID, `deployedAt` = `42000000000`), or render by Version ID. |
-| Password, watermark or PDF/A not applied when converting an existing PDF to PDF | Fixed in this release: the server sets `hardRefresh` automatically for PDF → PDF with `formatOptions`. On 1.6.1 and earlier, pass `hardRefresh: true`. |
+| Password, watermark or PDF/A not applied when converting an existing PDF to PDF | Fixed in 2.0.0: the server sets `hardRefresh` automatically for PDF → PDF with `formatOptions`. On 1.x, pass `hardRefresh: true`. |
 
 ---
 
