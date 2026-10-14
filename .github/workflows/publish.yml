@@ -45,10 +45,41 @@ jobs:
             )
           ' server.json > server.tmp && mv server.tmp server.json
 
-      # Publish to npm using Trusted Publisher (OIDC — no NPM_TOKEN secret needed)
+      # Publish to npm using Trusted Publisher (OIDC — no NPM_TOKEN secret needed).
+      # Skipped when this version is already on npm, so a failed later step can be re-run.
       - name: Publish to npm
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npm publish --provenance
+        run: |
+          set -euo pipefail
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $VERSION"
+            exit 1
+          fi
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npm, skipping npm publish"
+          else
+            npm publish --provenance
+          fi
+
+      # The MCP Registry checks that the npm version exists, and a fresh release can take a
+      # moment to be served: wait for it rather than fail the registry step.
+      - name: Wait until npm serves the new version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/$NAME/$VERSION"; then
+              echo "$NAME@$VERSION is available on npm"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$NAME@$VERSION is still not served by npm after 5 minutes"
+          exit 1
 
       # Publish to MCP Registry using DNS authentication for the io.carbone namespace.
       #
@@ -85,8 +116,26 @@ jobs:
 
       - name: Authenticate to MCP Registry
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./mcp-publisher login dns --domain carbone.io --private-key "${{ secrets.MCP_PRIVATE_KEY }}"
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain carbone.io --private-key "$MCP_PRIVATE_KEY"
 
+      # Skipped when this version is already on the registry; retried a few times in case the
+      # registry still sees the previous npm metadata.
       - name: Publish to MCP Registry
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./mcp-publisher publish
+        run: |
+          set -euo pipefail
+          NAME=$(jq -r .name server.json)
+          VERSION=$(jq -r .version server.json)
+          URL="https://registry.modelcontextprotocol.io/v0.1/servers/$(jq -rn --arg n "$NAME" '$n|@uri')/versions/$VERSION"
+          if curl -fsS -o /dev/null "$URL"; then
+            echo "$NAME $VERSION is already on the MCP Registry, skipping"
+            exit 0
+          fi
+          for attempt in 1 2 3 4 5; do
+            if ./mcp-publisher publish; then exit 0; fi
+            echo "Publish attempt $attempt failed, retrying in 30 s"
+            sleep 30
+          done
+          exit 1

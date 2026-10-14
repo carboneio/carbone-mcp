@@ -1,0 +1,131 @@
+name: Publish to MCP Registry
+
+# Manual run: publish a released version's server.json to the MCP Registry without touching npm
+# or Docker, e.g. when the registry step of the Publish workflow failed. Optionally marks every
+# 1.x version as deprecated.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v2.0.0)"
+        required: true
+        type: string
+      deprecate_v1:
+        description: "Also mark every 1.x version as deprecated"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag must look like v1.2.3 (got: $TAG)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      # Same as the Publish workflow: server.json takes its version from the tag.
+      - name: Set version in server.json
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION=${TAG#v}
+          jq --arg v "$VERSION" '
+            .version = $v |
+            .packages[] |= (
+              .version = $v |
+              if .registryType == "oci" then
+                .identifier = ((.identifier | split(":")[0]) + ":" + $v)
+              else . end
+            )
+          ' server.json > server.tmp && mv server.tmp server.json
+
+      - name: Check that npm serves this version
+        run: |
+          set -euo pipefail
+          NAME=$(jq -r '.packages[] | select(.registryType == "npm") | .identifier' server.json)
+          VERSION=$(jq -r .version server.json)
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/$NAME/$VERSION"; then
+              echo "$NAME@$VERSION is available on npm"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$NAME@$VERSION is not on npm: publish the release first"
+          exit 1
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Same Sigstore-verified install as the Publish workflow (see the comments there).
+      - name: Install mcp-publisher (Sigstore-verified)
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/modelcontextprotocol/registry/releases/latest/download"
+          ASSET="mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
+          curl -fsSL --proto '=https' --tlsv1.2 -o mcp-publisher.tar.gz "$BASE/$ASSET"
+          curl -fsSL --proto '=https' --tlsv1.2 -o mcp-publisher.tar.gz.sigstore.json "$BASE/$ASSET.sigstore.json"
+          cosign verify-blob \
+            --bundle mcp-publisher.tar.gz.sigstore.json \
+            --certificate-identity-regexp '^https://github\.com/modelcontextprotocol/registry/\.github/workflows/release\.yml@refs/tags/v' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            mcp-publisher.tar.gz
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          rm -f mcp-publisher.tar.gz mcp-publisher.tar.gz.sigstore.json
+
+      - name: Authenticate to MCP Registry
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain carbone.io --private-key "$MCP_PRIVATE_KEY"
+
+      - name: Publish to MCP Registry
+        run: |
+          set -euo pipefail
+          NAME=$(jq -r .name server.json)
+          VERSION=$(jq -r .version server.json)
+          URL="https://registry.modelcontextprotocol.io/v0.1/servers/$(jq -rn --arg n "$NAME" '$n|@uri')/versions/$VERSION"
+          if curl -fsS -o /dev/null "$URL"; then
+            echo "$NAME $VERSION is already on the MCP Registry, skipping"
+            exit 0
+          fi
+          for attempt in 1 2 3 4 5; do
+            if ./mcp-publisher publish; then exit 0; fi
+            echo "Publish attempt $attempt failed, retrying in 30 s"
+            sleep 30
+          done
+          exit 1
+
+      # Each 1.x version separately (not --all-versions, which would also deprecate the release
+      # published above). Versions already deprecated are left as they are.
+      - name: Deprecate 1.x versions
+        if: inputs.deprecate_v1
+        run: |
+          set -euo pipefail
+          NAME=$(jq -r .name server.json)
+          LIST="https://registry.modelcontextprotocol.io/v0.1/servers/$(jq -rn --arg n "$NAME" '$n|@uri')/versions"
+          VERSIONS=$(curl -fsS "$LIST" | jq -r '.servers[]
+            | select(.server.version | startswith("1."))
+            | select(._meta["io.modelcontextprotocol.registry/official"].status != "deprecated")
+            | .server.version')
+          if [ -z "$VERSIONS" ]; then
+            echo "No active 1.x version left"
+            exit 0
+          fi
+          for v in $VERSIONS; do
+            ./mcp-publisher status --status deprecated \
+              --message "Security fixes are in 2.0.0, please upgrade" "$NAME" "$v"
+          done
