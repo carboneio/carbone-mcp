@@ -1,14 +1,28 @@
+# Carbone MCP server over HTTP. Start with: docker compose up -d
+#
+# Safe by default: no server-level CARBONE_API_KEY, so each MCP client sends its own key as
+# "Authorization: Bearer <key>", and the port is published on 127.0.0.1 only.
+# - Setting CARBONE_API_KEY (here, in .env, or exported in your shell) makes a shared-key server:
+#   requests without a Bearer key spend that key. Set CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true to
+#   refuse them. See "Security" in README.md.
+# - To serve other machines, change "127.0.0.1:" below, preferably behind a TLS reverse proxy.
+# Every variable is documented in .env.example.
 services:
   carbone-mcp:
     build: .
     image: carbone-mcp:latest
     ports:
-      - ${MCP_PORT:-3000}:${MCP_PORT:-3000}
+      - 127.0.0.1:${MCP_PORT:-3000}:${MCP_PORT:-3000}
     environment:
       - CARBONE_API_KEY=${CARBONE_API_KEY:-}
       - CARBONE_BASE_URL=${CARBONE_BASE_URL:-https://api.carbone.io}
       - CARBONE_TIMEOUT=${CARBONE_TIMEOUT:-60000}
+      - CARBONE_MAX_FILE_BYTES=${CARBONE_MAX_FILE_BYTES:-104857600}
+      - CARBONE_REQUIRE_CLIENT_AUTH_HEADER=${CARBONE_REQUIRE_CLIENT_AUTH_HEADER:-false}
+      - CARBONE_ALLOW_PRIVATE_NETWORK=${CARBONE_ALLOW_PRIVATE_NETWORK:-false}
       - MCP_TRANSPORT=http
       - MCP_PORT=${MCP_PORT:-3000}
-      - MCP_PATH=/
+      - MCP_PATH=${MCP_PATH:-/}
+      - MCP_MAX_BODY_BYTES=${MCP_MAX_BODY_BYTES:-62914560}
+      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-}
     restart: unless-stopped

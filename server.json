@@ -18,11 +18,15 @@
     {
       "type": "streamable-http",
       "url": "https://mcp.carbone.io",
-      "description": "Requires a Carbone API key passed as a Bearer token in the Authorization header. Get yours at https://account.carbone.io",
-      "authentication": {
-        "type": "header",
-        "header": "Authorization"
-      }
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Your Carbone API key as a Bearer token: \"Bearer <your API key>\". Get your key at https://account.carbone.io",
+          "placeholder": "Bearer <your Carbone API key>",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
     }
   ],
   "packages": [
