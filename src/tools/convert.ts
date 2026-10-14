@@ -165,6 +165,9 @@ export async function handleConvertDocument(
   fileCtx?: FileContext
 ) {
   try {
+    // Authenticate first: a caller without credentials must not be able to trigger any URL download.
+    client.assertCanAuthenticate(options);
+
     // rest carries convertTo, converter, reportName, hardRefresh, egressAuthorization straight through.
     const { file, outputPath, asAttachment, returnLink, ...rest } = args;
     const template = await resolveFileInput(file, {

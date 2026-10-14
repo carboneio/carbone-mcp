@@ -198,7 +198,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 
 | Parameter | Effect |
 |---|---|
-| `outputPath` | **stdio only** — save the output to this local path instead of returning it inline (rejected in HTTP mode) |
+| `outputPath` | **stdio only** — save the output to this local path instead of returning it inline (rejected in HTTP mode). The file must not exist yet — an existing file or symlink is never overwritten — and is created readable by you only |
 | `asAttachment` | return the bytes as a downloadable attachment for any format, instead of inline |
 | `returnLink` | return Carbone's public **one-time** download URL instead of the file — short-lived and consumed by the first download, so hand it to the user rather than fetching it yourself (works in stdio and HTTP) |
 
@@ -334,7 +334,7 @@ The `carbone` field shows backend connectivity:
 
 ⚠️ **File and URL inputs (SSRF / local files)**
 Tools accept a local path, an HTTPS URL, or base64 for `file` / `template` and the by-reference JSON params (`data`, `complement`, …). Two guards apply:
-- **URLs** are resolved and refused when they point at loopback, private (RFC1918), link-local (incl. cloud metadata `169.254.169.254`), CGNAT or reserved addresses — and every redirect hop is re-checked. Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` only on a trusted deployment that needs internal template hosts.
+- **URLs** are resolved and refused when they point at loopback, private (RFC1918), link-local (incl. cloud metadata `169.254.169.254`), CGNAT or reserved addresses, in any IPv4 or IPv6 notation (including IPv4 addresses embedded in IPv6). The check applies to the address actually connected to, so a DNS answer cannot change between check and connection, and every redirect hop is re-checked. In HTTP mode nothing is downloaded for a request that carries no API key (unless the server is set up to call Carbone without one). Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` only on a trusted deployment that needs internal template hosts.
 - **Local paths** are readable in **stdio only**, where the server already runs as you. In HTTP mode they are refused, so a remote caller can never make the server read its own filesystem.
 
 ⚠️ **Sharing a server-level API key (HTTP mode)**

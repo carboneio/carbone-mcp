@@ -8,13 +8,14 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
 import { handleRenderDocument } from '../../../src/tools/render.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
-import { CarboneError } from '../../../src/carbone/errors.js';
+import { CarboneAuthError, CarboneError } from '../../../src/carbone/errors.js';
 
 const makeClient = (
   buffer = Buffer.from('pdf content'),
   filename = 'output.pdf'
 ) =>
   ({
+    assertCanAuthenticate: vi.fn(),
     renderDocument: vi.fn().mockResolvedValue({ buffer, filename }),
     renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
   }) as unknown as CarboneClient;
@@ -70,6 +71,7 @@ describe('handleRenderDocument', () => {
 
   test('returnLink: returns a one-time download URL', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockResolvedValue({ renderId: 'RID9.pdf' }),
       renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
     } as unknown as CarboneClient;
@@ -165,6 +167,7 @@ describe('handleRenderDocument', () => {
 
   test('returns text content with Carbone message for async (webhook) render', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockResolvedValue({ async: true, message: 'A render ID will be sent to your callback URL' }),
     } as unknown as CarboneClient;
 
@@ -182,6 +185,7 @@ describe('handleRenderDocument', () => {
 
   test('passes webhookUrl and webhookHeaders through to client', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockResolvedValue({ async: true, message: 'Queued' }),
     } as unknown as CarboneClient;
 
@@ -243,6 +247,7 @@ describe('handleRenderDocument', () => {
 
   test('returns isError on client error', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockRejectedValue(new CarboneError('Render failed', 422)),
     } as unknown as CarboneClient;
 
@@ -286,5 +291,22 @@ describe('handleRenderDocument', () => {
       expect.objectContaining({ translations: { 'fr-fr': { hi: 'Bonjour' } } }),
       undefined
     );
+  });
+
+  test('checks authentication BEFORE resolving any input (no URL is fetched without credentials)', async () => {
+    vi.mocked(resolveFileInput).mockClear();
+    const client = {
+      assertCanAuthenticate: vi.fn(() => { throw new CarboneAuthError('No API key provided.'); }),
+      renderDocument: vi.fn(),
+    } as unknown as CarboneClient;
+
+    const result = await handleRenderDocument(
+      { template: 'https://example.com/t.docx', data: { a: 1 } }, client, { apiKey: undefined });
+
+    expect(client.assertCanAuthenticate).toHaveBeenCalledWith({ apiKey: undefined });
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as { text: string }).text).toContain('Authentication failed');
+    expect(resolveFileInput).not.toHaveBeenCalled();
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
   });
 });

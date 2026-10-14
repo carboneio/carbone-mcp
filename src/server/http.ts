@@ -20,17 +20,20 @@ export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unkno
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
-    req.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       totalBytes += chunk.length;
-      // Keep draining the socket even when over limit so the connection
-      // closes cleanly; we check the total on 'end'.
-      if (totalBytes <= maxBytes) chunks.push(chunk);
-    });
-    req.on('end', () => {
       if (totalBytes > maxBytes) {
+        // Stop reading at the limit instead of draining the rest: the caller answers 413 with
+        // "Connection: close", so the socket is closed once that response is sent.
+        req.off('data', onData);
+        req.pause();
         reject(new Error('Request body too large'));
         return;
       }
+      chunks.push(chunk);
+    };
+    req.on('data', onData);
+    req.on('end', () => {
       const raw = Buffer.concat(chunks).toString();
       if (!raw) { resolve(undefined); return; }
       try { resolve(JSON.parse(raw)); }
@@ -238,15 +241,17 @@ export async function startHttpServer(options: {
       } catch (err) {
         if (!res.headersSent) {
           if (err instanceof Error && err.message === 'Request body too large') {
-            res.writeHead(413, { 'Content-Type': 'application/json' });
+            // The unread rest of the body is still in flight: close the connection after answering.
+            res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
             res.end(JSON.stringify({ error: 'Request body too large', maxBytes: maxBodyBytes }));
           } else {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Internal server error' }));
           }
         }
+        // Sanitized like the access log: printable ASCII only, so a message can't forge log lines.
         process.stderr.write(
-          `[carbone-mcp] HTTP error: ${err instanceof Error ? err.message : String(err)}\n`
+          `[carbone-mcp] HTTP error: ${(err instanceof Error ? err.message : String(err)).replace(/[^\x20-\x7E]/g, '')}\n`
         );
       }
     }

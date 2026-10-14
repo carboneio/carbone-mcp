@@ -61,5 +61,6 @@ export function outputPathDescription(noun: string, io: IoModes): string {
   }
   return `Optional local file path to save the ${noun} to (e.g. "/home/user/out.pdf" or "~/out.pdf"). ` +
     'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
-    'the document inline — ideal for large files.';
+    'the document inline — ideal for large files. The path must not exist yet: an existing file is never ' +
+    'overwritten (the call fails and asks for a new file name).';
 }

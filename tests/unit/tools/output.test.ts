@@ -1,15 +1,16 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
+import { join } from 'node:path';
 
 vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/utils/file.js')>();
   return { ...actual, writeOutputFile: vi.fn() };
 });
 
-vi.mock('node:fs/promises', () => ({ writeFile: vi.fn() }));
+vi.mock('node:fs/promises', () => ({ mkdtemp: vi.fn(async (prefix: string) => `${prefix}AbC123`) }));
 
 import { saveOrReject, deliverDocument, deliver, oneTimeLinkResult } from '../../../src/tools/output.js';
 import { writeOutputFile } from '../../../src/utils/file.js';
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 
 describe('saveOrReject', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -63,19 +64,32 @@ describe('deliverDocument', () => {
     expect(r.content[0].type).toBe('image');
   });
 
-  test('binary in stdio → saves to a temp file, returns the path', async () => {
-    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+  test('binary in stdio → saves to a fresh private temp dir (exclusive create), returns the path', async () => {
+    vi.mocked(writeOutputFile).mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
     const r = await deliverDocument({ buffer: Buffer.from('%PDF'), filename: 'invoice.pdf', format: 'pdf', allowFileOutput: true });
-    expect(writeFile).toHaveBeenCalled();
+    const [prefix] = vi.mocked(mkdtemp).mock.calls.at(-1)!;
+    expect(String(prefix)).toMatch(/carbone-mcp-$/);
+    // Written through writeOutputFile ('wx', 0o600) inside the new directory, never into tmpdir() itself.
+    expect(writeOutputFile).toHaveBeenLastCalledWith(join(`${prefix}AbC123`, 'invoice.pdf'), expect.anything());
     expect(r.content[0].type).toBe('text');
-    expect((r.content[0] as { text: string }).text).toContain('invoice.pdf');
+    expect((r.content[0] as { text: string }).text).toContain(join(`${prefix}AbC123`, 'invoice.pdf'));
+  });
+
+  test('binary in stdio → a filename that is not a plain name falls back to a default', async () => {
+    for (const filename of ['', '..', '.']) {
+      vi.mocked(writeOutputFile).mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
+      await deliverDocument({ buffer: Buffer.from('%PDF'), filename, format: 'pdf', allowFileOutput: true });
+      expect(String(vi.mocked(writeOutputFile).mock.calls.at(-1)![0])).toMatch(/carbone-mcp-AbC123[\\/]carbone-output\.pdf$/);
+    }
   });
 
   test('binary in HTTP → attachment (EmbeddedResource), no disk write', async () => {
-    vi.mocked(writeFile).mockClear();
+    vi.mocked(mkdtemp).mockClear();
+    vi.mocked(writeOutputFile).mockClear();
     const r = await deliverDocument({ buffer: Buffer.from('%PDF'), filename: 'invoice.pdf', format: 'pdf', allowFileOutput: false });
     expect(r.content[0].type).toBe('resource');
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(mkdtemp).not.toHaveBeenCalled();
+    expect(writeOutputFile).not.toHaveBeenCalled();
   });
 
   test('asAttachment forces an EmbeddedResource even for text', async () => {

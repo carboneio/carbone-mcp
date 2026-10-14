@@ -71,6 +71,14 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   // - idempotentHint: same args produce the same effect when repeated.
   // - destructiveHint: only meaningful when readOnlyHint is false; true for delete.
   // - openWorldHint:  calls the external Carbone API (false only for the local capabilities tool).
+  //
+  // The tools that return a document (render, convert, download_template) write a local file in stdio
+  // (outputPath, or a fresh temp file by default), so they are not read-only there: each call may create
+  // a new file (not idempotent), but never overwrites one (not destructive). Over HTTP they write nothing.
+  const documentToolHints = fileCtx.allowFileOutput
+    ? { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+    : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+
   server.registerTool(
     listTemplatesToolName,
     {
@@ -89,7 +97,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       title: 'Convert Document',
       description: convertDocumentDescription,
       inputSchema: convertDocumentSchemaFor(io),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: documentToolHints,
     },
     (args, extra) => handleConvertDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );
@@ -100,7 +108,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       title: 'Generate Document',
       description: renderDocumentDescription,
       inputSchema: renderDocumentSchemaFor(io),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: documentToolHints,
     },
     (args, extra) => handleRenderDocument(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );
@@ -167,7 +175,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       title: 'Download Template',
       description: downloadTemplateDescription,
       inputSchema: downloadTemplateSchemaFor(io),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: documentToolHints,
     },
     (args, extra) => handleDownloadTemplate(args, client, { apiKey: extra.authInfo?.token }, fileCtx)
   );

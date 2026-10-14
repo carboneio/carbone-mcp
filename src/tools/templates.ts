@@ -222,6 +222,9 @@ export async function handleUploadTemplate(
   fileCtx?: FileContext
 ) {
   try {
+    // Authenticate first: a caller without credentials must not be able to trigger any URL download.
+    client.assertCanAuthenticate(options);
+
     const template = await resolveFileInput(args.template, {
       isCloud: client.isCloud,
       maxBytes: fileCtx?.maxFileBytes,

@@ -217,7 +217,7 @@ Override the default with these optional parameters:
 
 | Parameter | Behaviour |
 |---|---|
-| `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. In HTTP mode it is rejected (the file would land on the server, not your machine). |
+| `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. The path must not exist yet: an existing file (or symlink) is never overwritten, and the new file is readable by the current user only (`0600`). In HTTP mode it is rejected (the file would land on the server, not your machine). |
 | `asAttachment` | Return the bytes as an `EmbeddedResource` download attachment for **any** format (including text/images), instead of inlining. |
 | `returnLink` | Render without returning the bytes; instead return Carbone's public download URL (`<API URL>/render/{renderId}`). The link is **one-time and short-lived** — Carbone deletes the file after the first download — so pass it to the end user and do **not** fetch it yourself. Works in both transports. Mutually exclusive with `outputPath` / `asAttachment`. |
 

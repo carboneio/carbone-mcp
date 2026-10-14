@@ -16,7 +16,7 @@ import {
 } from '../../../src/tools/templates.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
-import { CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
+import { CarboneAuthError, CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
 
 // ─── handleListTemplates ─────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ describe('handleUploadTemplate', () => {
   });
 
   const makeClient = (result: object) =>
-    ({ uploadTemplate: vi.fn().mockResolvedValue(result) }) as unknown as CarboneClient;
+    ({ assertCanAuthenticate: vi.fn(), uploadTemplate: vi.fn().mockResolvedValue(result) }) as unknown as CarboneClient;
 
   test('resolves template input before uploading', async () => {
     const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 1024 });
@@ -228,6 +228,7 @@ describe('handleUploadTemplate', () => {
 
   test('returns isError on client error', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       uploadTemplate: vi.fn().mockRejectedValue(new CarboneError('Upload failed', 400)),
     } as unknown as CarboneClient;
 
@@ -238,6 +239,20 @@ describe('handleUploadTemplate', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].type).toBe('text');
+  });
+
+  test('checks authentication BEFORE resolving the template (no URL is fetched without credentials)', async () => {
+    vi.mocked(resolveFileInput).mockClear();
+    const client = {
+      assertCanAuthenticate: vi.fn(() => { throw new CarboneAuthError('No API key provided.'); }),
+      uploadTemplate: vi.fn(),
+    } as unknown as CarboneClient;
+
+    const result = await handleUploadTemplate({ template: 'https://example.com/t.docx', name: 'T' }, client);
+
+    expect(result.isError).toBe(true);
+    expect(resolveFileInput).not.toHaveBeenCalled();
+    expect(vi.mocked(client.uploadTemplate)).not.toHaveBeenCalled();
   });
 });
 

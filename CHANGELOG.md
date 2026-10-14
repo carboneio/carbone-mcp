@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.6.1] — 2026-10-14
+
+Security release. **Upgrade now if you run the server in HTTP mode** (self-hosted or Docker, reachable by remote clients); those deployments are the most exposed. stdio users (Claude Desktop, Claude Code, Cursor, … on your own machine) should upgrade too, for the `outputPath` fixes.
+
+### Security
+
+- **URL inputs could reach internal addresses (critical, HTTP mode).** The private-network guard on URL inputs (`template`, `file`, and the by-reference JSON params such as `data`) did not recognise some IPv6 notations of internal addresses, including IPv4 addresses written inside an IPv6 address, and a hostname could be validated against one DNS answer and then connected using another (DNS rebinding). Every IPv4 and IPv6 notation is now checked on the address itself, and the check runs on the exact address the connection uses. Redirects are still re-checked at every hop. `CARBONE_ALLOW_PRIVATE_NETWORK=true` keeps its meaning.
+- **Unauthenticated HTTP requests could trigger URL downloads (medium, HTTP mode).** `render_document`, `convert_document` and `upload_template` downloaded their URL inputs before checking whether the caller had an API key. They now check credentials first: a call without an API key (where one is required) fails before anything is downloaded. Authenticated calls are unchanged.
+- **Error messages could echo remote content (medium).** A failed download repeated the remote server's status text, and an invalid JSON input repeated part of the content it had fetched or read. Errors now report only the HTTP status code, a fixed error code, or a fixed message, so nothing chosen by a remote server is passed back to the assistant.
+- **Downloads are size-capped while they stream.** A response without a `Content-Length` (or with a wrong one) was held in memory in full before the `CARBONE_MAX_FILE_BYTES` check. The download now stops as soon as the limit is passed.
+- **`outputPath` could overwrite existing files (medium, stdio).** Saving a document replaced any file already at that path, and followed symbolic links. A path that already exists is now refused with a message asking for a new file name. New files are readable by your user only (`0600`). The default temp-file output (no `outputPath`) now writes each document to its own new private folder, so it never replaces or follows anything already in the temp directory.
+- **The read-only hint was wrong over stdio.** `render_document`, `convert_document` and `download_template` were marked read-only, but over stdio they write files to disk. They now report `readOnlyHint: false` (not destructive, not idempotent) over stdio, so clients that ask for confirmation before writing tools behave as expected. HTTP is unchanged (read-only, since nothing is written there).
+
+### Changed
+
+- HTTP mode: a request body over `MCP_MAX_BODY_BYTES` is answered `413` as soon as the limit is passed, and the connection is closed. The server no longer reads the rest of the body first.
+- HTTP mode: error log lines are reduced to printable ASCII, like the access log.
+- Dependencies: transitive dependencies updated to patched releases within their existing version ranges. `npm audit --omit=dev` still lists one advisory for `@modelcontextprotocol/sdk` (GHSA-6qxp-vccf-f47h). It concerns the SDK's OAuth *client*, which this server does not use.
+
+---
+
 ## [1.6.0] — 2026-08-19
 
 ### Added
