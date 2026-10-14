@@ -50,7 +50,7 @@ export function convertDocumentSchemaFor(io: IoModes) {
         'Name of the delivered file, WITHOUT extension (e.g. "contract", "2026-invoice"). The document is delivered as ' +
         '"<reportName>.<ext>", with the extension of convertTo, used as ' +
         (io.allowFileOutput ? 'the attachment name and the default saved file name. ' : 'the attachment name. ') +
-        'This server applies it: Carbone ignores reportName on a pure conversion, which would deliver "report.<ext>". ' +
+        'This server names the file itself: a conversion has no templating pass, which is where Carbone resolves reportName. ' +
         'Used literally: Carbone tags such as {d.id} are not resolved here. ' +
         'Ignored with returnLink (a download URL, not a named file)' +
         (io.allowFileOutput ? ' and with outputPath (which sets the path itself).' : '.')
@@ -71,7 +71,7 @@ export function convertDocumentSchemaFor(io: IoModes) {
     outputPath: z
       .string()
       .optional()
-      .describe(outputPathDescription('converted document', io)),
+      .describe(outputPathDescription('converted document', io, { returnLink: true })),
 
     asAttachment: z
       .boolean()
@@ -139,7 +139,8 @@ export async function handleConvertDocument(
     // Authenticate first: a caller without credentials must not be able to trigger any URL download.
     client.assertCanAuthenticate(options);
 
-    // reportName is not sent: Carbone ignores it without templating, so it is applied to the delivered file below.
+    // reportName is not sent: Carbone resolves it during templating, which a conversion skips, so it is applied to
+    // the delivered file below.
     const { file, outputPath, asAttachment, returnLink, reportName, ...rest } = args;
     const template = await resolveFileInput(file, {
       isCloud: client.isCloud,

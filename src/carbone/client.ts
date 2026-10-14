@@ -262,7 +262,8 @@ export class CarboneClient {
     }
     if (debug === null || typeof debug !== 'object' || Array.isArray(debug)) {
       throw new CarboneError(
-        'This Carbone server did not return inspection data: its version does not support template inspection. ' +
+        'This Carbone server returned no inspection data: template inspection needs a more recent Carbone version ' +
+        '(Carbone Cloud has it). ' +
         'Read the tags from the template file instead (download_template fetches a stored one).',
         response.status
       );

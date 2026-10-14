@@ -105,7 +105,7 @@ describe('handleInspectTemplate', () => {
     const result = await handleInspectTemplate({ templateId: 'tpl1' }, client);
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/This Carbone server did not return inspection data/);
+    expect(textOf(result)).toMatch(/This Carbone server returned no inspection data/);
   });
 
   test.each([

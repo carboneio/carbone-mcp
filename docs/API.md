@@ -1,14 +1,14 @@
-# Carbone MCP — API Reference
+# Carbone MCP API reference
 
-Full parameter reference for all 12 tools exposed by the Carbone MCP server.
+Full parameter reference for the 12 tools of the Carbone MCP server, and for running the server itself. For setup, start with the [README](../README.md).
 
-## Table of Contents
+## Table of contents
 
-**Document Operations**
+**Document operations**
 - [convert\_document](#convert_document)
 - [render\_document](#render_document)
 
-**Template Management**
+**Template management**
 - [inspect\_template](#inspect_template)
 - [list\_templates](#list_templates)
 - [list\_categories](#list_categories)
@@ -26,7 +26,9 @@ Full parameter reference for all 12 tools exposed by the Carbone MCP server.
 - [File inputs](#file-inputs)
 - [Output & file delivery](#output--file-delivery)
 - [Transport modes](#transport-modes)
+- [Configuration](#configuration)
 - [Health endpoint](#health-endpoint)
+- [Supported output formats](#supported-output-formats)
 
 ---
 
@@ -59,9 +61,9 @@ Render /path/to/report.pdf as a PNG thumbnail
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `file` | string | ✅ | Absolute local path (stdio only), URL, or base64 string ([File inputs](#file-inputs)) |
-| `convertTo` | string \| object | ✅ | Target format (see [Supported Output Formats](#supported-output-formats)) or advanced object. Valid outputs depend on the input format; `doc`, `xls` and `ppt` are output-only |
+| `convertTo` | string \| object | ✅ | Target format (see [Supported output formats](#supported-output-formats)) or advanced object. Valid outputs depend on the input format; `doc`, `xls` and `ppt` are output-only |
 | `converter` | `L` \| `O` \| `C` \| `I` | ❌ | Converter engine (default: `L` LibreOffice) |
-| `reportName` | string | ❌ | Name of the delivered file, **without** extension: the server names it `<reportName>.<ext>` (attachment name, and the default saved file name in stdio). Carbone ignores `reportName` on a pure conversion (the file would stay `report.<ext>`), so the MCP applies it, literally — tags are not resolved. Ignored with `returnLink` and `outputPath` |
+| `reportName` | string | ❌ | Name of the delivered file, **without** extension: the server names it `<reportName>.<ext>` (attachment name, and the default saved file name in stdio). The server names the file itself: a conversion has no templating pass, which is where Carbone resolves `reportName` (the file would otherwise be `report.<ext>`). Used literally — tags are not resolved. Ignored with `returnLink` and `outputPath` |
 | `hardRefresh` | boolean | ❌ | Run the converter even when the output format equals the input format, and recompute pagination and the table of contents. Needed for **PDF → PDF**: without it Carbone returns the PDF unchanged and `formatOptions` (password, permissions, watermarks, PDF/A…) are not applied. **Set automatically** when the input is a PDF, `convertTo` is `pdf` and `formatOptions` are given; pass `false` to opt out |
 | `outputPath` | string | ❌ | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | ❌ | Return the bytes as a downloadable attachment instead of inline |
@@ -70,11 +72,11 @@ Render /path/to/report.pdf as a PNG thumbnail
 
 **`converter` options** (used whenever the format changes, not only for PDF):
 - `L` — LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- `I` — Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over `O` for DOCX from Carbone v5.15.0. Not converted by ICE, per [Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations): WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, form fields and equations; a missing font falls back to Noto Sans
+- `I` — Carbone ICE: DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, tracked changes, form fields and equations: keep the default `L` for documents with those. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
 - `O` — OnlyOffice: DOCX, XLSX, PPTX → PDF
 - `C` — Chromium: HTML → PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max
 
-`O`, `C` and `I` support only the Security (passwords, permissions) and Watermark PDF options.
+PDF options: `L` supports all of them; `O`, `C` and `I` apply Security (passwords, permissions) and Watermarks.
 
 **Advanced `convertTo` object:**
 ```json
@@ -136,7 +138,7 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 | `keepTags` | boolean | Skip templating entirely and leave every tag **as literal text** (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Mutually exclusive with `data` — passing both is rejected |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`); same values and `formatOptions` as `convert_document` |
 | `converter` | `L` \| `O` \| `C` \| `I` | Converter engine (see `convert_document`) |
-| `reportName` | string | Output filename **without extension** (Carbone appends it), supports Carbone tags (e.g. `"{d.client}-invoice"`). With `keepTags`, Carbone ignores it (no templating), so the server names the file `<reportName>.<ext>` itself, literally |
+| `reportName` | string | Output filename **without extension** (Carbone appends it), supports Carbone tags (e.g. `"{d.client}-invoice"`). With `keepTags` (no templating pass), the server names the file `<reportName>.<ext>` itself, literally |
 | `failOn` | string[] | Conditions that stop the render with an error (Carbone v5.15.0+). `["IMAGE_URL_ERROR"]`: an image that cannot be downloaded from its URL fails the render instead of showing a broken-image placeholder |
 | `preReleaseFeatureIn` | integer | Pre-release feature level for this render only (e.g. `5000000`) |
 | `outputPath` | string | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
@@ -176,9 +178,6 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 | `batchOutput` | `"zip"` \| `"pdf"` | `"zip"` (default): one archive of all documents. `"pdf"`: the PDFs concatenated into one file (requires `convertTo: "pdf"`) |
 | `batchReportName` | string | Name of each file in the ZIP, **without extension**, Carbone tags allowed (e.g. `"invoice-{d.id}"`). Ignored with `batchOutput: "pdf"`. From Carbone v5.14, an index is appended to every file when two names collide |
 
-> Batch is **always asynchronous** — `webhookUrl` is required. Carbone returns immediately and POSTs the
-> `renderId` to your URL when the bundle is ready.
-
 ### Pass JSON by reference
 
 The JSON-valued parameters — `data`, `complement`, `translations`, `enum`, `currencyRates` — can be given **inline** (an object, or an array for `data`) or as a **string reference** that the server reads and parses. This keeps large datasets (and big translation maps) out of the tool call, cutting token cost — especially for batch.
@@ -198,42 +197,6 @@ Render T123 with translations from https://cdn.example.com/i18n.json, lang fr-fr
 ```
 
 > A string is never ambiguous with inline JSON: inline data is passed as an object/array, so a string always means "reference". Same size guard (`CARBONE_MAX_FILE_BYTES`) and URL timeout as `file` / `template`.
-
----
-
-## File inputs
-
-`file` (`convert_document`) and `template` (`render_document`, `inspect_template`, `upload_template`) accept three forms:
-
-| Form | Example | stdio | HTTP |
-|---|---|---|---|
-| Local path | `/Users/me/invoice.docx`, `~/invoice.docx`, `C:\Users\me\invoice.docx` | ✅ | ❌ refused — the server cannot read the caller's disk |
-| URL (`http://` or `https://`) | `https://example.com/invoice.docx` | ✅ | ✅ |
-| Base64 | the file content, base64-encoded | ✅ | ✅ |
-
-A string that is neither a URL nor a path (starting with `/`, `./`, `../`, `~` or a drive letter) is taken as base64: a bare file name such as `invoice.docx` is **not** looked up and fails. Relative paths resolve against the server's working directory, which the client chooses, so prefer absolute paths. URLs are SSRF-guarded (private and internal addresses are refused unless `CARBONE_ALLOW_PRIVATE_NETWORK=true`), and every form is limited to `CARBONE_MAX_FILE_BYTES`.
-
----
-
-## Output & file delivery
-
-`convert_document` and `render_document` (and `download_template`, for `outputPath` / `asAttachment`) decide how the generated bytes reach the client. By default this depends on the format and the transport:
-
-| Output | stdio (local clients) | HTTP (remote / self-hosted) |
-|---|---|---|
-| Text — HTML, XHTML, TXT, CSV, MD, XML, JSON (template samples) | inline `text` | inline `text` |
-| Inline images — PNG, JPG, GIF, WEBP | inline `image` | inline `image` |
-| Everything else — PDF, Office, SVG, TIFF, BMP, EMF… | saved to a temp file, **path returned** as text | returned as an `EmbeddedResource` **attachment** |
-
-Override the default with these optional parameters:
-
-| Parameter | Behaviour |
-|---|---|
-| `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. The path must not exist yet: an existing file (or symlink) is never overwritten, and the new file is readable by the current user only (`0600`). In HTTP mode it is rejected (the file would land on the server, not your machine). |
-| `asAttachment` | Return the bytes as an `EmbeddedResource` download attachment for **any** format (including text/images), instead of inlining. |
-| `returnLink` | Render without returning the bytes; instead return Carbone's public download URL (`<API URL>/render/{renderId}`). The link is **one-time and short-lived** — Carbone deletes the file after the first download — so pass it to the end user and do **not** fetch it yourself. Works in both transports. Mutually exclusive with `outputPath` / `asAttachment`; ignored when `webhookUrl` is set. |
-
-> **Claude Desktop note:** Claude Desktop (and claude.ai) mis-handle inline binary `EmbeddedResource` blobs — they coerce them into image blocks and reject the media type. The same blocks render correctly in Cursor, VS Code, and the MCP Inspector. For PDFs/Office files in Claude Desktop, use the default stdio temp-file path or `returnLink`.
 
 ---
 
@@ -259,8 +222,12 @@ List the Carbone tags of /path/to/invoice.docx and give me sample data for it
 |---|---|---|
 | `tags` | string[] | The tags as written in the template, e.g. `{d.customer.name}`, `{d.items[i].label}`, `{c.company}`. `{t()}` translation tags are not listed |
 | `sample` | object | `data`: a sample dataset matching the template's structure, with placeholder values. `complement`: the same for `{c.}` tags, present when the template uses them. Replace the placeholder values, then pass `sample.data` as `render_document`'s `data` (and `sample.complement` as `complement`) |
+| `signatures` | array? | The signature fields found in the template ([electronic signatures](https://carbone.io/documentation/design/advanced-features/signatures.html)). Present only when the template has any |
+| `error` | object? | An error Carbone reported while inspecting the template. Present only when there is one |
 
-> **Cost:** inspecting runs one render on your Carbone account (counted like a document generation) and discards the document. The tool is read-only: nothing is stored or written.
+The text summary also lists the signature fields and the error, when present.
+
+> **Cost:** inspecting runs one render on your Carbone account (counted like a document generation) and discards the document. The tool is read-only: it changes no template and writes no local file.
 
 ---
 
@@ -281,6 +248,22 @@ List stored templates with filtering, search, and pagination.
 
 ---
 
+## `list_categories`
+
+List all template categories in your account. No parameters.
+
+Returns an array of category name strings.
+
+---
+
+## `list_tags`
+
+List all tags used across your templates. No parameters.
+
+Returns an array of tag name strings.
+
+---
+
 ## `upload_template`
 
 Store a reusable template in Carbone.
@@ -297,7 +280,7 @@ Upload /path/to/invoice.docx as "Invoice Template", category "invoices"
 | `versioning` | boolean? | ❌ | Enable versioning (default: `true`). `false` returns only `templateId` (SHA-256) and `templateExtension` |
 | `category` | string? | ❌ | Category (e.g. `"invoices"`), max 200 chars |
 | `comment` | string? | ❌ | Free-text note about this version, max 200 chars |
-| `tags` | string[]? | ❌ | Tags (e.g. `["sales", "v2"]`). Duplicates are removed and the list is sorted; the whole list is limited to 100 characters. `list_templates` cannot filter by tag |
+| `tags` | string[]? | ❌ | Labels shown by `list_tags` and on each `list_templates` result (e.g. `["sales", "v2"]`). Duplicates are removed and the list is sorted; the whole list is limited to 100 characters |
 | `sample` | object[]? | ❌ | Sample data for Carbone Studio: **at most one** object, with the optional keys `data`, `complement`, `translations`, `enum` (no other keys) |
 | `deployedAt` | number? | ❌ | Unix timestamp to set as deploy time. Use `42000000000` for "now". Future values are not allowed |
 | `expireAt` | number? | ❌ | Unix timestamp at which the template is scheduled for deletion; `0` (default) = never. To delete now, use `delete_template` |
@@ -369,22 +352,6 @@ Download the original template file (DOCX, XLSX, etc.), or the JSON sample data 
 
 ---
 
-## `list_categories`
-
-List all template categories in your account. No parameters.
-
-Returns an array of category name strings.
-
----
-
-## `list_tags`
-
-List all tags used across your templates. No parameters.
-
-Returns an array of tag name strings.
-
----
-
 ## `get_api_status`
 
 Check Carbone API health and current version. No parameters.
@@ -399,13 +366,62 @@ Returns a full overview of supported formats, features, and usage examples. No p
 
 ---
 
+## File inputs
+
+`file` (`convert_document`) and `template` (`render_document`, `inspect_template`, `upload_template`) accept three forms:
+
+| Form | Example | stdio | HTTP |
+|---|---|---|---|
+| Local path | `/Users/me/invoice.docx`, `~/invoice.docx`, `C:\Users\me\invoice.docx` | ✅ | ❌ refused — the server cannot read the caller's disk |
+| URL (`http://` or `https://`) | `https://example.com/invoice.docx` | ✅ | ✅ |
+| Base64 | the file content, base64-encoded | ✅ | ✅ |
+
+A string that is neither a URL nor a path (starting with `/`, `./`, `../`, `~` or a drive letter) is taken as base64: a bare file name such as `invoice.docx` is **not** looked up and fails. Relative paths resolve against the server's working directory, which the client chooses, so prefer absolute paths. URLs are SSRF-guarded (see below), and every form is limited to `CARBONE_MAX_FILE_BYTES`. The JSON parameters passed by reference follow the same rules ([Pass JSON by reference](#pass-json-by-reference)).
+
+### URL guard
+
+The server downloads URL inputs itself (`file`, `template`, and JSON parameters such as `data` passed by reference), on both transports, with these protections:
+
+- Only `http://` and `https://` URLs are fetched.
+- Unless `CARBONE_ALLOW_PRIVATE_NETWORK=true`, a URL is refused when it points at a loopback, private (RFC 1918), link-local (including the cloud metadata address `169.254.169.254`), CGNAT, multicast or reserved address, in any IPv4 or IPv6 notation (including IPv4 addresses embedded in IPv6).
+- The check applies to the address the connection actually uses, so a DNS answer cannot change between the check and the connection (DNS rebinding). Redirects are followed by the server, at most 5 hops, and every hop is checked again.
+- A download stops as soon as it passes `CARBONE_MAX_FILE_BYTES`, and times out after 60 seconds.
+- A call without an API key (when the Carbone API needs one) fails before anything is downloaded.
+- A failed download reports only an HTTP status code or a fixed error code, never text chosen by the remote server.
+
+Local paths are a separate guard: they are read in stdio only, where the server already runs as you. Over HTTP they are refused, so a remote caller can never make the server read its own filesystem.
+
+---
+
+## Output & file delivery
+
+`convert_document` and `render_document` (and `download_template`, for `outputPath` / `asAttachment`) decide how the generated bytes reach the client. By default this depends on the format and the transport:
+
+| Output | stdio (local clients) | HTTP (remote / self-hosted) |
+|---|---|---|
+| Text — HTML, XHTML, TXT, CSV, MD, XML, JSON (template samples) | inline `text` | inline `text` |
+| Inline images — PNG, JPG, GIF, WEBP | inline `image` | inline `image` |
+| Everything else — PDF, Office, SVG, TIFF, BMP, EMF… | saved to a temp file, **path returned** as text | returned as an `EmbeddedResource` **attachment** |
+
+Override the default with these optional parameters:
+
+| Parameter | Behaviour |
+|---|---|
+| `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. The path must not exist yet: an existing file (or symlink) is never overwritten, and the new file is readable by the current user only (`0600`). In HTTP mode it is rejected (the file would land on the server, not your machine). |
+| `asAttachment` | Return the bytes as an `EmbeddedResource` download attachment for **any** format (including text/images), instead of inlining. |
+| `returnLink` | Render without returning the bytes; instead return Carbone's public download URL (`<API URL>/render/{renderId}`). The link is **one-time and short-lived** — Carbone deletes the file after the first download — so pass it to the end user and do **not** fetch it yourself. Works in both transports. Mutually exclusive with `outputPath` / `asAttachment`; ignored when `webhookUrl` is set. |
+
+> **Claude Desktop note:** Claude Desktop (and claude.ai) mis-handle inline binary `EmbeddedResource` blobs — they coerce them into image blocks and reject the media type. The same blocks render correctly in Cursor, VS Code, and the MCP Inspector. For PDFs/Office files in Claude Desktop, use the default stdio temp-file path or `returnLink`.
+
+---
+
 ## Transport modes
 
-The server supports two transport modes controlled by the `MCP_TRANSPORT` environment variable.
+The server supports two transport modes, chosen with the `MCP_TRANSPORT` environment variable. It supports MCP protocol 2026-07-28 and still serves clients on the earlier 2025-era protocol, over both stdio and HTTP.
 
 ### `stdio` (default)
 
-Used by AI desktop clients (Claude Desktop, VS Code, Cursor). The client launches the server as a child process and communicates over stdin/stdout.
+Used by AI desktop clients (Claude Desktop, Claude Code, VS Code, Cursor). The client launches the server as a child process and communicates over stdin/stdout.
 
 ```bash
 CARBONE_API_KEY=your_key npx carbone-mcp
@@ -418,7 +434,10 @@ CARBONE_API_KEY=your_key npx carbone-mcp
 Runs a Streamable HTTP server. Used for self-hosted deployments accessible to web-based or remote MCP clients.
 
 ```bash
-MCP_TRANSPORT=http MCP_PORT=3000 node dist/index.js
+MCP_TRANSPORT=http MCP_PORT=3000 npx carbone-mcp
+
+# or with Docker, where HTTP is the default
+docker run -d -p 127.0.0.1:3000:3000 carbone/carbone-mcp
 ```
 
 `CARBONE_API_KEY` is **optional** in HTTP mode. Each incoming request can supply its own key via the `Authorization: Bearer <key>` header, which takes precedence over the server-level env var. This allows multiple users to connect with their own API keys without sharing a single server-level key.
@@ -431,18 +450,7 @@ MCP_TRANSPORT=http MCP_PORT=3000 node dist/index.js
 | Neither set, cloud API | The tool call returns the tool error `Authentication failed: No API key provided…` before anything is sent or downloaded |
 | On-premise (`CARBONE_BASE_URL` custom) | No key required in any mode |
 
-Deploying it: no server key (each client sends its own Bearer key) is the safe default. Publish the port on `127.0.0.1` for local use (`docker run -p 127.0.0.1:3000:3000 …`), and behind a TLS reverse proxy for remote clients.
-
-**HTTP environment variables:**
-
-| Variable | Default | Description |
-|---|---|---|
-| `MCP_PORT` | `3000` | Listening port |
-| `MCP_PATH` | `/` | MCP endpoint path. Cannot be `/health` (reserved). |
-| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum size of one incoming MCP message (60 MB, matches Carbone Cloud limit): an HTTP request body, answered `413` as soon as the limit is passed, or one stdio message. |
-| `MCP_ALLOWED_ORIGINS` | `localhost`, `127.0.0.1`, `[::1]` | Browser `Origin` hostnames allowed in addition to the localhost default — comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). Invalid entries stop the server at startup. |
-| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Require `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server — anyone reaching the port can spend it). Set `true` to require per-client keys. No effect when no server key is set. |
-| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs to resolve to private/internal addresses. Off by default to block SSRF. |
+Deploying it: no server key (each client sends its own Bearer key) is the safe default. Publish the port on `127.0.0.1` for local use (`docker run -p 127.0.0.1:3000:3000 …`), and behind a TLS reverse proxy for remote clients. The HTTP settings (`MCP_PORT`, `MCP_PATH`, `MCP_ALLOWED_ORIGINS`, …) are listed under [Configuration](#configuration).
 
 **Endpoint behaviour** (at `MCP_PATH`):
 
@@ -458,6 +466,26 @@ CORS preflights (`OPTIONS`) are answered `204`; allowed request headers are `Con
 
 ---
 
+## Configuration
+
+The server reads these environment variables at startup. Numbers must be positive integers and booleans `true` or `false`; an invalid value stops the server with an error.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CARBONE_API_KEY` | none | Your Carbone API key ([account.carbone.io](https://account.carbone.io)). **stdio:** required for Carbone Cloud; without it the server stops at startup. **HTTP:** optional; leave it unset so each client sends its own `Authorization: Bearer <key>`, which always takes precedence. When set, requests without a Bearer key spend it (see `CARBONE_REQUIRE_CLIENT_AUTH_HEADER`). Not needed when `CARBONE_BASE_URL` points to an on-premise server. |
+| `CARBONE_BASE_URL` | `https://api.carbone.io` | Carbone API base URL. Point it at your on-premise instance; with any URL other than the default, no API key is required. |
+| `CARBONE_TIMEOUT` | `60000` | Timeout of each Carbone API request, in milliseconds. The server sets no maximum, but Carbone Cloud's synchronous API has its own 60-second limit. URL downloads have a separate, fixed 60-second timeout. |
+| `CARBONE_MAX_FILE_BYTES` | `104857600` (100 MB) | Largest input the server resolves from a local path, URL or base64 string: `file`, `template`, and the JSON parameters passed by reference. A download stops as soon as it passes the limit. |
+| `MCP_TRANSPORT` | `stdio` | `stdio` for local clients, or `http` for a Streamable HTTP server. The Docker image sets `http`. |
+| `MCP_PORT` | `3000` | HTTP listening port. |
+| `MCP_PATH` | `/` | HTTP endpoint path. Must start with `/` and cannot be `/health` (reserved). |
+| `MCP_MAX_BODY_BYTES` | `62914560` (60 MB, Carbone Cloud's JSON data limit) | Largest incoming MCP message: an HTTP request body, answered `413` as soon as the limit is passed, or one stdio message. |
+| `MCP_ALLOWED_ORIGINS` | none | HTTP only. Browser `Origin` hostnames allowed in addition to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request with any other `Origin` gets `403`; requests without an `Origin` are unaffected. Invalid entries stop the server at startup. |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP only. `true` requires `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server: anyone reaching the port can spend it, and the server warns at startup). No effect when no server key is set. |
+| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs resolve to private and internal addresses ([URL guard](#url-guard)). Off by default to block SSRF; enable it only on a trusted deployment with internal template hosts. |
+
+---
+
 ## Health endpoint
 
 Available in HTTP mode at `GET /health`. Always returns HTTP 200 — the status code signals MCP server liveness.
@@ -469,7 +497,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "1.x.x" },
+  "mcp":    { "version": "2.0.0" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -486,9 +514,9 @@ The response is cached for 30 seconds to avoid hammering the backend. Backend st
 
 ---
 
-## Supported Output Formats
+## Supported output formats
 
-The 36 values accepted by `convertTo` (`src/validation/formats.ts`):
+The 36 values accepted by `convertTo`:
 
 ```
 Documents:               pdf, docx, doc, odt, ott, rtf, epub

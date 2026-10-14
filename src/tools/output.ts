@@ -69,6 +69,8 @@ export async function deliverDocument(params: {
   outputPath?: string;
   asAttachment?: boolean;
   allowFileOutput: boolean;
+  /** The calling tool has a returnLink parameter (not download_template): the hint may name it. */
+  offerReturnLink?: boolean;
 }): Promise<{ content: Array<TextContent | ImageContent | EmbeddedResource>; isError?: boolean }> {
   const fmt = typeof params.format === 'string' ? params.format : params.format.formatName;
 
@@ -95,7 +97,9 @@ export async function deliverDocument(params: {
       content: [{
         type: 'text',
         text: `Generated ${fmt} (${params.buffer.length} bytes) saved to ${path}. ` +
-          'Pass outputPath to choose the destination, asAttachment to receive it inline, or returnLink for a download URL.',
+          (params.offerReturnLink
+            ? 'Pass outputPath to choose the destination, asAttachment to receive it inline, or returnLink for a download URL.'
+            : 'Pass outputPath to choose the destination, or asAttachment to receive it inline.'),
       }],
     };
   }
@@ -166,5 +170,6 @@ export function deliver(
     outputPath: opts.outputPath,
     asAttachment: opts.asAttachment,
     allowFileOutput: opts.allowFileOutput,
+    offerReturnLink: true, // deliver() serves render_document and convert_document, which both have returnLink
   });
 }

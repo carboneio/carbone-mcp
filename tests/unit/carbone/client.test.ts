@@ -781,7 +781,7 @@ describe('CarboneClient', () => {
       const err = await client.inspectTemplate({ templateId: 'tpl1' }).catch((e: unknown) => e);
 
       expect(err).toBeInstanceOf(CarboneError);
-      expect((err as Error).message).toMatch(/did not return inspection data/);
+      expect((err as Error).message).toMatch(/returned no inspection data/);
     });
   });
 

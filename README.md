@@ -4,28 +4,33 @@
 [![MCP Registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.carbone%252Fcarbone-mcp%2Fversions%2Flatest&query=%24.server.version&label=MCP%20Registry&logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-> **Official Carbone MCP server** — Turn AI assistants into document automation experts. Generate professional PDFs, invoices, reports, and more using natural language.
+Generate PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files between 36 formats, from Claude, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
 
-Give Claude, ChatGPT, and other AI assistants the power to:
-- 🔄 **Document Conversion** — 100+ format combinations (PDF, DOCX, XLSX, PNG, HTML, CSV…)
-- 📄 **Template Engine** — Generate documents from JSON data with `{d.field}` tags
-- 🔍 **Template Inspection** — List the tags a template uses and get a sample JSON dataset to fill it
-- 📚 **Template Library** — Upload, version, categorize, and manage reusable templates
-- 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines (LibreOffice, OnlyOffice, Chromium, Carbone ICE)
-- 🌍 **Localization** — Multi-language support, currency conversion, timezone handling
-- ⚡ **Batch Generation** — Create up to 100 documents per request on Carbone Cloud (async, delivered to your webhook)
+- **Convert files:** DOCX, XLSX, PPTX, HTML, Markdown or PDF to PDF, images, CSV, ODT and [the other output formats](docs/API.md#supported-output-formats).
+- **Fill templates with JSON:** design them in Word, Excel, PowerPoint, LibreOffice, HTML or Markdown with `{d.field}` tags, or fill an existing PDF form.
+- **Finish your PDFs:** passwords, watermarks, PDF/A, page ranges, and a choice of converter (LibreOffice, OnlyOffice, Chromium or Carbone ICE).
+- **Batch and localize:** up to 100 documents per request, delivered to your webhook; translations, time zones, and currency conversion at the rates you give.
+- **Keep a template library:** upload, version, categorize, deploy and download templates, and ask which data a template expects.
 
----
+## What you can ask
 
-## Installation
+These work with the free test key, which outputs watermarked PDFs:
 
-The server supports MCP protocol 2026-07-28 and still serves clients on the earlier 2025-era protocol, over both stdio and HTTP.
+- *"Convert this Markdown to PDF: # Quarterly update …"*
+- *"Fill my invoice template with this JSON and give me a PDF: {"customer": "Acme", "total": 1500}"*
+- *"Which data does this contract template need?"* (`inspect_template` lists its tags and drafts a sample JSON)
+
+More in [Example prompts](#example-prompts), including with Salesforce, HubSpot, Notion and Stripe.
+
+## Quick start
+
+> Upgrading from 1.x? Read the [upgrade notes](CHANGELOG.md#upgrading-from-1x) — HTTP deployments should upgrade now (security fixes).
 
 ### Prerequisites
 
 - **A Carbone API key** from [account.carbone.io](https://account.carbone.io). Your account has two keys ([details](https://carbone.io/documentation/developer/http-api/introduction.html#requirements)):
-  - **Test key** — free and unlimited, but produces **PDF only, with a watermark**. Templates uploaded with it are deleted automatically within 30 days.
-  - **Production key** — any output format, no watermark. The free Sandbox plan includes 100 credits per month.
+  - **Test key**: unlimited watermarked PDFs, free (PDF output only). Templates stored with it are kept for up to 30 days.
+  - **Production key**: any output format, no watermark. The free Sandbox plan includes 100 credits per month.
 - **Node.js 20.3 or later** for the local package (`npx carbone-mcp`). Check with `node --version`. The Docker image needs Docker only.
 
 ### Choose a setup
@@ -34,11 +39,9 @@ The server supports MCP protocol 2026-07-28 and still serves clients on the earl
 |---|---|---|---|
 | [Local package (stdio)](#local-package-stdio) | `npx carbone-mcp` on your machine | Claude Desktop, Claude Code, VS Code, Cursor, and any client that starts local servers | ✅ reads local paths, saves documents to disk |
 | [Hosted server (HTTP)](#hosted-server-mcpcarboneio) | `https://mcp.carbone.io`, nothing to install | Clients that can send an `Authorization` header: Claude Code, VS Code, Cursor, … | ❌ URLs and base64 only |
-| [Docker (HTTP)](#docker--self-hosted-http-server) | Your own server | Same as the hosted server | ❌ URLs and base64 only |
+| [Docker (HTTP)](#docker) | Your own server | Same as the hosted server | ❌ URLs and base64 only |
 
 **Claude Desktop:** use the local package. **claude.ai** on the web reaches remote servers only, as connectors: see [claude.ai and Claude Desktop connectors](#claudeai-and-claude-desktop-connectors).
-
----
 
 ### Local package (stdio)
 
@@ -69,7 +72,7 @@ Most clients use this config:
 claude mcp add --env CARBONE_API_KEY=your_api_key_here --transport stdio carbone -- npx -y carbone-mcp
 ```
 
-**VS Code** — `.vscode/mcp.json` uses `servers`, not `mcpServers`. With an input variable, VS Code asks for the key once and stores it securely:
+**VS Code:** `.vscode/mcp.json` uses `servers`, not `mcpServers`. With an input variable, VS Code asks for the key once and stores it securely:
 
 ```json
 {
@@ -91,11 +94,9 @@ Then try: *"What can Carbone do?"*
 
 Client docs: [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers) · [Claude Code](https://code.claude.com/docs/en/mcp) · [VS Code](https://code.visualstudio.com/docs/copilot/reference/mcp-configuration) · [Cursor](https://cursor.com/docs/context/mcp)
 
----
-
 ### Hosted server (mcp.carbone.io)
 
-Connect to `https://mcp.carbone.io` over Streamable HTTP, and send your Carbone API key in the header `Authorization: Bearer <your API key>`. OAuth is not available yet.
+Nothing to install: connect to `https://mcp.carbone.io` over Streamable HTTP and send your key in the header `Authorization: Bearer <your API key>`. Over HTTP, file inputs must be URLs or base64 ([File inputs](#file-inputs)).
 
 **Claude Code:**
 
@@ -120,7 +121,7 @@ claude mcp add --transport http carbone https://mcp.carbone.io --header "Authori
 }
 ```
 
-**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`). Cursor also accepts `"Bearer ${env:CARBONE_API_KEY}"` to read the key from an environment variable:
+**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`; `"Bearer ${env:CARBONE_API_KEY}"` reads the key from your environment):
 
 ```json
 {
@@ -133,147 +134,18 @@ claude mcp add --transport http carbone https://mcp.carbone.io --header "Authori
 }
 ```
 
-Over HTTP, file inputs must be URLs or base64: the server cannot read your local files (see [File inputs](#file-inputs)).
-
----
-
 ### claude.ai and Claude Desktop connectors
 
-**Recommended: Claude Desktop with the [local package](#local-package-stdio).** claude.ai on the web cannot start local servers.
-
-Remote servers are added to claude.ai and Claude Desktop as *custom connectors*. Per [Anthropic's documentation](https://claude.com/docs/connectors/building/authentication), a custom connector authenticates with OAuth or connects without authentication. A fixed API key sent in a request header is a **beta available to a limited set of organizations**: an organization Owner enters it once, and Claude sends it for **every member** of the organization.
-
-`mcp.carbone.io` authenticates with `Authorization: Bearer <Carbone API key>` and does not offer OAuth yet, so use it as a connector only if your organization has the **Request headers** section ([setup](https://claude.com/docs/connectors/custom/add-unlisted#authenticate-with-request-headers)):
+mcp.carbone.io authenticates with your Carbone API key, which a custom connector sends through **Request headers** (an Anthropic beta: check that your organization has it; [setup](https://claude.com/docs/connectors/custom/add-unlisted#authenticate-with-request-headers)):
 
 1. Add a custom connector with the URL `https://mcp.carbone.io` and the authentication **No sign-in**.
 2. Under **Request headers**, choose `authorization` and enter `Bearer <your Carbone API key>`, including `Bearer ` and the space.
 
-Everyone in the organization then shares that key, and every document counts against that one Carbone account: use a dedicated key.
+An Owner enters the key once and every member of the organization uses it, so every document counts against that one Carbone account: use a dedicated key. Without Request headers, custom connectors on claude.ai and Claude Desktop [authenticate](https://claude.com/docs/connectors/building/authentication) with OAuth or not at all; in Claude Desktop, use the [local package](#local-package-stdio).
 
----
+## Files in and out
 
-### Docker — self-hosted HTTP server
-
-The image runs in HTTP mode by default (`MCP_TRANSPORT=http`, port 3000). This quick start sets **no server key**: each client sends its own key in `Authorization: Bearer <key>`, exactly as with mcp.carbone.io, and the port is reachable from your machine only.
-
-```bash
-docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 carbone/carbone-mcp
-curl http://localhost:3000/health
-```
-
-Connect your client with the [hosted server config](#hosted-server-mcpcarboneio), replacing `https://mcp.carbone.io` with `http://localhost:3000`.
-
-**Serving other machines:** publish the port behind a TLS reverse proxy, keep the server without `CARBONE_API_KEY` (or set `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true`), and list the hostnames of browser-based clients in `MCP_ALLOWED_ORIGINS`.
-
-**Shared-key variant — one user, local only.** A server-level key lets clients connect without sending one:
-
-```bash
-docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 -e CARBONE_API_KEY=your_api_key_here carbone/carbone-mcp
-```
-
-> ⚠️ Every request without a Bearer key then spends **your** key: anyone who can reach the port uses your Carbone account. The server prints a warning at startup. Never publish this port on a network you don't fully trust. See [Security](#security).
-
-**Docker Compose** — [compose.yml](./compose.yml) builds the image from this repository, binds `127.0.0.1` only, sets no server key, and passes through every variable of [.env.example](./.env.example):
-
-```bash
-docker compose up -d
-```
-
-`docker compose` also reads `CARBONE_API_KEY` from your shell or a `.env` file: if it is set there, you get the shared-key variant.
-
-**Claude Desktop with Docker (stdio):**
-
-```json
-{
-  "mcpServers": {
-    "carbone": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm",
-               "-e", "CARBONE_API_KEY=your_api_key_here",
-               "-e", "MCP_TRANSPORT=stdio",
-               "carbone/carbone-mcp"]
-    }
-  }
-}
-```
-
-In this mode, local paths and saved documents refer to the **container's** filesystem, which `--rm` deletes. Pass URLs or base64 and ask for `returnLink`, or mount a folder with `-v` and use paths inside it.
-
-### On-Premise — self-hosted Carbone instance
-
-If you run [Carbone on-premise](https://carbone.io/pricing.html), point the MCP server at your instance — no API key required:
-
-```bash
-# Docker (HTTP)
-docker run -d -p 127.0.0.1:3000:3000 \
-  -e CARBONE_BASE_URL=https://your-carbone-server.com \
-  carbone/carbone-mcp
-
-# stdio
-CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
-```
-
----
-
-## Environment Variables
-
-**Required (stdio mode, cloud API):**
-- `CARBONE_API_KEY` — Your Carbone API key ([get one free →](https://account.carbone.io)). Not required when `CARBONE_BASE_URL` points to your own on-premise server, or when running in HTTP mode (clients supply their own key via `Authorization: Bearer`).
-
-<details>
-<summary>Optional configuration</summary>
-
-| Variable | Default | Description |
-|---|---|---|
-| `CARBONE_BASE_URL` | `https://api.carbone.io` | Override for self-hosted or staging environments. When set to a custom URL, `CARBONE_API_KEY` is not required. |
-| `CARBONE_TIMEOUT` | `60000` | Request timeout in milliseconds (max: 60000) |
-| `CARBONE_MAX_FILE_BYTES` | `104857600` | Maximum size (bytes) for a resolved input file — path, URL, or base64 (100 MB default) |
-| `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` (default, for AI clients) or `http` (for self-hosted deployments; the Docker image default) |
-| `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
-| `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`). Cannot be `/health` |
-| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum size in bytes of one incoming MCP message — an HTTP request body (`413` when exceeded) or one stdio message (60 MB default, matching Carbone Cloud limit) |
-| `MCP_ALLOWED_ORIGINS` | `localhost`, `127.0.0.1`, `[::1]` | HTTP mode only — browser `Origin` hostnames allowed in addition to the localhost default: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request whose `Origin` is present but not allowed gets `403`; requests without an `Origin` (desktop, CLI, server-side clients) are unaffected. Invalid entries stop the server at startup |
-| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — require `Authorization: Bearer <key>` on every request. **Leave `false` only if you intend a shared-key server:** with a server-level `CARBONE_API_KEY` set, requests that carry no Bearer key fall back to it, so anyone who can reach the port can spend that Carbone account. Set to `true` to require each client to bring its own key. Irrelevant when no server key is set (e.g. on-premise) |
-| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs (templates, `data`, …) to resolve to private/internal addresses. Off by default to block SSRF (cloud metadata, `localhost`, RFC1918). Enable only on a trusted deployment with internal template hosts |
-
-</details>
-
----
-
-## Available Tools
-
-### Document Operations
-
-| Tool | Description | Docs |
-|---|---|---|
-| `convert_document` | Convert documents between 100+ formats without storing a template (pure conversion: tags are kept) | [→](https://carbone.io/documentation/developer/http-api/convert-reports.html) |
-| `render_document` | Generate documents from templates by merging with JSON data | [→](https://carbone.io/documentation/developer/http-api/generate-reports.html) |
-
-### Template Management
-
-| Tool | Description | Docs |
-|---|---|---|
-| `inspect_template` | List the Carbone tags a template uses and return a sample JSON dataset matching its structure — call it before `render_document` when you don't know which data a template expects. Runs one render on your account (counted like a document generation) and discards the document | |
-| `list_templates` | Browse your template library with filtering by category or search (tags are returned per template but not filterable server-side) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-templates) |
-| `list_categories` | List all template categories in your account | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-categories) |
-| `list_tags` | List all tags used across your templates | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-tags) |
-| `upload_template` | Store reusable templates with versioning, categorization, and metadata | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#upload-a-template) |
-| `update_template_metadata` | Rename, categorize, tag, deploy, or expire template versions | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#patch-a-template) |
-| `delete_template` | Delete templates — takes effect immediately (the file is purged after the retention delay) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#delete-a-template) |
-| `download_template` | Download original template files (DOCX, XLSX, PDF, etc.) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#download-a-template) |
-
-### Discovery
-
-| Tool | Description | Docs |
-|---|---|---|
-| `get_api_status` | Check Carbone API health and current version | |
-| `get_capabilities` | View all supported formats, features, and examples | |
-
-📖 **[Full API Reference →](./docs/API.md)** — Detailed parameters, schemas, and examples
-
----
-
-## File inputs
+### File inputs
 
 `file` (`convert_document`) and `template` (`render_document`, `inspect_template`, `upload_template`) accept:
 
@@ -283,107 +155,69 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | URL | `https://example.com/invoice.docx` | ✅ | ✅ |
 | Base64 | the file content, base64-encoded | ✅ | ✅ |
 
-Any other string, such as a bare `invoice.docx`, is read as base64 and fails. Relative paths (`./…`, `../…`) resolve against the server's working directory, which your client chooses: prefer absolute paths. The JSON parameters (`data`, `complement`, …) also accept a path, URL or base64 string pointing to a JSON file ([details](./docs/API.md#pass-json-by-reference)).
+Any other string, such as a bare `invoice.docx`, is read as base64 and fails. Relative paths (`./…`, `../…`) resolve against the server's working directory, which your client chooses: prefer absolute paths. The JSON parameters (`data`, `complement`, …) also accept a path, URL or base64 string pointing to a JSON file ([details](docs/API.md#pass-json-by-reference)).
 
----
-
-## Output & File Delivery
-
-By default, a generated or converted file is returned based on its type and transport:
+### Output delivery
 
 | Output | stdio (local clients) | HTTP (remote / self-hosted) |
 |---|---|---|
-| Text — HTML, TXT, CSV, MD, XML, JSON (template samples) | inline text | inline text |
-| Inline images — PNG, JPG, GIF, WEBP | inline image | inline image |
-| Everything else — PDF, Office, SVG, TIFF… | saved to a temp file, path returned | returned as a download attachment |
+| Text: HTML, TXT, CSV, MD, XML, JSON (template samples) | inline text | inline text |
+| Images: PNG, JPG, GIF, WEBP | inline image | inline image |
+| Everything else: PDF, Office, SVG, TIFF… | saved to a temp file, path returned | returned as a download attachment |
 
-Three optional parameters on `convert_document` and `render_document` (and `outputPath` / `asAttachment` on `download_template`) override this:
+You can instead save to a path you choose (`outputPath`, stdio only), get an attachment for any format (`asAttachment`), or get a one-time download link (`returnLink`): see [Output and file delivery](docs/API.md#output--file-delivery).
 
-| Parameter | Effect |
+> **Claude Desktop** cannot display inline binary attachments (it mishandles them as images). For PDF and Office files, keep the default temp-file path, or ask for **`returnLink`** to get a download URL.
+
+## Tools
+
+| Tool | What it does |
 |---|---|
-| `outputPath` | **stdio only** — save the output to this local path instead of returning it inline (rejected in HTTP mode). The file must not exist yet — an existing file or symlink is never overwritten — and is created readable by you only |
-| `asAttachment` | return the bytes as a downloadable attachment for any format, instead of inline |
-| `returnLink` | return Carbone's public **one-time** download URL instead of the file — short-lived and consumed by the first download, so hand it to the user rather than fetching it yourself (works in stdio and HTTP) |
+| `convert_document` | Converts a file to another format; Carbone tags stay as written |
+| `render_document` | Fills a template with JSON data, and can convert the result (to PDF, for example) |
+| `inspect_template` | Lists a template's tags and returns a matching sample dataset. Runs one render on your account (counts as one document generation) |
+| `list_templates` | Lists stored templates, filtered by category, name or ID |
+| `list_categories` | Lists the template categories in your account |
+| `list_tags` | Lists the tags used across your templates |
+| `upload_template` | Stores a reusable template, with versions, category and tags |
+| `update_template_metadata` | Renames, categorizes, tags, deploys or schedules the deletion of a template version |
+| `delete_template` | Deletes a template or one of its versions, immediately |
+| `download_template` | Downloads a template's original file, or the sample data stored with it |
+| `get_api_status` | Checks the Carbone API's health and version |
+| `get_capabilities` | Summarizes the formats, features and usage examples |
 
-> **Claude Desktop:** it cannot render inline binary attachments (it mishandles them as images). For PDFs and Office files, rely on the default stdio temp-file path, or use **`returnLink`** to get a download URL.
+Every parameter, with examples: [docs/API.md](docs/API.md).
 
----
+## Example prompts
 
-## Common Use Cases
+**With your other tools.** Carbone turns data that another MCP server fetches into a finished document. These assume that server (Salesforce, HubSpot, Notion, Stripe, …) is connected in the same client.
+- *"Get the Acme Corp opportunity and its products from Salesforce, fill my 'Sales quote' template and give me the PDF"*
+- *"For each HubSpot deal that moved to Closed Won this week, fill the 'Service agreement' template and save the PDFs in ~/Contracts"*
+- *"Inspect my 'Invoice' template, map its fields to the HubSpot deal 'Acme renewal', and show me the JSON before you render it"*
+- *"Collect the tasks marked Done in the Notion 'Sprint 42' database and fill our 'Sprint report' template as a DOCX"*
+- *"List last month's paid Stripe invoices for Acme Corp and produce an account statement with the 'Statement' template"*
+- *"Read the attendee list from the 'Workshop' Google Sheet and create one certificate per attendee from the 'Certificate' template"*
+- *"Summarize the pull requests merged on GitHub this week into our 'Release notes' template, then post a two-line summary in #releases on Slack"*
 
-### 📄 Document Conversion
-```
-"Convert this Word document to PDF: /Users/me/contracts/contract.docx"
-"Turn my Excel spreadsheet into CSV format"
-"Convert this HTML page to a PNG image"
-"Convert my Markdown README to PDF"
-"Convert this DOCX to PDF with the Carbone ICE converter — the fastest for Word files"
-"Render this PDF as a PNG thumbnail"
-```
+**Templates and data**
+- *"Generate an invoice from template 1530905183164918624 with {customer: 'Acme Corp', total: 1500, items: [...]}"*
+- *"Fill ~/templates/offer-letter.docx with ~/hr/jane-doe.json and save the PDF as ~/Documents/offer-jane-doe.pdf"*
+- *"Show me template 1530905183164918624 as a PDF with its tags still visible, so I can check the layout"*
 
-### 🔍 Template Inspection
-```
-"Which data does template 1530905183164918624 expect? Show me a sample JSON"
-"List the Carbone tags used in /Users/me/templates/invoice.docx"
-"Inspect https://example.com/offer-letter.docx, then render it with the data in ~/data/candidate.json"
-```
+**Convert**
+- *"Convert /Users/me/contracts/contract.docx to PDF with the Carbone ICE converter"*
+- *"Turn https://example.com/sales.xlsx into a CSV separated by semicolons"*
+- *"Render this PDF as a PNG thumbnail"*
 
-### 💼 Finance & Invoicing
-```
-"Generate an invoice using template T123 with: {customer: 'Acme Corp', total: 1500, items: [...]}"
-"Generate invoices from the data in /data/invoices.json"
-"Create 100 invoices from my billing data as one ZIP, delivered to my webhook https://example.com/hook"
-"Generate a French invoice for my Paris client — use EUR currency and fr-fr locale"
-"Render this monthly report for each client in ~/data/clients.json as one merged PDF, sent to my webhook"
-"Generate one invoice per row in my sales data, named invoice-{d.id}"
-```
+**Batch and localization**
+- *"Create one invoice per customer in ~/data/invoices.json, as a ZIP of files named invoice-{d.id}, delivered to my webhook https://example.com/hook"*
+- *"Generate this invoice in French, German and Spanish from the same template"*
+- *"Render the report with prices converted from EUR to USD at 1.08, and dates in New York time"*
 
-### ⚖️ Legal & Compliance
-```
-"Add a CONFIDENTIAL watermark to this contract before sending it"
-"Convert this NDA to PDF/A format for long-term archiving"
-"Generate a password-protected PDF — open password: 'secret123'"
-"Create signed offer letters for each candidate using this DOCX template"
-"Generate a compliance report with a DRAFT watermark, 20% opacity, rotated -45°"
-```
-
-### 👥 HR & People Operations
-```
-"Create personalized onboarding documents for all 50 new employees in this JSON"
-"Generate an employment contract for each person in ~/hr/new-hires.json"
-"Build payslips for every employee in my payroll export"
-"Create training certificates for everyone who passed this month"
-"Fill out the performance review template with each employee's data"
-```
-
-### 🌍 Localization & Multi-Language
-```
-"Generate this invoice in French, German, and Spanish from the same template"
-"Render the report with timezone America/New_York so dates show in Eastern time"
-"Convert all prices from EUR to USD using today's exchange rates"
-"Generate the contract in fr-fr locale so numbers use European formatting"
-```
-
-### 🔐 PDF Security & Advanced Options
-```
-"Convert this DOCX to a password-protected PDF"
-"Add a semi-transparent DRAFT watermark to every page"
-"Generate a PDF/A-1b compliant version of this document for archiving"
-"Export only pages 1–5 of this presentation as a PDF"
-"Make this PDF accessible: tagged PDF with PDF/UA compliance"
-```
-
-### 📚 Template Management
-```
-"Upload this invoice template and tag it 'sales' and 'finance'"
-"What templates do I have in the 'contracts' category?"
-"Show me all templates tagged 'hr'"
-"Download template T456 so I can edit it locally"
-"Deploy version V789 as the active version without deleting the others"
-"Schedule this old template for deletion in 30 days"
-```
-
----
+**PDF options and template library**
+- *"Convert this DOCX to a PDF with the open password 'secret123' and a DRAFT watermark at 20% opacity"*
+- *"Make a PDF/A-2b copy of pages 1 to 5 of this NDA for archiving"*
+- *"Deploy the newest version of my invoice template, and schedule the old one for deletion in 30 days"*
 
 ## Troubleshooting
 
@@ -398,184 +232,90 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 | Watermark on every PDF, or only PDF works | You use the **test** API key: it produces watermarked PDFs only. Use the production key. |
 | A file given by name (`invoice.docx`) fails | A bare name is read as base64. Pass an absolute path (stdio), a URL, or base64 ([File inputs](#file-inputs)). |
 | Rendering by Template ID still uses the old version after an upload | Renders by Template ID use the **deployed** version (most recent `deployedAt`). Deploy the new version with `update_template_metadata` (`templateId` = its Version ID, `deployedAt` = `42000000000`), or render by Version ID. |
-| Password, watermark or PDF/A not applied when converting an existing PDF to PDF | Fixed in 2.0.0: the server sets `hardRefresh` automatically for PDF → PDF with `formatOptions`. On 1.x, pass `hardRefresh: true`. |
+| Password, watermark or PDF/A missing from a PDF | PDF/A, page ranges and accessibility use the default converter `L` (LibreOffice); `O`, `C` and `I` apply passwords, permissions and watermarks. For PDF → PDF the server sets `hardRefresh` for you: don't pass `hardRefresh: false`. |
+| Claude Desktop shows no Carbone tools, or the server disconnects | Read `mcp-server-carbone.log` (the server's stderr) in `~/Library/Logs/Claude/` (macOS) or `%APPDATA%\Claude\logs\` (Windows). A good start logs `Carbone MCP Server v2.0.0 started (stdio)`. |
+| You want to test the server without an AI client | Run the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) (Node.js 22.19+): `npx @modelcontextprotocol/inspector -e CARBONE_API_KEY=your_api_key_here npx carbone-mcp`. It lists the tools and shows each request and response. |
 
----
+## Self-hosting
 
-## Debugging
+### Docker
 
-### Using MCP Inspector
-
-Test and debug the server interactively with the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) (requires Node.js 22.19 or later):
-
-```bash
-npx @modelcontextprotocol/inspector -e CARBONE_API_KEY=your_api_key_here npx carbone-mcp
-```
-
-From a local build:
+The image serves Streamable HTTP on port 3000. This quick start sets **no server key**: each client sends its own key in `Authorization: Bearer <key>`, exactly as with mcp.carbone.io, and the port is reachable from your machine only.
 
 ```bash
-npx @modelcontextprotocol/inspector -e CARBONE_API_KEY=your_api_key_here node dist/index.js
-```
-
-A running HTTP server:
-
-```bash
-npx @modelcontextprotocol/inspector --server-url http://localhost:3000 --transport http --header "Authorization: Bearer your_api_key_here"
-```
-
-The Inspector opens its web UI in your browser (port `6274` by default; the printed URL carries a per-launch session token). Use it to list the tools, test calls, and inspect request/response JSON — no AI inference needed.
-
-### View Server Logs
-
-Claude Desktop writes `mcp.log` and one `mcp-server-<name>.log` per server (here `mcp-server-carbone.log`, the server's stderr):
-
-```bash
-# macOS
-tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
-
-# Windows (cmd)
-type "%APPDATA%\Claude\logs\mcp*.log"
-```
-
-**Look for:**
-- ✅ `Carbone MCP Server v1.x.x started (stdio)`
-- ❌ Any error messages or stack traces
-
-### Health Check (HTTP mode only)
-
-When running in HTTP mode, the server exposes a health endpoint:
-
-```bash
+docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 carbone/carbone-mcp
 curl http://localhost:3000/health
 ```
 
-```json
-{
-  "mcp":    { "version": "1.x.x" },
-  "carbone": { "version": "5.x.x" }
-}
+Connect your client with the [hosted server config](#hosted-server-mcpcarboneio), replacing `https://mcp.carbone.io` with `http://localhost:3000`. To serve other machines, publish the port behind a TLS reverse proxy, keep the server without `CARBONE_API_KEY` (or set `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true`), and list the hostnames of browser-based clients in `MCP_ALLOWED_ORIGINS`.
+
+**Shared-key variant, for one user on one machine.** A server-level key lets clients connect without sending one:
+
+```bash
+docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 -e CARBONE_API_KEY=your_api_key_here carbone/carbone-mcp
 ```
 
-The `carbone` field shows backend connectivity:
-- `{ "version": "..." }` — reachable and authenticated
-- `{ "error": "unauthorized", "message": "..." }` — reachable but no/invalid API key
-- `{ "error": "unreachable", "message": "..." }` — network error, timeout, or unexpected response
+Read [the shared-key warning](#security) before you use it.
 
----
+**Docker Compose:** [compose.yml](compose.yml) builds the image from this repository, binds `127.0.0.1` only, sets no server key, and passes through every variable of [.env.example](.env.example). Start it with `docker compose up -d`. Compose also reads `CARBONE_API_KEY` from your shell or a `.env` file: if it is set there, you get the shared-key variant.
+
+To run the image as a stdio server for Claude Desktop, see the [Docker Hub page](docs/DOCKER_HUB.md#claude-desktop-stdio).
+
+### On-premise Carbone
+
+If you run [Carbone on-premise](https://carbone.io/pricing.html), point the server at your instance with `CARBONE_BASE_URL`; no API key is needed. For example `CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp`, or add `-e CARBONE_BASE_URL=https://your-carbone-server.com` to `docker run`.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CARBONE_API_KEY` | none | Your Carbone API key: required in stdio for Carbone Cloud, optional over HTTP ([Security](#security)) |
+| `CARBONE_BASE_URL` | `https://api.carbone.io` | Carbone API URL; set it to an on-premise instance (no key needed) |
+| `CARBONE_TIMEOUT` | `60000` | Carbone API request timeout in ms; Carbone Cloud's own limit is 60 s |
+| `CARBONE_MAX_FILE_BYTES` | `104857600` (100 MB) | Largest input file read from a path, URL or base64 |
+| `MCP_TRANSPORT` | `stdio` (`http` in Docker) | `stdio` or `http` |
+| `MCP_PORT` | `3000` | HTTP port |
+| `MCP_PATH` | `/` | HTTP endpoint path; cannot be `/health` |
+| `MCP_MAX_BODY_BYTES` | `62914560` (60 MB) | Largest MCP message: an HTTP body (`413` above it) or a stdio message |
+| `MCP_ALLOWED_ORIGINS` | none (localhost is always allowed) | HTTP: browser `Origin` hostnames to allow, comma-separated |
+| `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP: `true` refuses requests that bring no Bearer key of their own |
+| `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs reach private and internal addresses |
+
+Full descriptions: [Configuration in docs/API.md](docs/API.md#configuration).
 
 ## Security
 
-⚠️ **File and URL inputs (SSRF / local files)**
-Tools accept a local path, an HTTPS URL, or base64 for `file` / `template` and the by-reference JSON params (`data`, `complement`, …). Two guards apply:
-- **URLs** are resolved and refused when they point at loopback, private (RFC1918), link-local (incl. cloud metadata `169.254.169.254`), CGNAT or reserved addresses, in any IPv4 or IPv6 notation (including IPv4 addresses embedded in IPv6). The check applies to the address actually connected to, so a DNS answer cannot change between check and connection, and every redirect hop is re-checked. In HTTP mode nothing is downloaded for a request that carries no API key (unless the server is set up to call Carbone without one). Set `CARBONE_ALLOW_PRIVATE_NETWORK=true` only on a trusted deployment that needs internal template hosts.
-- **Local paths** are readable in **stdio only**, where the server already runs as you. In HTTP mode they are refused, so a remote caller can never make the server read its own filesystem.
+- **URL inputs and local files.** URLs that resolve to a private or internal address (`localhost`, RFC 1918, cloud metadata) are refused unless `CARBONE_ALLOW_PRIVATE_NETWORK=true` ([details](docs/API.md#url-guard)). Local paths are read in stdio only, where the server runs as you; over HTTP they are refused.
+- **Shared server key (HTTP).** With `CARBONE_API_KEY` set on an HTTP server and `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=false` (the default), every request without a Bearer key spends **that key**: anyone who can reach the port uses that Carbone account. The server prints a warning at startup. Never publish such a port on a network you don't fully trust, or set `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true` so each client must bring its own key. This doesn't apply when no server key is set (for example on-premise Carbone without authentication).
+- **Browser origins (HTTP).** A request whose `Origin` header is present but not allowed gets `403`, so a malicious web page cannot reach a locally running server (DNS rebinding) and spend its key. `localhost`, `127.0.0.1` and `[::1]` are allowed; list the browser-based clients you trust in `MCP_ALLOWED_ORIGINS`. Requests without an `Origin` (desktop, CLI and server-side clients) are unaffected.
+- **Prompt injection.** A document or template can contain instructions that trick the AI into unintended actions, such as sending data elsewhere or deleting templates. Review what your client is about to do before you confirm a tool call.
+- **API keys.** Keep them out of version control, pass them through your client's secret input or environment, and rotate them at [account.carbone.io](https://account.carbone.io).
+- **Your data.** Carbone stores the templates and samples you upload, and keeps documents rendered with `returnLink` or a webhook until they are downloaded. See the [privacy policy](https://carbone.io/company/privacy-policy.html), or run [Carbone on-premise](#on-premise-carbone) for full control.
 
-⚠️ **Sharing a server-level API key (HTTP mode)**
-If you set `CARBONE_API_KEY` on an HTTP server and leave `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=false` (the default), requests without a Bearer key fall back to that key — anyone who can reach the port can spend that Carbone account. The server prints a warning at startup in that configuration. The [Docker quick start](#docker--self-hosted-http-server) therefore sets no server key and binds `127.0.0.1`. Set `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true` to require each client to bring its own key, or only expose the port on a trusted network. (Not applicable when no server key is set, e.g. on-premise Carbone without authentication.)
+## Writing templates
 
-⚠️ **Browser origins and DNS rebinding (HTTP mode)**
-The MCP endpoint answers `403` when a request's `Origin` header is present but not allowed, so a malicious web page cannot reach a locally running server (e.g. through DNS rebinding) and spend its key. `localhost`, `127.0.0.1` and `[::1]` are allowed by default; list the hostnames of browser-based clients you trust in `MCP_ALLOWED_ORIGINS`. Requests without an `Origin` header (desktop, CLI and server-side clients) are unaffected.
-
-⚠️ **Prompt Injection**
-Connecting an AI assistant to any external service carries inherent risks. A malicious document or template could contain instructions that trick the AI into performing unintended actions (e.g. exfiltrating data, deleting templates). Always review what your AI client is about to do before confirming tool calls.
-
-⚠️ **API Key Protection**
-- Never commit `CARBONE_API_KEY` to version control
-- Use environment variables or a secret manager
-- Rotate API keys regularly at [account.carbone.io](https://account.carbone.io)
-
-⚠️ **Template Safety**
-- Only upload templates from trusted sources
-- Review templates before deploying them
-- Use template versioning for easy rollback
-
-⚠️ **Data Privacy**
-- Carbone does not store your document data after rendering
-- Use `CARBONE_BASE_URL` to point to a self-hosted instance for maximum control
-- See [Privacy Policy](https://carbone.io/company/privacy-policy.html) for details
-
----
-
-## Template Syntax
-
-Design templates in Word, Excel, LibreOffice, or HTML with `{d.field}` tags:
+Design a template in Word, Excel, PowerPoint, LibreOffice, HTML or Markdown, and put tags where the data goes:
 
 ```
 Dear {d.customer.name},
-
 Your invoice total is {d.total:formatC()}.
-
 Items:
 {d.items[i].description}  {d.items[i].quantity}x  {d.items[i].price:formatC()}
 {d.items[i+1]}
 ```
 
-`{d.items[i]}` … `{d.items[i+1]}` repeats a line for each item ([loops](https://carbone.io/documentation/design/repetitions/with-arrays.html)). `:formatC()` formats an amount in the currency and locale of the render: with `lang: "fr-fr"`, `currencySource: "EUR"` and `currencyTarget: "EUR"`, `1000.456` prints as `1 000,46 €` ([currency formatters](https://carbone.io/documentation/design/formatters/currency.html)).
-
-**Guides & best practices:**
-- [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html) — Universal Carbone Templating syntax reference for AI tools ([download .skill](https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill) · [GitHub](https://github.com/carboneio/carbone-skill))
-- [Template syntax: the basics](https://carbone.io/documentation/design/substitutions/the-basics.html)
-- [HTML templates guide](https://carbone.io/documentation/design/template-formats/html.html)
-- [Markdown templates guide](https://carbone.io/documentation/design/template-formats/markdown.html)
-
----
-
-## Supported Output Formats
-
-| Category | Formats |
-|---|---|
-| Documents | PDF, DOCX, DOC, ODT, OTT, RTF, EPUB |
-| Spreadsheets | XLSX, XLS, ODS, OTS, CSV, DBF, DIF |
-| Presentations & drawings | PPTX, PPT, ODP, OTP, ODG |
-| Web / Text | HTML, XHTML, TXT, MD, XML, IDML |
-| Images | PNG, JPG / JPEG, WEBP, GIF, TIFF, BMP, SVG, EMF, WMF, EPS |
-
-Valid outputs depend on the input format. DOC, XLS and PPT are output-only: Carbone reads XML-based and text-based documents (plus PDF), so re-save a legacy binary Office file as DOCX, XLSX or PPTX before converting or rendering it.
-
-Full conversion matrix: [carbone.io/documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type)
-
----
+`{d.items[i]}` … `{d.items[i+1]}` repeats a line for each item. Start with [the basics](https://carbone.io/documentation/design/substitutions/the-basics.html), or give your AI assistant the [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html), a template syntax reference for AI tools ([download .skill](https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill) · [GitHub](https://github.com/carboneio/carbone-skill)).
 
 ## Contributing
 
-We welcome contributions:
-
-- 🐛 **Report bugs** via [GitHub Issues](https://github.com/carboneio/carbone-mcp/issues)
-- 💡 **Request features** or suggest improvements
-- 📝 **Improve documentation**
-- 🧪 **Add tests** to increase coverage
-- 🔧 **Submit pull requests** with bug fixes or enhancements
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Development
-
-Requires Node.js 20.3 or later.
-
-```bash
-npm run dev          # Run with tsx (no build needed)
-npm run build        # Compile TypeScript → dist/
-npm test             # Run the test suite (the real-API e2e tests run only with CARBONE_TEST_API_KEY)
-npm run test:watch   # Watch mode
-npm run test:integration  # Integration tests (e2e against the real API needs CARBONE_TEST_API_KEY)
-npm run test:coverage     # Coverage report
-```
-
----
+Bug reports, fixes and documentation improvements are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, tests, debugging and the pull request process.
 
 ## Support
 
-- 🤖 **MCP Documentation:** [carbone.io/documentation/developer/ai/mcp.html](https://carbone.io/documentation/developer/ai/mcp.html)
-- 📚 **API Documentation:** [carbone.io/documentation/developer/http-api/introduction.html](https://carbone.io/documentation/developer/http-api/introduction.html)
-- 📚 **Templating Documentation:** [carbone.io/documentation/design/overview/getting-started.html](https://carbone.io/documentation/design/overview/getting-started.html)
-- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/carboneio/carbone-mcp/issues)
-- 💬 **Live Chat:** [carbone.io](https://carbone.io) (bottom-right widget)
-- 📧 **Enterprise:** contact@carbone.io
-- 📋 **OpenAPI specification:** [carbone.OpenAPI.yml](https://carbone.io/file/carbone.OpenAPI.yml)
-
----
+- **Documentation:** [MCP server](https://carbone.io/documentation/developer/ai/mcp.html) · [HTTP API](https://carbone.io/documentation/developer/http-api/introduction.html) · [Template design](https://carbone.io/documentation/design/overview/getting-started.html) · [OpenAPI specification](https://carbone.io/file/carbone.OpenAPI.yml)
+- **Bugs and feature requests:** [GitHub Issues](https://github.com/carboneio/carbone-mcp/issues)
+- **Questions:** live chat on [carbone.io](https://carbone.io) (bottom-right widget) · **Enterprise:** contact@carbone.io
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
+Apache 2.0, see [LICENSE](LICENSE).

@@ -5,8 +5,7 @@ export const TAGS_URI = 'carbone://tags';
 export const tagsResourceDescription =
   'List all tags currently used across templates in your Carbone account. ' +
   'Tags are free-form labels attached to templates (e.g. "sales", "billing", "v2"). ' +
-  'Note: the Carbone API does not support filtering carbone://templates by tag — ' +
-  'use this resource to discover tags, then filter client-side.';
+  'To find the templates with a tag, call list_templates and keep the results whose `tags` include it.';
 
 export async function readTagsResource(
   uri: URL,

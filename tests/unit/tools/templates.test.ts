@@ -5,6 +5,12 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   return { ...actual, resolveFileInput: vi.fn(), writeOutputFile: vi.fn() };
 });
 
+// The stdio default save creates a private temp folder: keep it off the real disk.
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  mkdtemp: vi.fn(async (prefix: string) => `${prefix}T`),
+}));
+
 import {
   handleListTemplates,
   handleListCategories,
@@ -590,6 +596,21 @@ describe('handleDownloadTemplate', () => {
 
     expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/tpl.docx', expect.anything());
     expect((result.content[0] as { text: string }).text).toContain('/tpl.docx');
+  });
+
+  test('stdio default save: the result does not offer returnLink (download_template has none)', async () => {
+    vi.mocked(writeOutputFile).mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
+    const result = await handleDownloadTemplate(
+      { templateId: 'tpl1' },
+      makeClient('invoice.docx'),
+      undefined,
+      { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 100 }
+    );
+
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toMatch(/saved to .*invoice\.docx/);
+    expect(text).toMatch(/asAttachment/);
+    expect(text).not.toMatch(/returnLink/);
   });
 
   test('returns EmbeddedResource for PDF download', async () => {

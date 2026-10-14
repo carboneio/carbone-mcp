@@ -75,6 +75,16 @@ describe('deliverDocument', () => {
     expect((r.content[0] as { text: string }).text).toContain(join(`${prefix}AbC123`, 'invoice.pdf'));
   });
 
+  test('binary in stdio → the hint names returnLink only for a tool that has it (not download_template)', async () => {
+    vi.mocked(writeOutputFile)
+      .mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }))
+      .mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
+    const base = { buffer: Buffer.from('%PDF'), filename: 'f.pdf', format: 'pdf', allowFileOutput: true };
+    const textOf = (r: Awaited<ReturnType<typeof deliverDocument>>) => (r.content[0] as { text: string }).text;
+    expect(textOf(await deliverDocument(base))).not.toMatch(/returnLink/);
+    expect(textOf(await deliverDocument({ ...base, offerReturnLink: true }))).toMatch(/returnLink for a download URL/);
+  });
+
   test('binary in stdio → a filename that is not a plain name falls back to a default', async () => {
     for (const filename of ['', '..', '.']) {
       vi.mocked(writeOutputFile).mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
@@ -123,6 +133,12 @@ describe('deliver (dispatch)', () => {
   test('bytes result → delegates to deliverDocument', async () => {
     const r = await deliver({ buffer: Buffer.from('%PDF'), filename: 'f.pdf' }, 'pdf', opts);
     expect(r.content[0].type).toBe('resource');
+  });
+
+  test('bytes in stdio → the temp-file hint names returnLink (render_document and convert_document have it)', async () => {
+    vi.mocked(writeOutputFile).mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
+    const r = await deliver({ buffer: Buffer.from('%PDF'), filename: 'f.pdf' }, 'pdf', { ...opts, allowFileOutput: true });
+    expect((r.content[0] as { text: string }).text).toMatch(/returnLink for a download URL/);
   });
 });
 

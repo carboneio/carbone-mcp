@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.carbone/carbone-mcp",
   "title": "Carbone MCP",
-  "description": "Generate PDF/DOCX/XLSX/PPTX from templates+JSON. Convert Office/HTML/MD to PDF. Universal templating",
+  "description": "Generate PDF, DOCX, XLSX and PPTX from templates and JSON; convert files between 36 formats",
   "version": "2.0.0",
   "websiteUrl": "https://carbone.io",
   "license": "Apache-2.0",

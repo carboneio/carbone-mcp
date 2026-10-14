@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { z } from 'zod';
 import { convertDocumentSchemaFor } from '../../../src/tools/convert.js';
 import { renderDocumentSchemaFor } from '../../../src/tools/render.js';
 import { uploadTemplateSchemaFor, downloadTemplateSchemaFor } from '../../../src/tools/templates.js';
@@ -33,6 +34,21 @@ describe('transport-dependent schema wording', () => {
     expect(desc(renderDocumentSchemaFor(HTTP).outputPath)).toMatch(/NOT AVAILABLE/);
     expect(desc(downloadTemplateSchemaFor(HTTP).outputPath)).toMatch(/NOT AVAILABLE/);
     expect(desc(convertDocumentSchemaFor(STDIO).outputPath)).not.toMatch(/NOT AVAILABLE/);
+  });
+
+  test('http outputPath names returnLink only on the tools that have it', () => {
+    expect(downloadTemplateSchemaFor(HTTP)).not.toHaveProperty('returnLink');
+    expect(desc(downloadTemplateSchemaFor(HTTP).outputPath)).not.toMatch(/returnLink/);
+    expect(desc(downloadTemplateSchemaFor(HTTP).outputPath)).toMatch(/asAttachment/);
+    for (const schema of [convertDocumentSchemaFor(HTTP), renderDocumentSchemaFor(HTTP)]) {
+      expect(schema).toHaveProperty('returnLink');
+      expect(desc(schema.outputPath)).toMatch(/returnLink for a one-time download URL/);
+    }
+    // The tools/list payload is built from the cached transport variant: same wording there.
+    const http = transportToolsFor(HTTP);
+    expect(JSON.stringify(z.toJSONSchema(http.downloadTemplateInput))).not.toMatch(/returnLink/);
+    expect(JSON.stringify(z.toJSONSchema(http.convertDocumentInput))).toMatch(/returnLink for a one-time download URL/);
+    expect(JSON.stringify(z.toJSONSchema(http.renderDocumentInput))).toMatch(/returnLink for a one-time download URL/);
   });
 
   test('JSON-by-reference params drop the local-path option on http', () => {

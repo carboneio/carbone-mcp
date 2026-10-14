@@ -140,8 +140,8 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'passing "invoice.pdf" yields "invoice.pdf.pdf". ' +
         'Supports Carbone tags resolved against the data at render time. ' +
         'Examples: "invoice" (static), "{d.type}-{d.id}" (dynamic), "{d.client}-{d.date:formatD(YYYY-MM)}". ' +
-        'With keepTags, Carbone skips templating and ignores reportName, so this server names the file ' +
-        '"<reportName>.<ext>" itself, literally (tags are not resolved).'
+        'With keepTags (no templating pass), this server names the file "<reportName>.<ext>" itself, literally ' +
+        '(tags are not resolved).'
       ),
 
     enum: z
@@ -315,7 +315,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .string()
       .optional()
       .describe(
-        outputPathDescription('generated document', io) +
+        outputPathDescription('generated document', io, { returnLink: true }) +
         ' Ignored for async/webhook renders (no document is returned inline).'
       ),
 
@@ -441,7 +441,7 @@ export async function handleRenderDocument(
       currencyRates: currencyRates as Record<string, number> | undefined,
     }, options);
 
-    // Without templating (keepTags), Carbone ignores reportName: name the delivered file here instead.
+    // Without templating (keepTags), Carbone does not resolve reportName: name the delivered file here instead.
     return deliver(args.keepTags ? withReportName(result, args.reportName, args.convertTo) : result, args.convertTo, {
       outputPath: args.outputPath,
       asAttachment: args.asAttachment,

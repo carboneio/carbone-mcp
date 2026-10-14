@@ -166,7 +166,7 @@ async function run() {
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(cOut).includes('bytes') : (cOut.isError && text(cOut).includes('stdio')));
 
     // ── converter I (Carbone ICE, API 5.14.0+) ────────────────────────────────────
-    // ICE converts DOCX (ODT in beta) → PDF, so it cannot reuse the HTML fixtures above. Rather than commit a
+    // ICE converts DOCX and ODT → PDF, so it cannot reuse the HTML fixtures above. Rather than commit a
     // binary .docx to the repo, build one with Carbone itself: HTML → DOCX with asAttachment forces
     // an EmbeddedResource (base64 blob) on BOTH transports, and the {d.…} tags survive as plain text,
     // so the same bytes work as a convert input AND as a render template.

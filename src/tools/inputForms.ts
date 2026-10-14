@@ -60,12 +60,16 @@ export function jsonRefForms(io: IoModes): string {
 /**
  * `outputPath` description. The parameter stays in the schema on HTTP so a caller that sends it still
  * gets the explanatory runtime error, but the description tells the model not to reach for it.
+ * `returnLink` is named as an alternative only for the tools that have that parameter (render_document,
+ * convert_document; not download_template).
  */
-export function outputPathDescription(noun: string, io: IoModes): string {
+export function outputPathDescription(noun: string, io: IoModes, opts: { returnLink: boolean }): string {
   if (!io.allowFileOutput) {
     return `NOT AVAILABLE on this server, which is reached over HTTP: the ${noun} would be written to the ` +
       'server\'s disk instead of yours, so passing outputPath is rejected. ' +
-      'Use asAttachment to receive the bytes, or returnLink for a one-time download URL.';
+      (opts.returnLink
+        ? 'Use asAttachment to receive the bytes, or returnLink for a one-time download URL.'
+        : 'Use asAttachment to receive the bytes.');
   }
   return `Optional local file path to save the ${noun} to (e.g. "/home/user/out.pdf" or "~/out.pdf"). ` +
     'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +

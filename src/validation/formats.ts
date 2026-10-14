@@ -52,19 +52,20 @@ export const INPUT_FORMATS_DESCRIPTION =
 export const CONVERTER_DESCRIPTION =
   'Converter engine, used whenever the format changes (not only for PDF). If omitted, "L" is used. ' +
   '"L" LibreOffice: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options. ' +
-  '"I" Carbone ICE: DOCX and ODT (beta) to PDF; the fastest, recommended over "O" for DOCX from v5.15.0. ' +
-  'ICE does not convert WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, form fields ' +
-  'or equations, and a missing font falls back to Noto Sans (' + DOCS + '#converters-carbone-ice-limitations). ' +
+  '"I" Carbone ICE: DOCX and ODT to PDF; Carbone\'s own engine, 3x to 300x faster, recommended over "O" for DOCX ' +
+  'from v5.15.0. It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, ' +
+  'area, pie and doughnut charts are drawn), comments, tracked changes, form fields and equations: keep the default ' +
+  '"L" for documents with those. A missing font is replaced by Noto Sans (' + DOCS + '#converters-carbone-ice-limitations). ' +
   '"O" OnlyOffice: DOCX, XLSX, PPTX to PDF. ' +
   '"C" Chromium: HTML to PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max. ' +
-  '"O", "C" and "I" support only the Security (passwords, permissions) and Watermark PDF options. ' +
+  'PDF options: "L" supports all of them; "O", "C" and "I" apply Security (passwords, permissions) and Watermarks. ' +
   'Docs: ' + DOCS + '#converters';
 
 /** convertTo guidance shared by both tools. */
 export const OUTPUT_FORMAT_DESCRIPTION =
   'Valid outputs depend on the input format (e.g. HTML converts to pdf, docx or png, but not xlsx); ' +
   'see the conversion matrix: ' + DOCS + '#output-file-type. ' +
-  '"doc", "xls" and "ppt" are output-only: Carbone writes them but cannot read them back. ' +
+  '"doc", "xls" and "ppt" are output formats; as input, use DOCX, XLSX or PPTX. ' +
   'Simple usage: "pdf". With options: { "formatName": "pdf", "formatOptions": { ... } }.';
 
 /** Target format: either a simple string or an object with advanced options. */

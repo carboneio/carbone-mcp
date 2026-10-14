@@ -11,6 +11,7 @@ git clone https://github.com/carboneio/carbone-mcp
 cd carbone-mcp
 npm install
 npm run dev    # Run with tsx (no build needed)
+npm run build  # Compile TypeScript to dist/
 ```
 
 ## Running Tests
@@ -25,6 +26,31 @@ npm run test:integration  # Integration tests (e2e against the real API needs CA
 ```
 
 All pull requests must pass the unit test suite. New features must include tests.
+
+## Debugging
+
+The [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) (Node.js 22.19 or later) lets you list the tools, call them and read each request and response, without an AI client:
+
+```bash
+# Published package
+npx @modelcontextprotocol/inspector -e CARBONE_API_KEY=your_api_key_here npx carbone-mcp
+
+# Local build (run npm run build first)
+npx @modelcontextprotocol/inspector -e CARBONE_API_KEY=your_api_key_here node dist/index.js
+
+# A running HTTP server
+npx @modelcontextprotocol/inspector --server-url http://localhost:3000 --transport http --header "Authorization: Bearer your_api_key_here"
+```
+
+The Inspector opens its web UI in your browser (port `6274` by default; the printed URL carries a per-launch session token).
+
+The server writes its diagnostics to stderr. Claude Desktop saves them in `mcp-server-carbone.log`, next to its own `mcp.log` (macOS: `~/Library/Logs/Claude/`, Windows: `%APPDATA%\Claude\logs\`):
+
+```bash
+tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
+```
+
+A successful start logs `Carbone MCP Server v<version> started (stdio)`. In HTTP mode, `GET /health` reports the server and Carbone API status ([Health endpoint](docs/API.md#health-endpoint)).
 
 ## Code Style
 

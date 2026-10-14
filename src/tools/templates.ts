@@ -16,7 +16,7 @@ export const listTemplatesDescription =
   'Filter by Template ID, Version ID, category, or upload origin. ' +
   'Use includeVersions to see the full version history of each template. ' +
   'Supports cursor-based pagination for large collections. ' +
-  'Note: filtering by tags is not supported by the Carbone API — use list_tags to discover tags, then filter results manually. ' +
+  'Each result carries its `tags`: to find templates by tag, keep the results whose `tags` include it (list_tags lists the tags in use). ' +
   'Note: templates uploaded with versioning disabled appear with id = null and are identified only by their versionId — pass that versionId where a Template ID is expected (e.g. delete_template, download_template).';
 
 export const listTemplatesOutputSchema = {
@@ -182,7 +182,7 @@ export function uploadTemplateSchemaFor(io: IoModes) {
       .array(z.string())
       .optional()
       .describe(
-        'Labels shown by list_tags (e.g. ["sales", "billing", "v2"]); list_templates cannot filter by tag. ' +
+        'Labels shown by list_tags and on each list_templates result (e.g. ["sales", "billing", "v2"]). ' +
         'Duplicates are removed and the list is sorted; the whole list is limited to 100 characters (about 8 tags of 9 characters).'
       ),
     sample: z
@@ -520,8 +520,7 @@ export const listTagsToolName = 'list_tags';
 export const listTagsDescription =
   'List all tags currently used across templates in your Carbone account. ' +
   'Tags are free-form labels attached to templates (e.g. "sales", "billing", "v2"). ' +
-  'Note: the Carbone API does not support filtering list_templates by tag — ' +
-  'use this tool to discover available tags, then call list_templates and filter the results manually.';
+  'To find the templates with a tag, call list_templates and keep the results whose `tags` include it.';
 
 export const listTagsSchema = {};
 
@@ -587,7 +586,7 @@ export function downloadTemplateSchemaFor(io: IoModes) {
     outputPath: z
       .string()
       .optional()
-      .describe(outputPathDescription('template file', io)),
+      .describe(outputPathDescription('template file', io, { returnLink: false })),
     asAttachment: z
       .boolean()
       .optional()

@@ -45,7 +45,7 @@ export function formatError(error: unknown): string {
 
   if (error instanceof CarboneGenerationError) {
     const hint =
-      error.code === 'w117' ? 'Carbone could not set up the webhook: check webhookUrl and webhookHeaders.'
+      error.code === 'w117' ? 'Check webhookUrl and webhookHeaders: the webhook could not be set up with them.'
       : /can(?:not|'t) be converted/i.test(error.message)
         ? `This input format cannot be converted to the requested convertTo with this converter: check the conversion matrix (${CONVERSION_MATRIX}) or change the converter.`
       : 'Check the template syntax, the data, the convertTo / converter combination, failOn, watermarks (max 4) and batch options.';

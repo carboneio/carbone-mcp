@@ -100,10 +100,10 @@ Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags
 
 **Converter engines** (\`converter\`, used whenever the format changes, not only for PDF):
 - \`L\` LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- \`I\` Carbone ICE: DOCX and ODT (beta) → PDF; the fastest, recommended over \`O\` for DOCX from v5.15.0. Not converted by ICE: WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, form fields, equations; a missing font falls back to Noto Sans (https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations)
+- \`I\` Carbone ICE: DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over \`O\` for DOCX from v5.15.0. It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, tracked changes, form fields and equations: keep the default \`L\` for documents with those. A missing font is replaced by Noto Sans (https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations)
 - \`O\` OnlyOffice: DOCX, XLSX, PPTX → PDF
 - \`C\` Chromium: HTML → PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max
-- \`O\`, \`C\` and \`I\` support only the Security (passwords, permissions) and Watermark PDF options.
+- PDF options: \`L\` supports all of them; \`O\`, \`C\` and \`I\` apply Security (passwords, permissions) and Watermarks.
 
 **Format options** (\`convertTo: { "formatName": "pdf", "formatOptions": { … } }\`):
 - Password: \`{ "EncryptFile": true, "DocumentOpenPassword": "s3cr3t" }\`
@@ -127,7 +127,7 @@ Full conversion matrix: https://carbone.io/documentation/developer/http-api/gene
 Two modes — choose based on whether you need to reuse the template:
 
 **Mode A — Stored template (reusable):**
-1. Design a template in Word / Excel / LibreOffice / HTML / Markdown with \`{d.field}\` tags
+1. Design a template in Word / Excel / PowerPoint / LibreOffice / HTML / Markdown with \`{d.field}\` tags
 2. Upload it with \`upload_template\` → get a Template ID
 3. Call \`render_document\` with \`templateId\`, your JSON data, and \`convertTo\` (e.g. \`"pdf"\`)
 
