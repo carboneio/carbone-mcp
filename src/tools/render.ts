@@ -102,14 +102,14 @@ export function renderDocumentSchemaFor(io: IoModes) {
         '"L" — LibreOffice (default): best all-round engine for DOCX, XLSX, PPTX, ODT, ODS, ODP. ' +
         '"O" — OnlyOffice: highest fidelity for Microsoft Office formats (DOCX, XLSX, PPTX). ' +
         '"C" — Chromium: best for HTML/CSS/JS templates — full browser rendering. ' +
-        '"I" — Carbone ICE (Instant Converter Engine, Carbone 5.14.0+): DOCX → PDF ONLY, no third-party converter — ' +
-        'up to 60x faster than LibreOffice on a 1000-page DOCX (3x on a one-page document). ' +
-        'Any other input or output format is REJECTED — use another converter for those. ' +
-        'PDF options: only Watermarks are applied. EncryptFile, DocumentOpenPassword, RestrictPermissions and the ' +
-        'other security options are SILENTLY IGNORED — the PDF comes back readable by anyone, with no error — ' +
-        'so NEVER pick "I" when the request needs a password or restricted permissions; use "L" for those. ' +
-        'Also unsupported: WEBP and EMF/WMF images, table of contents, SmartArt, complex charts, footnotes/endnotes, ' +
-        'comments, tracked changes, form fields, equations, bookmarks and links; a missing font falls back to Noto Sans. ' +
+        '"I" — Carbone ICE (Instant Converter Engine, Carbone 5.14.0+): DOCX → PDF (ODT → PDF in beta on recent ' +
+        'Carbone versions), no third-party converter — up to 60x faster than LibreOffice on a 1000-page DOCX ' +
+        '(3x on a one-page document). Other input or output formats are not supported — use another converter for those. ' +
+        'PDF options: the Security options (password protection and permissions: EncryptFile, DocumentOpenPassword, ' +
+        'RestrictPermissions, …) and Watermarks are applied; every other PDF option (e.g. PDF/A, PageRange) requires "L". ' +
+        'Limitations per Carbone\'s docs: WEBP and EMF/WMF images, SmartArt and complex charts, comments, tracked changes, ' +
+        'form fields and equations are not converted; a missing font falls back to Noto Sans ' +
+        '(https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations). ' +
         'If omitted, LibreOffice is used by default.'
       ),
 

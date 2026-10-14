@@ -40,7 +40,9 @@ async function main() {
   });
   registerResources(server, client);
 
-  const transport = new StdioServerTransport();
+  // The SDK caps one stdio message at 10 MB by default and closes the session past it. Use the same
+  // limit as an HTTP request body instead, so an inline base64 file accepted over HTTP works here too.
+  const transport = new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: config.maxBodyBytes });
   await server.connect(transport);
 
   // MCP servers communicate over stdio — use stderr for diagnostic messages

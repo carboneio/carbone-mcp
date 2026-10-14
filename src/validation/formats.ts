@@ -25,7 +25,7 @@ export const OUTPUT_FORMATS = [
 
 /**
  * Converter engines accepted by the `converter` render/convert option.
- * `I` (Carbone ICE) was introduced in Carbone 5.14.0 and handles DOCX → PDF only.
+ * `I` (Carbone ICE) was introduced in Carbone 5.14.0 and converts DOCX (ODT in beta) → PDF.
  */
 export const CONVERTERS = ['L', 'C', 'O', 'I'] as const;
 

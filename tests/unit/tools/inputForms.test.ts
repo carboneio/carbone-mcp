@@ -50,3 +50,20 @@ describe('transport-dependent schema wording', () => {
     expect(http).not.toMatch(/\*\*Accepted file input:\*\* a local file path/);
   });
 });
+
+describe('converter I (Carbone ICE) wording', () => {
+  test('says ICE applies the Security and Watermark PDF options — never that it ignores them', async () => {
+    const capabilities = (await handleGetCapabilities(STDIO)).content[0]!.text;
+    for (const text of [
+      desc(convertDocumentSchemaFor(STDIO).converter),
+      desc(renderDocumentSchemaFor(STDIO).converter),
+      capabilities,
+    ]) {
+      expect(text).not.toMatch(/silently ignored|only watermarks/i);
+      expect(text).toMatch(/Security/);
+      expect(text).toMatch(/Watermarks/);
+      expect(text).toMatch(/ODT/);
+      expect(text).toContain('#converters-carbone-ice-limitations');
+    }
+  });
+});

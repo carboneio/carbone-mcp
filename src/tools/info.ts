@@ -110,13 +110,12 @@ with \`keepTags: true\` — useful to proof a STORED template by \`templateId\`.
 - \`L\` — LibreOffice (default) — best all-round for Office documents
 - \`O\` — OnlyOffice — highest fidelity for DOCX / XLSX / PPTX
 - \`C\` — Chromium — best for HTML/CSS/JS content
-- \`I\` — Carbone ICE — DOCX → PDF **only** (any other format is rejected), no third-party converter,
-  up to 60x faster than LibreOffice. **Security options are silently ignored:** \`EncryptFile\`,
-  \`DocumentOpenPassword\` and \`RestrictPermissions\` have NO effect and you get an unprotected PDF with
-  no error — never use \`I\` when a password or permissions are required, use \`L\`. Only \`Watermarks\`
-  apply. Also unsupported: WEBP and EMF/WMF images, table of contents, SmartArt, complex charts,
-  footnotes/endnotes, comments, tracked changes, form fields, equations, bookmarks and links;
-  a missing font falls back to Noto Sans.
+- \`I\` — Carbone ICE — DOCX → PDF (ODT → PDF in beta on recent Carbone versions), no third-party
+  converter, up to 60x faster than LibreOffice. Supports the Security PDF options (\`EncryptFile\`,
+  \`DocumentOpenPassword\`, \`RestrictPermissions\`, …) and \`Watermarks\`; any other PDF option
+  (PDF/A, page range, …) requires \`L\`. Limitations per Carbone's docs: WEBP and EMF/WMF images,
+  SmartArt and complex charts, comments, tracked changes, form fields and equations are not converted;
+  a missing font falls back to Noto Sans (https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations).
 
 **Advanced PDF options** (via \`formatOptions\`):
 - Password protection: \`{ "EncryptFile": true, "DocumentOpenPassword": "secret" }\`

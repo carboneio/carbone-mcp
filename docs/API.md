@@ -69,17 +69,15 @@ Rasterize each page of /path/to/report.pdf to PNG
 - `L` — LibreOffice (default): best all-round engine for DOCX, XLSX, PPTX, ODT
 - `O` — OnlyOffice: highest fidelity for Microsoft Office formats
 - `C` — Chromium: best for HTML/CSS/JS — full browser rendering
-- `I` — **Carbone ICE** (Instant Converter Engine, Carbone `5.14.0`+): **DOCX → PDF only** — any other input
-  or output format is rejected. No third-party converter: up to 60x faster on a 1000-page DOCX (3x on a
-  one-page document). Handles pages/sections, headers/footers, styled paragraphs, lists, tables, pictures,
-  shapes and vector charts.
-  > ⚠️ **ICE silently ignores PDF security options.** `EncryptFile`, `DocumentOpenPassword` and
-  > `RestrictPermissions` have **no effect** and no error is raised — the PDF comes back readable by
-  > anyone. Only `Watermarks` are applied. Use `L` whenever a password or restricted permissions are
-  > required.
+- `I` — **Carbone ICE** (Instant Converter Engine, Carbone `5.14.0`+): **DOCX → PDF** (ODT → PDF in beta on
+  recent Carbone versions); other input or output formats are not supported. No third-party converter: up to
+  60x faster on a 1000-page DOCX (3x on a one-page document). Handles pages/sections, headers/footers, styled
+  paragraphs, lists, tables, pictures, shapes and vector charts.
+  **PDF options:** the Security options (`EncryptFile`, `DocumentOpenPassword`, `RestrictPermissions`, …) and
+  `Watermarks` are applied; any other PDF option (PDF/A, page range, …) requires `L`.
 
-  *Also unsupported:* WEBP and EMF/WMF images, table of contents, SmartArt, complex charts,
-  footnotes/endnotes, comments, tracked changes, form fields, equations, bookmarks and links.
+  *Limitations, per [Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations):* WEBP and EMF/WMF images, SmartArt and
+  complex charts, comments, tracked changes, form fields and equations are not converted.
   A font the machine does not hold falls back to Noto Sans.
 
 **Advanced `convertTo` object:**
@@ -139,7 +137,7 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 | `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, defaults to `{}` — templating still runs, so every tag resolves to an **empty string** |
 | `keepTags` | boolean | Skip templating entirely and leave every tag **as literal text** (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Mutually exclusive with `data` — passing both is rejected |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`) |
-| `converter` | `L` \| `O` \| `C` \| `I` | PDF converter engine (see `convert_document`); `I` (Carbone ICE) is DOCX → PDF only |
+| `converter` | `L` \| `O` \| `C` \| `I` | PDF converter engine (see `convert_document`); `I` (Carbone ICE) converts DOCX (ODT in beta) → PDF |
 | `reportName` | string | Output filename, supports Carbone tags (e.g. `"{d.client}-invoice.pdf"`) |
 | `outputPath` | string | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | Return the bytes as a downloadable attachment instead of inline |

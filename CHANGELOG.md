@@ -15,13 +15,20 @@ Security release. **Upgrade now if you run the server in HTTP mode** (self-hoste
 - **Error messages could echo remote content (medium).** A failed download repeated the remote server's status text, and an invalid JSON input repeated part of the content it had fetched or read. Errors now report only the HTTP status code, a fixed error code, or a fixed message, so nothing chosen by a remote server is passed back to the assistant.
 - **Downloads are size-capped while they stream.** A response without a `Content-Length` (or with a wrong one) was held in memory in full before the `CARBONE_MAX_FILE_BYTES` check. The download now stops as soon as the limit is passed.
 - **`outputPath` could overwrite existing files (medium, stdio).** Saving a document replaced any file already at that path, and followed symbolic links. A path that already exists is now refused with a message asking for a new file name. New files are readable by your user only (`0600`). The default temp-file output (no `outputPath`) now writes each document to its own new private folder, so it never replaces or follows anything already in the temp directory.
+- **MCP SDK updated to 1.32.1** (from 1.29.0). This clears advisory GHSA-6qxp-vccf-f47h (high), which concerns the SDK's OAuth client. This server does not use that client, but `npm audit --omit=dev` now reports 0 vulnerabilities.
 - **The read-only hint was wrong over stdio.** `render_document`, `convert_document` and `download_template` were marked read-only, but over stdio they write files to disk. They now report `readOnlyHint: false` (not destructive, not idempotent) over stdio, so clients that ask for confirmation before writing tools behave as expected. HTTP is unchanged (read-only, since nothing is written there).
+
+### Fixed
+
+- **The 1.6.0 warning about Carbone ICE no longer holds.** It said `converter: "I"` ignores PDF password and permission options. ICE applies the Security options (`EncryptFile`, `DocumentOpenPassword`, `RestrictPermissions`, …) and `Watermarks`; any other PDF option still requires `L`. Tool descriptions and docs are corrected, ODT is listed as an ICE input (beta on recent Carbone versions), and the ICE limitations now follow [Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations).
 
 ### Changed
 
+- stdio: one incoming message may be up to `MCP_MAX_BODY_BYTES` (60 MB by default), the same limit as an HTTP request body. Without this, the updated SDK would close the session on any message over 10 MB, such as a large inline base64 file.
+- HTTP mode, from the updated SDK: a JSON-RPC batch of more than 100 messages is rejected, and a long-running streamed response carries an SSE keep-alive comment every 15 s.
 - HTTP mode: a request body over `MCP_MAX_BODY_BYTES` is answered `413` as soon as the limit is passed, and the connection is closed. The server no longer reads the rest of the body first.
 - HTTP mode: error log lines are reduced to printable ASCII, like the access log.
-- Dependencies: transitive dependencies updated to patched releases within their existing version ranges. `npm audit --omit=dev` still lists one advisory for `@modelcontextprotocol/sdk` (GHSA-6qxp-vccf-f47h). It concerns the SDK's OAuth *client*, which this server does not use.
+- Dependencies: transitive dependencies updated to patched releases within their existing version ranges.
 
 ---
 

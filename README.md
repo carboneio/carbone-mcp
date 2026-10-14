@@ -144,7 +144,7 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` (default, for AI clients) or `http` (for self-hosted deployments) |
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
-| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size in bytes (60 MB default, matching Carbone Cloud limit) |
+| `MCP_MAX_BODY_BYTES` | `62914560` | Maximum size in bytes of one incoming MCP message — an HTTP request body (`413` when exceeded) or one stdio message (60 MB default, matching Carbone Cloud limit) |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — require `Authorization: Bearer <key>` on every request. **Leave `false` only if you intend a shared-key server:** with a server-level `CARBONE_API_KEY` set, requests that carry no Bearer key fall back to it, so anyone who can reach the port can spend that Carbone account. Set to `true` to require each client to bring its own key. Irrelevant when no server key is set (e.g. on-premise) |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs (templates, `data`, …) to resolve to private/internal addresses. Off by default to block SSRF (cloud metadata, `localhost`, RFC1918). Enable only on a trusted deployment with internal template hosts |
 

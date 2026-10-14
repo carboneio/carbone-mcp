@@ -151,7 +151,7 @@ async function run() {
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(cOut).includes('bytes') : (cOut.isError && text(cOut).includes('stdio')));
 
     // ── converter I (Carbone ICE, API 5.14.0+) ────────────────────────────────────
-    // ICE is DOCX → PDF only, so it cannot reuse the HTML fixtures above. Rather than commit a
+    // ICE converts DOCX (ODT in beta) → PDF, so it cannot reuse the HTML fixtures above. Rather than commit a
     // binary .docx to the repo, build one with Carbone itself: HTML → DOCX with asAttachment forces
     // an EmbeddedResource (base64 blob) on BOTH transports, and the {d.…} tags survive as plain text,
     // so the same bytes work as a convert input AND as a render template.
@@ -166,12 +166,12 @@ async function run() {
       check('render DOCX → PDF, converter I', isPdf(iceR), why(iceR));
       const iceLink = await call('convert_document', { file: DOCX, convertTo: 'pdf', converter: 'I', returnLink: true });
       check('converter I + returnLink', isOneTimeLink(iceLink), why(iceLink));
-      // Documented ICE limitation, and a security-relevant one: password/permission options are accepted
-      // but never applied. Asserted so that the day Carbone starts honouring them, this suite says so and
-      // the "use L for passwords" warnings in the tool descriptions can be revisited.
+      // Security-relevant: the tool descriptions say ICE applies the Security PDF options (password,
+      // permissions). Asserted so that a deployment that stops honouring them is caught — a PDF the user
+      // asked to protect must never come back readable by anyone.
       const iceEnc = await call('convert_document', { file: DOCX, convertTo: { formatName: 'pdf', formatOptions: { EncryptFile: true, DocumentOpenPassword: 's3cret' } }, converter: 'I', asAttachment: true });
       const iceEncrypted = Buffer.from(blobOf(iceEnc), 'base64').includes('/Encrypt');
-      check('converter I ignores PDF encryption (documented footgun)', !iceEncrypted && blobOf(iceEnc).length > 0, iceEncrypted ? '→ NOW ENCRYPTED: docs/descriptions need updating' : '');
+      check('converter I applies PDF encryption (Security options)', iceEncrypted, iceEncrypted ? '' : `→ NOT ENCRYPTED: docs/descriptions need updating ${why(iceEnc)}`);
       // ICE claims DOCX only. Carbone may reject a non-DOCX input or quietly fall back to another
       // engine — undocumented either way, so record what this deployment actually did.
       const iceHtml = await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'I' });
