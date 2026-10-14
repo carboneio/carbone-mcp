@@ -7,14 +7,15 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
 
 import { handleConvertDocument } from '../../../src/tools/convert.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
-import type { CarboneClient } from '../../../src/carbone/client.js';
-import { CarboneError } from '../../../src/carbone/errors.js';
+import { CarboneClient } from '../../../src/carbone/client.js';
+import { CarboneAuthError, CarboneError } from '../../../src/carbone/errors.js';
 
 const makeClient = (
   buffer = Buffer.from('pdf content'),
   filename = 'output.pdf'
 ) =>
   ({
+    assertCanAuthenticate: vi.fn(),
     convertDocument: vi.fn().mockResolvedValue({ buffer, filename }),
     renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
   }) as unknown as CarboneClient;
@@ -61,6 +62,7 @@ describe('handleConvertDocument', () => {
 
   test('returnLink: returns a one-time download URL (renders with download=false)', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       convertDocument: vi.fn().mockResolvedValue({ renderId: 'RID123.pdf' }),
       renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
     } as unknown as CarboneClient;
@@ -115,24 +117,21 @@ describe('handleConvertDocument', () => {
     );
   });
 
-  test('passes the ICE converter to client', async () => {
+  test('passes converter "I" and hardRefresh to client', async () => {
     const client = makeClient();
-    await handleConvertDocument({ file: 'data', convertTo: 'pdf', converter: 'I' }, client);
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', converter: 'I', hardRefresh: true }, client);
 
     expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
-      expect.objectContaining({ converter: 'I' }),
+      expect.objectContaining({ converter: 'I', hardRefresh: true }),
       undefined
     );
   });
 
-  test('passes reportName and hardRefresh to client', async () => {
+  test('does not send reportName to Carbone (ignored without templating)', async () => {
     const client = makeClient();
-    await handleConvertDocument({ file: 'data', convertTo: 'pdf', reportName: 'contract', hardRefresh: true }, client);
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', reportName: 'contract' }, client);
 
-    expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
-      expect.objectContaining({ reportName: 'contract', hardRefresh: true }),
-      undefined
-    );
+    expect(vi.mocked(client.convertDocument).mock.calls[0][0]).not.toHaveProperty('reportName');
   });
 
   test('applies reportName to the delivered filename (API cannot, templating is skipped)', async () => {
@@ -142,7 +141,7 @@ describe('handleConvertDocument', () => {
       { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 });
 
     // HTTP-mode delivery → EmbeddedResource whose uri carries the filename.
-    expect(result.content[0].resource.uri).toContain('contract.pdf');
+    expect((result.content[0] as { resource: { uri: string } }).resource.uri).toBe('file://contract.pdf');
   });
 
   test('accepts advanced convertTo object', async () => {
@@ -168,6 +167,7 @@ describe('handleConvertDocument', () => {
 
   test('returns isError on client error', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       convertDocument: vi.fn().mockRejectedValue(new CarboneError('Conversion failed', 422)),
     } as unknown as CarboneClient;
 
@@ -175,5 +175,66 @@ describe('handleConvertDocument', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].type).toBe('text');
+  });
+
+  test('checks authentication BEFORE resolving the file (no URL is fetched without credentials)', async () => {
+    vi.mocked(resolveFileInput).mockClear();
+    const client = {
+      assertCanAuthenticate: vi.fn(() => { throw new CarboneAuthError('No API key provided.'); }),
+      convertDocument: vi.fn(),
+    } as unknown as CarboneClient;
+
+    const result = await handleConvertDocument({ file: 'https://example.com/doc.docx', convertTo: 'pdf' }, client);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].type === 'text' && result.content[0].text).toContain('Authentication failed');
+    expect(resolveFileInput).not.toHaveBeenCalled();
+    expect(vi.mocked(client.convertDocument)).not.toHaveBeenCalled();
+  });
+});
+
+describe('PDF → PDF: hardRefresh defaults to true when formatOptions must be applied', () => {
+  // Carbone returns a PDF → PDF conversion unchanged unless hardRefresh is set, silently dropping the
+  // formatOptions (measured live: EncryptFile without hardRefresh gives an unencrypted PDF).
+  const PDF_B64 = Buffer.from('%PDF-1.7\n%fake\n').toString('base64');
+  const DOCX_B64 = Buffer.from('PK\u0003\u0004word/document.xml').toString('base64');
+  const encrypt = { formatName: 'pdf' as const, formatOptions: { EncryptFile: true, DocumentOpenPassword: 's3cret' } };
+
+  /** The exact JSON body sent to POST /render/template. */
+  async function bodyFor(input: string, args: Omit<Parameters<typeof handleConvertDocument>[0], 'file'>) {
+    vi.mocked(resolveFileInput).mockResolvedValue(input);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(Buffer.from('%PDF-1.7'), { status: 200, headers: { 'content-disposition': 'filename="report.pdf"' } })
+    );
+    const client = new CarboneClient({ apiKey: 'test-key' });
+    const result = await handleConvertDocument({ file: 'in', ...args }, client);
+    expect(result.isError).toBeUndefined();
+    return JSON.parse((fetchSpy.mock.calls.at(-1)![1] as RequestInit).body as string);
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  test('PDF input + pdf with formatOptions → hardRefresh: true', async () => {
+    expect(await bodyFor(PDF_B64, { convertTo: encrypt })).toEqual({ template: PDF_B64, convertTo: encrypt, hardRefresh: true });
+  });
+
+  test('PDF input + plain "pdf" (no formatOptions) → no hardRefresh: the file passes through untouched', async () => {
+    expect(await bodyFor(PDF_B64, { convertTo: 'pdf' })).toEqual({ template: PDF_B64, convertTo: 'pdf' });
+    const empty = { formatName: 'pdf' as const, formatOptions: {} };
+    expect(await bodyFor(PDF_B64, { convertTo: empty })).toEqual({ template: PDF_B64, convertTo: empty });
+  });
+
+  test('an explicit hardRefresh: false is respected', async () => {
+    expect(await bodyFor(PDF_B64, { convertTo: encrypt, hardRefresh: false }))
+      .toEqual({ template: PDF_B64, convertTo: encrypt, hardRefresh: false });
+  });
+
+  test('a non-PDF input is left alone (the format changes, so the converter runs anyway)', async () => {
+    expect(await bodyFor(DOCX_B64, { convertTo: encrypt })).toEqual({ template: DOCX_B64, convertTo: encrypt });
+  });
+
+  test('PDF input to another format is left alone', async () => {
+    const png = { formatName: 'png' as const, formatOptions: { PixelWidth: 800 } };
+    expect(await bodyFor(PDF_B64, { convertTo: png })).toEqual({ template: PDF_B64, convertTo: png });
   });
 });

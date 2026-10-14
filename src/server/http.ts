@@ -1,36 +1,32 @@
-import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, join, extname } from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { originValidation, toNodeHandler } from '@modelcontextprotocol/node';
+import { createMcpHandler, localhostAllowedOrigins, McpServer, type AuthInfo } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
-
-/** Minimal shape of AuthInfo expected by StreamableHTTPServerTransport on req.auth */
-interface AuthInfo {
-  token: string;
-  clientId: string;
-  scopes: string[];
-}
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
-import { serverInfo, SERVER_INSTRUCTIONS } from './serverInfo.js';
+import { serverInfo, SERVER_OPTIONS } from './serverInfo.js';
 
 export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
-    req.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       totalBytes += chunk.length;
-      // Keep draining the socket even when over limit so the connection
-      // closes cleanly; we check the total on 'end'.
-      if (totalBytes <= maxBytes) chunks.push(chunk);
-    });
-    req.on('end', () => {
       if (totalBytes > maxBytes) {
+        // Stop reading at the limit instead of draining the rest: the caller answers 413 with
+        // "Connection: close", so the socket is closed once that response is sent.
+        req.off('data', onData);
+        req.pause();
         reject(new Error('Request body too large'));
         return;
       }
+      chunks.push(chunk);
+    };
+    req.on('data', onData);
+    req.on('end', () => {
       const raw = Buffer.concat(chunks).toString();
       if (!raw) { resolve(undefined); return; }
       try { resolve(JSON.parse(raw)); }
@@ -87,13 +83,16 @@ async function buildHealthBody(
 /**
  * Start the Carbone MCP server in Streamable HTTP mode.
  *
- * Every incoming MCP request gets its own McpServer + StreamableHTTPServerTransport
- * instance (stateless — no session management). The Bearer token from the
- * Authorization header is forwarded to tool handlers via extra.authInfo.token,
+ * One SDK handler serves both protocol eras: 2026-07-28 requests and, statelessly,
+ * 2025-era (initialize) clients. Every incoming MCP request gets its own McpServer
+ * from the factory (no session management). The Bearer token from the
+ * Authorization header is forwarded to tool handlers via ctx.http.authInfo.token,
  * which CarboneClient.resolveKey() picks up as the per-call API key.
  *
  * GET  /health   → liveness + backend connectivity probe (no auth required)
- * *    {mcpPath} → MCP Streamable HTTP endpoint (GET/POST/DELETE)
+ * POST {mcpPath} → MCP Streamable HTTP endpoint (stateless: GET/DELETE are answered 405)
+ *
+ * Resolves with the listening server (tests listen on port 0 and close it).
  */
 export async function startHttpServer(options: {
   client: CarboneClient;
@@ -103,8 +102,10 @@ export async function startHttpServer(options: {
   maxBodyBytes: number;
   maxFileBytes: number;
   allowPrivateNetwork: boolean;
-}): Promise<void> {
-  const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork } = options;
+  /** Browser Origin hostnames allowed in addition to localhost (MCP_ALLOWED_ORIGINS). */
+  allowedOriginHostnames: string[];
+}): Promise<Server> {
+  const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork, allowedOriginHostnames } = options;
 
   // ── Public static files — loaded once at startup into memory ────────────
   // All files under <cwd>/public/ are served as static assets.
@@ -140,6 +141,32 @@ export async function startHttpServer(options: {
   let healthCachePromise: Promise<Record<string, unknown>> | undefined;
   let lastHealthStatus: string | undefined;
 
+  // ── MCP handler — built once, serves both protocol eras ──────────────────
+  // The factory is called for every request: an McpServer serves one exchange at a time.
+  // onerror reports out-of-band failures and rejected requests — message only, never bodies or tokens.
+  // Messages can echo client-sent values (e.g. a requested protocol version), so sanitize like clientIp.
+  const onerror = (err: Error) =>
+    process.stderr.write(`[carbone-mcp] MCP error: ${err.message.replace(/[^\x20-\x7E]/g, '')}\n`);
+  const mcpHandler = createMcpHandler(() => {
+    const mcpServer = new McpServer(serverInfo(version), SERVER_OPTIONS);
+    // HTTP clients are remote: they may neither write outputPath to the server's disk nor read
+    // local paths from it (that would expose server files such as /proc/self/environ).
+    registerTools(mcpServer, client, {
+      allowFileOutput: false,
+      allowFileInput: false,
+      allowPrivateNetwork,
+      maxFileBytes,
+    });
+    registerResources(mcpServer, client);
+    return mcpServer;
+  }, { onerror });
+  // POST bodies are pre-parsed below (bounded by maxBodyBytes), which bypasses the SDK's own 4 MiB
+  // limit; the adapter applies the same bound to any other request body it reads itself.
+  const handleMcpRequest = toNodeHandler(mcpHandler, { maxRequestBodySize: maxBodyBytes, onerror });
+  // DNS-rebinding protection: a request carrying an Origin header must come from localhost or a
+  // listed hostname, otherwise it is answered 403. Non-browser clients send no Origin and pass.
+  const validateOrigin = originValidation([...localhostAllowedOrigins(), ...allowedOriginHostnames]);
+
   const httpServer = createServer(
     async (req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse) => {
       const start = Date.now();
@@ -158,7 +185,7 @@ export async function startHttpServer(options: {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Protocol-Version, Mcp-Method, Mcp-Name');
       res.on('finish', () => {
         process.stderr.write(
           `[carbone-mcp] ${req.method} ${pathname} ${res.statusCode} ${Date.now() - start}ms ${clientIp}\n`
@@ -204,31 +231,21 @@ export async function startHttpServer(options: {
 
         // ── MCP endpoint ──────────────────────────────────────────────────────
         if (pathname === mcpPath) {
+          // Origin first, for every method — the guard answers 403 itself when it returns false
+          if (!validateOrigin(req, res)) return;
+
           // Parse body first — reject oversized/invalid requests before allocating McpServer
           const parsedBody = req.method === 'POST' ? await parseBody(req, maxBodyBytes) : undefined;
+          // An empty POST body is malformed too, and must not reach the handler: given no body it
+          // would try to read the already-consumed request stream again.
+          if (req.method === 'POST' && parsedBody === undefined) throw new Error('Invalid JSON body');
 
           const token = extractBearerToken(req);
           if (token) {
             req.auth = { token, clientId: '', scopes: [] };
           }
 
-          const mcpServer = new McpServer(serverInfo(version), { instructions: SERVER_INSTRUCTIONS });
-          // HTTP clients are remote: they may neither write outputPath to the server's disk nor read
-          // local paths from it (that would expose server files such as /proc/self/environ).
-          registerTools(mcpServer, client, {
-            allowFileOutput: false,
-            allowFileInput: false,
-            allowPrivateNetwork,
-            maxFileBytes,
-          });
-          registerResources(mcpServer, client);
-
-          const transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined,
-          });
-
-          await mcpServer.connect(transport);
-          await transport.handleRequest(req, res, parsedBody);
+          await handleMcpRequest(req, res, parsedBody);
           return;
         }
 
@@ -238,15 +255,21 @@ export async function startHttpServer(options: {
       } catch (err) {
         if (!res.headersSent) {
           if (err instanceof Error && err.message === 'Request body too large') {
-            res.writeHead(413, { 'Content-Type': 'application/json' });
+            // The unread rest of the body is still in flight: close the connection after answering.
+            res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
             res.end(JSON.stringify({ error: 'Request body too large', maxBytes: maxBodyBytes }));
+          } else if (err instanceof Error && err.message === 'Invalid JSON body') {
+            // JSON-RPC parse error, as the SDK itself answers a malformed body
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error: Invalid JSON' }, id: null }));
           } else {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Internal server error' }));
           }
         }
+        // Sanitized like the access log: printable ASCII only, so a message can't forge log lines.
         process.stderr.write(
-          `[carbone-mcp] HTTP error: ${err instanceof Error ? err.message : String(err)}\n`
+          `[carbone-mcp] HTTP error: ${(err instanceof Error ? err.message : String(err)).replace(/[^\x20-\x7E]/g, '')}\n`
         );
       }
     }
@@ -263,7 +286,8 @@ export async function startHttpServer(options: {
     httpServer.closeIdleConnections();
     httpServer.close(() => {
       process.stderr.write('[carbone-mcp] All connections closed — exiting\n');
-      process.exit(0);
+      // Closed only now so in-flight requests are not aborted; releases any server instance it still holds.
+      void mcpHandler.close().finally(() => process.exit(0));
     });
     setTimeout(() => {
       process.stderr.write('[carbone-mcp] Graceful shutdown timed out — forcing exit\n');
@@ -281,4 +305,5 @@ export async function startHttpServer(options: {
   process.stderr.write(`Carbone MCP Server v${version} running in HTTP mode\n`);
   process.stderr.write(`MCP endpoint : http://0.0.0.0:${port}${mcpPath}\n`);
   process.stderr.write(`Health check : http://0.0.0.0:${port}/health\n`);
+  return httpServer;
 }

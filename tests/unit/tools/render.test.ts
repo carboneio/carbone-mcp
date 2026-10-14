@@ -8,13 +8,14 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
 import { handleRenderDocument } from '../../../src/tools/render.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
-import { CarboneError } from '../../../src/carbone/errors.js';
+import { CarboneAuthError, CarboneError } from '../../../src/carbone/errors.js';
 
 const makeClient = (
   buffer = Buffer.from('pdf content'),
   filename = 'output.pdf'
 ) =>
   ({
+    assertCanAuthenticate: vi.fn(),
     renderDocument: vi.fn().mockResolvedValue({ buffer, filename }),
     renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
   }) as unknown as CarboneClient;
@@ -70,6 +71,7 @@ describe('handleRenderDocument', () => {
 
   test('returnLink: returns a one-time download URL', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockResolvedValue({ renderId: 'RID9.pdf' }),
       renderUrl: (id: string) => `https://api.carbone.io/render/${id}`,
     } as unknown as CarboneClient;
@@ -128,11 +130,13 @@ describe('handleRenderDocument', () => {
         lang:           'fr-fr',
         timezone:       'Europe/Paris',
         complement:     { company: 'Acme' },
-        reportName:     'report.pdf',
+        reportName:     'report',
         hardRefresh:    true,
         batchSplitBy:   'd.items',
         batchOutput:    'zip',
-        batchReportName:'item-{d.id}.pdf',
+        batchReportName:'item-{d.id}',
+        preReleaseFeatureIn: 5000000,
+        failOn:         ['IMAGE_URL_ERROR'],
       },
       client
     );
@@ -143,11 +147,13 @@ describe('handleRenderDocument', () => {
         lang:           'fr-fr',
         timezone:       'Europe/Paris',
         complement:     { company: 'Acme' },
-        reportName:     'report.pdf',
+        reportName:     'report',
         hardRefresh:    true,
         batchSplitBy:   'd.items',
         batchOutput:    'zip',
-        batchReportName:'item-{d.id}.pdf',
+        batchReportName:'item-{d.id}',
+        preReleaseFeatureIn: 5000000,
+        failOn:         ['IMAGE_URL_ERROR'],
       }),
       undefined
     );
@@ -165,6 +171,7 @@ describe('handleRenderDocument', () => {
 
   test('returns text content with Carbone message for async (webhook) render', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockResolvedValue({ async: true, message: 'A render ID will be sent to your callback URL' }),
     } as unknown as CarboneClient;
 
@@ -182,6 +189,7 @@ describe('handleRenderDocument', () => {
 
   test('passes webhookUrl and webhookHeaders through to client', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockResolvedValue({ async: true, message: 'Queued' }),
     } as unknown as CarboneClient;
 
@@ -214,13 +222,32 @@ describe('handleRenderDocument', () => {
     );
   });
 
+  test('keepTags + reportName: the MCP names the file (Carbone ignores reportName without templating)', async () => {
+    const client = makeClient(Buffer.from('pdf'), 'report.pdf');
+    const http = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 };
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', convertTo: 'pdf', keepTags: true, reportName: 'proof' }, client, undefined, http);
+
+    expect((result.content[0] as { resource: { uri: string } }).resource.uri).toBe('file://proof.pdf');
+  });
+
+  test('without keepTags, reportName is left to Carbone (sent, file name not rewritten)', async () => {
+    const client = makeClient(Buffer.from('pdf'), 'invoice-42.pdf');
+    const http = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1e9 };
+    const result = await handleRenderDocument(
+      { templateId: 'tpl1', data: { id: 42 }, convertTo: 'pdf', reportName: 'invoice-{d.id}' }, client, undefined, http);
+
+    expect(vi.mocked(client.renderDocument).mock.calls[0][0]).toMatchObject({ reportName: 'invoice-{d.id}' });
+    expect((result.content[0] as { resource: { uri: string } }).resource.uri).toBe('file://invoice-42.pdf');
+  });
+
   test('rejects keepTags combined with data', async () => {
     const client = makeClient();
     const result = await handleRenderDocument(
       { templateId: 'tpl1', data: { a: 1 }, keepTags: true }, client);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/keepTags/);
+    expect((result.content[0] as { text: string }).text).toMatch(/keepTags/);
     expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
   });
 
@@ -243,6 +270,7 @@ describe('handleRenderDocument', () => {
 
   test('returns isError on client error', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       renderDocument: vi.fn().mockRejectedValue(new CarboneError('Render failed', 422)),
     } as unknown as CarboneClient;
 
@@ -286,5 +314,22 @@ describe('handleRenderDocument', () => {
       expect.objectContaining({ translations: { 'fr-fr': { hi: 'Bonjour' } } }),
       undefined
     );
+  });
+
+  test('checks authentication BEFORE resolving any input (no URL is fetched without credentials)', async () => {
+    vi.mocked(resolveFileInput).mockClear();
+    const client = {
+      assertCanAuthenticate: vi.fn(() => { throw new CarboneAuthError('No API key provided.'); }),
+      renderDocument: vi.fn(),
+    } as unknown as CarboneClient;
+
+    const result = await handleRenderDocument(
+      { template: 'https://example.com/t.docx', data: { a: 1 } }, client, { apiKey: undefined });
+
+    expect(client.assertCanAuthenticate).toHaveBeenCalledWith({ apiKey: undefined });
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as { text: string }).text).toContain('Authentication failed');
+    expect(resolveFileInput).not.toHaveBeenCalled();
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
   });
 });

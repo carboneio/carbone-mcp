@@ -26,5 +26,6 @@ describe('SERVER_INSTRUCTIONS', () => {
     expect(SERVER_INSTRUCTIONS).toContain('get_capabilities');
     expect(SERVER_INSTRUCTIONS).toContain('convert_document');
     expect(SERVER_INSTRUCTIONS).toContain('render_document');
+    expect(SERVER_INSTRUCTIONS).toContain('inspect_template');
   });
 });

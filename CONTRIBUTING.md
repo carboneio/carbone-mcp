@@ -4,6 +4,8 @@ Thank you for your interest in contributing! This document covers how to get sta
 
 ## Development Setup
 
+Requires Node.js 20.3 or later (`engines` in `package.json`).
+
 ```bash
 git clone https://github.com/carboneio/carbone-mcp
 cd carbone-mcp
@@ -14,10 +16,12 @@ npm run dev    # Run with tsx (no build needed)
 ## Running Tests
 
 ```bash
-npm test                  # Unit tests (no API key needed)
+npm test                  # All tests (the real-API e2e tests run only with CARBONE_TEST_API_KEY)
+npm run test:unit         # Unit tests only (no API key needed)
+npm run typecheck         # Type-check without emitting
 npm run test:watch        # Watch mode
 npm run test:coverage     # Coverage report
-npm run test:integration  # Real API tests (requires CARBONE_TEST_API_KEY)
+npm run test:integration  # Integration tests (e2e against the real API needs CARBONE_TEST_API_KEY)
 ```
 
 All pull requests must pass the unit test suite. New features must include tests.

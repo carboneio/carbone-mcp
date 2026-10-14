@@ -1,11 +1,15 @@
 import {
   CarboneAuthError,
+  CarboneConnectionError,
   CarboneError,
+  CarboneGenerationError,
   CarboneNotFoundError,
   CarboneRateLimitError,
   CarboneValidationError,
 } from './errors.js';
-import type { ApiStatus, TemplateListItem, TemplateListResponse, UploadTemplateResult } from './types.js';
+import type {
+  ApiStatus, TemplateDebugInfo, TemplateListItem, TemplateListResponse, UpdateTemplateResult, UploadTemplateResult,
+} from './types.js';
 
 export interface CarboneClientConfig {
   /** API key for the Carbone API. Optional when using per-call options (e.g. HTTP mode). */
@@ -30,6 +34,8 @@ export interface CallOptions {
   apiKey?: string;
   /** Skip the API key requirement check. Use for public endpoints that do not require authentication. */
   skipAuthCheck?: boolean;
+  /** Aborts the API call (e.g. the MCP request was cancelled); the timeout still applies. */
+  signal?: AbortSignal;
 }
 
 export type OutputFormat = string | { formatName: string; formatOptions?: Record<string, unknown> };
@@ -92,21 +98,19 @@ export class CarboneClient {
     template: string;
     convertTo: OutputFormat;
     converter?: string;
-    reportName?: string;
     hardRefresh?: boolean;
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { renderId: string }> {
-    // `data` is deliberately NOT sent. From carbone-version 5, omitting it skips the templating pass, so
-    // Carbone tags survive the conversion untouched — which is what "convert" means. Sending `data: {}`
-    // instead runs templating against an empty dataset and blanks every tag, silently destroying a
-    // template that was only meant to change format. Use renderDocument when you want tags resolved.
+    // Pure conversion: `data` is deliberately NOT sent, so Carbone (carbone-version 5) skips templating and tags
+    // such as {d.name} survive untouched. Sending `data: {}` would run templating against an empty dataset and
+    // blank every tag. No reportName either: Carbone resolves it during templating, so a pure conversion ignores
+    // it (verified live: the file stays "report.<ext>"); convert_document names the delivered file itself.
     const body: Record<string, unknown> = {
       template: params.template,
       convertTo: params.convertTo,
     };
     if (params.converter)                 body['converter']   = params.converter;
-    if (params.reportName)                body['reportName']  = params.reportName;
     if (params.hardRefresh !== undefined) body['hardRefresh'] = params.hardRefresh;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -157,15 +161,17 @@ export class CarboneClient {
     batchSplitBy?: string;
     batchOutput?: string;
     batchReportName?: string;
+    preReleaseFeatureIn?: number;
+    failOn?: string[];
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
     keepTags?: boolean;
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { async: true; message: string } | { renderId: string }> {
-    // `data` drives the templating pass, so it is always sent — defaulting to {} resolves every tag to an
+    // `data` drives the templating pass, so it is always sent: defaulting to {} resolves every tag to an
     // empty string, which is what "render with no data" means. keepTags omits the field entirely instead:
-    // from carbone-version 5 that skips templating, leaving every tag intact (proofing a stored template).
+    // from carbone-version 5 that skips templating and leaves every tag intact (proofing a stored template).
     const body: Record<string, unknown> = params.keepTags ? {} : { data: params.data ?? {} };
     if (params.template)                   body['template']       = params.template;
     if (params.convertTo)                  body['convertTo']      = params.convertTo;
@@ -184,6 +190,8 @@ export class CarboneClient {
     if (params.batchSplitBy)               body['batchSplitBy']   = params.batchSplitBy;
     if (params.batchOutput)                body['batchOutput']    = params.batchOutput;
     if (params.batchReportName)            body['batchReportName'] = params.batchReportName;
+    if (params.preReleaseFeatureIn !== undefined) body['preReleaseFeatureIn'] = params.preReleaseFeatureIn;
+    if (params.failOn)                     body['failOn']         = params.failOn;
 
     const isAsync = !!params.webhookUrl;
     // returnLink: skip download=true so the API stores the file and returns a renderId (one-time link).
@@ -226,26 +234,63 @@ export class CarboneClient {
   }
 
   /**
+   * Inspect a template: the tags it uses and a sample dataset matching its structure.
+   *
+   * - Stored template:  POST /render/{templateId}
+   * - Inline template:  POST /render/template  (template sent as base64 in body)
+   *
+   * Runs one render with the undocumented `isDebugActive` option, in JSON mode (no `download=true`), so the
+   * response carries `data.debug` and the document is left unfetched. No convertTo: the output keeps the
+   * template format, the least work for Carbone. Exactly one of `templateId` or `template` must be provided.
+   */
+  async inspectTemplate(params: { templateId?: string; template?: string }, options?: CallOptions): Promise<TemplateDebugInfo> {
+    const body: Record<string, unknown> = { data: {}, isDebugActive: true };
+    if (params.template) body['template'] = params.template;
+    const endpoint = params.template ? '/render/template' : `/render/${encodeURIComponent(params.templateId!)}`;
+
+    const response = await this.request(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, options);
+
+    let debug: unknown;
+    try {
+      debug = ((await response.json()) as { data?: { debug?: unknown } } | null)?.data?.debug;
+    } catch {
+      // Not JSON: handled as a missing debug object below.
+    }
+    if (debug === null || typeof debug !== 'object' || Array.isArray(debug)) {
+      throw new CarboneError(
+        'This Carbone server did not return inspection data: its version does not support template inspection. ' +
+        'Read the tags from the template file instead (download_template fetches a stored one).',
+        response.status
+      );
+    }
+    return debug as TemplateDebugInfo;
+  }
+
+  /**
    * Upload a template.
    * POST /template
    */
   async uploadTemplate(params: {
     template:   string;
-    name:       string;
+    name?:      string;
     id?:        string;
     versioning?: boolean;
     category?:  string;
     comment?:   string;
     tags?:      string[];
-    sample?:    Array<{ data: object; complement: object; translations: object; enum: object }>;
+    sample?:    Array<{ data?: object; complement?: object; translations?: object; enum?: object }>;
     deployedAt?: number;
     expireAt?:   number;
   }, options?: CallOptions): Promise<UploadTemplateResult> {
     const body: Record<string, unknown> = {
       template:   params.template,
-      name:       params.name,
       versioning: params.versioning ?? true,
     };
+    if (params.name)       body['name']       = params.name;
     if (params.id)         body['id']         = params.id;
     if (params.category)   body['category']   = params.category;
     if (params.comment)    body['comment']     = params.comment;
@@ -268,6 +313,8 @@ export class CarboneClient {
    * Update template metadata.
    * PATCH /template/{id}
    * API expects camelCase fields and Unix timestamps (seconds).
+   * A Template ID patches its currently deployed version; a Version ID patches that version.
+   * Returns the patched versionId plus the fields sent, echoed back by Carbone.
    */
   async updateTemplate(params: {
     templateId:  string;
@@ -278,7 +325,7 @@ export class CarboneClient {
     tags?:       string[];
     deployedAt?: number;
     expireAt?:   number;
-  }, options?: CallOptions): Promise<void> {
+  }, options?: CallOptions): Promise<UpdateTemplateResult> {
     const body: Record<string, unknown> = {};
     if (params.id         !== undefined) body['id']         = params.id;
     if (params.name       !== undefined) body['name']       = params.name;
@@ -288,15 +335,19 @@ export class CarboneClient {
     if (params.deployedAt !== undefined) body['deployedAt'] = params.deployedAt;
     if (params.expireAt   !== undefined) body['expireAt']   = params.expireAt;
 
-    await this.request(`/template/${encodeURIComponent(params.templateId)}`, {
+    const response = await this.request(`/template/${encodeURIComponent(params.templateId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }, options);
+
+    const json = await response.json() as { data: UpdateTemplateResult };
+    return json.data;
   }
 
   /**
-   * Delete a template (soft delete — sets expireAt to NOW).
+   * Delete a template (soft delete — sets expireAt to NOW): it stops being listed, downloaded or rendered
+   * immediately, and the file is purged after the server's retention delay.
    * DELETE /template/{id}
    */
   async deleteTemplate(templateId: string, options?: CallOptions): Promise<void> {
@@ -304,8 +355,8 @@ export class CarboneClient {
   }
 
   /**
-   * Download a template file.
-   * GET /template/{id}
+   * Download a template file, or with `sample` the JSON sample dataset stored with it.
+   * GET /template/{id}  |  GET /template/{id}_sample.json
    */
   async downloadTemplate(
     templateId: string,
@@ -384,6 +435,16 @@ export class CarboneClient {
     return { version: json.version, message: json.message };
   }
 
+  /**
+   * Throw the same CarboneAuthError an authenticated call would, without making any request.
+   * Handlers call this BEFORE resolving caller-supplied inputs (URLs, paths, by-reference JSON), so a
+   * caller who cannot authenticate cannot make the server download anything. Always enforced, even if
+   * skipAuthCheck is set.
+   */
+  assertCanAuthenticate(callOptions?: CallOptions): void {
+    this.resolveKey({ ...callOptions, skipAuthCheck: false });
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   /**
@@ -424,18 +485,32 @@ export class CarboneClient {
   ): Promise<Response> {
     const key = this.resolveKey(callOptions);
     const authHeader: Record<string, string> = key ? { Authorization: `Bearer ${key}` } : {};
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...init,
-      headers: {
-        ...authHeader,
-        'carbone-version': '5',
-        ...init.headers,
-      },
-      signal: AbortSignal.timeout(this.timeout),
-    });
+    // The signal also covers reading the response body (binary downloads included).
+    const timeout = AbortSignal.timeout(this.timeout);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...init,
+        headers: {
+          ...authHeader,
+          'carbone-version': '5',
+          ...init.headers,
+        },
+        signal: callOptions?.signal ? AbortSignal.any([timeout, callOptions.signal]) : timeout,
+      });
+    } catch (err) {
+      // Cancelled by the MCP client: rethrow as is (the result is discarded), never report it as a timeout.
+      if (callOptions?.signal?.aborted) throw err;
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new CarboneConnectionError(`Carbone API request timed out after ${this.timeout / 1000} s.`, err);
+      }
+      // Network failure: name the host and the system error code only (no URL path, headers or key).
+      const reason = (err as { cause?: { code?: string } } | undefined)?.cause?.code ?? (err instanceof Error ? err.message : String(err));
+      throw new CarboneConnectionError(`Could not reach the Carbone API at ${new URL(this.baseUrl).host}: ${reason}.`, err);
+    }
 
     if (!response.ok) {
-      // Non-2xx always returns JSON — parse and throw a typed error
+      // Non-2xx: parse the JSON error body (when there is one) and throw a typed error
       throw await this.buildError(response);
     }
 
@@ -455,60 +530,50 @@ export class CarboneClient {
     return { buffer, filename };
   }
 
-  /** Parse a non-2xx response into a typed CarboneError. */
+  /**
+   * Parse a non-2xx response into a typed CarboneError that keeps the API's own message and code (wNNN).
+   * Presentation (labels, hints) is formatError's job; only the 401 advice is added here, as it depends on the transport.
+   */
   private async buildError(response: Response): Promise<CarboneError> {
     let body: Record<string, unknown> = {};
     try {
-      body = await response.json() as Record<string, unknown>;
+      body = (await response.json() ?? {}) as Record<string, unknown>;
     } catch {
-      body = { error: response.statusText };
+      // Non-JSON body (e.g. the HTML page of a 429): only the status is usable.
     }
 
-    // Carbone API uses "error" field; fall back to "message" for safety
+    // Carbone API uses "error" field; fall back to "message" (GET /status 503)
     const apiError = (body['error'] as string | undefined) ?? (body['message'] as string | undefined);
-    const message = apiError ?? 'Unknown error';
+    const code = typeof body['code'] === 'string' ? body['code'] : undefined;
+    const message = apiError ?? `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
 
     switch (response.status) {
       case 401:
         return new CarboneAuthError(
-          'Invalid or expired API key. Please check the CARBONE_API_KEY environment variable.'
+          `${apiError ?? 'Invalid or expired API key.'} ` +
+          (this.transport === 'http'
+            ? 'Send a valid Carbone API key as "Authorization: Bearer <key>".'
+            : 'Check the CARBONE_API_KEY environment variable.'),
+          code
         );
 
       case 404:
-        return new CarboneNotFoundError(apiError ?? 'Resource not found');
+        return new CarboneNotFoundError(apiError ?? 'Resource not found', code);
 
       case 400:
-        if (message.includes('convertTo')) {
-          return new CarboneValidationError(
-            'Invalid output format. See the conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.md'
-          );
-        }
-        return new CarboneValidationError(message);
-
-      case 413:
-        return new CarboneError('File too large. Check the Carbone API limits.', 413);
-
-      case 422:
-        return new CarboneError(
-          `Rendering failed. Check that your template and data are compatible. ${message}`,
-          422,
-          body
-        );
+        return new CarboneValidationError(message, code);
 
       case 429:
         return new CarboneRateLimitError(parseRetryAfter(response.headers.get('retry-after')));
 
       case 500:
-      case 502:
-      case 503:
-        return new CarboneError(
-          apiError ?? 'Carbone service temporarily unavailable. Please try again in a moment.',
-          response.status,
-          body
-        );
-
-      default:
-        return new CarboneError(message, response.status, body);
+        // A 500 with an API message is a generation failure caused by the request (GenerateReportError w101/w117),
+        // except the generic ServerOrDatabaseError of the template endpoints, which is a real server fault.
+        if (apiError && !/^Server or Database error/i.test(apiError)) {
+          return new CarboneGenerationError(apiError, code, body);
+        }
+        break;
     }
+    return new CarboneError(message, response.status, body, code);
   }
 }

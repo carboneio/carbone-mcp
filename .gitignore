@@ -28,7 +28,14 @@ Thumbs.db
 npm-debug.log*
 carbone-mcp-specification.md
 *.pem
-account-openapi.yml
+
+# Private OpenAPI specifications — never publish
+*openapi*.yml
+*openapi*.yaml
+*OpenAPI*.yml
+*OpenAPI*.yaml
+
+.claude
 
 # Packaging / scratch
 *.tgz

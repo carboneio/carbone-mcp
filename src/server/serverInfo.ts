@@ -1,5 +1,6 @@
-// Shared MCP server identity and usage instructions for both transports.
+// Shared MCP server identity, usage instructions and options for both transports.
 
+import type { McpServerOptions } from '@modelcontextprotocol/server';
 import { CARBONE_ICON_SVG, CARBONE_ICON_PNG } from './icons.js';
 
 export function serverInfo(version: string) {
@@ -13,7 +14,7 @@ export function serverInfo(version: string) {
     websiteUrl: 'https://carbone.io',
     icons: [
       { src: CARBONE_ICON_SVG, mimeType: 'image/svg+xml', sizes: ['any'] },
-      { src: CARBONE_ICON_PNG, mimeType: 'image/png', sizes: ['85x96'] },
+      { src: CARBONE_ICON_PNG, mimeType: 'image/png', sizes: ['250x250'] },
     ],
   };
 }
@@ -26,13 +27,25 @@ export const SERVER_INSTRUCTIONS =
   '- Use convert_document to convert an existing file between formats (no data injection).\n' +
   '- Use render_document to merge JSON data into a Carbone template ({d.field} tags): pass a ' +
   'templateId for a stored template, or an inline template for a one-shot render.\n' +
+  '- Don\'t know which data a template expects? Call inspect_template first: it lists the template\'s tags and ' +
+  'returns a sample JSON dataset matching its structure.\n' +
   '- Writing, editing, or validating a Carbone template? Load the Carbone Skill first — Carbone tags are ' +
   'a unique language (NOT Mustache/Handlebars/Jinja), so never guess syntax; the Skill is the source of ' +
   'truth for tags, formatters, loops, and conditions: https://carbone.io/documentation/developer/ai/skills.md ' +
   '(get_capabilities links the loadable .skill file).\n' +
   '- Manage stored templates with upload_template, list_templates, update_template_metadata, ' +
   'download_template, and delete_template.\n' +
-  '- File inputs accept a local path, an HTTPS URL, or a base64 string. In stdio (local) mode, pass ' +
-  'outputPath to save large outputs to disk instead of returning them inline.\n' +
+  '- File inputs accept an HTTPS URL or a base64 string, and a local path in stdio (local) mode only, where ' +
+  'outputPath also saves large outputs to disk instead of returning them inline.\n' +
   '- Docs are LLM-friendly: replace .html with .md on any carbone.io doc URL for Markdown, or load ' +
   'https://carbone.io/llms.txt (index) / https://carbone.io/llms-full.txt (full corpus).';
+
+/**
+ * Options for every McpServer instance, on both transports and both protocol eras. The tool and
+ * resource lists are static, so `listChanged` is not advertised: a client then has no reason to keep
+ * an idle change-notification stream (`subscriptions/listen`) open.
+ */
+export const SERVER_OPTIONS = {
+  instructions: SERVER_INSTRUCTIONS,
+  capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
+} satisfies McpServerOptions;

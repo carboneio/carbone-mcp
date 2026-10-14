@@ -1,3 +1,5 @@
+import { Client } from '@modelcontextprotocol/client';
+
 // Battle test — exercises the FULL Carbone MCP option matrix end-to-end through the real MCP
 // protocol against a real Carbone API, with one suite usable across three targets. Self-cleaning.
 //
@@ -18,7 +20,6 @@
 //   # the DEPLOYED production MCP server (https://mcp.carbone.io) — tests what users actually hit,
 //   # so it only covers a change once that change has been deployed there:
 //   CARBONE_API_KEY=$CARBONE_TEST_API_KEY MCP_TARGET=prod node scripts/battle-test.mjs
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 const PROD_MCP_URL = 'https://mcp.carbone.io';
 const PROD_API_URL = 'https://api.carbone.io';
@@ -46,10 +47,10 @@ const HITS_PROD_API = IS_STDIO ? API_URL === PROD_API_URL : true;
 
 async function makeTransport() {
   if (IS_STDIO) {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+    const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio');
     return new StdioClientTransport({ command: 'node', args: [MCP_BIN], env: { ...process.env, CARBONE_API_KEY: KEY } });
   }
-  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/client');
   return new StreamableHTTPClientTransport(new URL(MCP_URL), { requestInit: { headers: { Authorization: `Bearer ${KEY}` } } });
 }
 
@@ -59,6 +60,7 @@ const TRANS = b64('<!DOCTYPE html><html><body><p>{t(hi)}, {d.name}! {d.status:co
 const COMP = b64('<!DOCTYPE html><html><body><p>{c.company} — {d.x}</p></body></html>');
 const CUR = b64('<!DOCTYPE html><html><body>{d.p:formatC()}</body></html>');
 const DATE = b64('<!DOCTYPE html><html><body>{d.d:formatD(YYYY-MM-DD)}</body></html>');
+const INSPECT = b64('<!DOCTYPE html><html><body><h1>{d.name}</h1><ul><li>{d.items[i].x}</li><li>{d.items[i+1].x}</li></ul></body></html>');
 
 let pass = 0, fail = 0;
 const created = [];
@@ -108,10 +110,12 @@ async function run() {
     check('capabilities tools/resources/completions', !!caps?.tools && !!caps?.resources && !!caps?.completions);
     check('instructions present', !!CLIENT.getInstructions?.());
     const { tools } = await CLIENT.listTools();
-    check('11 tools, titles, annotations, outputSchema', tools.length === 11
+    check('12 tools, titles, annotations, outputSchema', tools.length === 12
       && tools.find((t) => t.name === 'convert_document')?.title === 'Convert Document'
       && tools.find((t) => t.name === 'delete_template')?.annotations?.destructiveHint === true
-      && !!tools.find((t) => t.name === 'list_templates')?.outputSchema);
+      && !!tools.find((t) => t.name === 'list_templates')?.outputSchema
+      && tools.find((t) => t.name === 'inspect_template')?.annotations?.readOnlyHint === true
+      && !!tools.find((t) => t.name === 'inspect_template')?.outputSchema);
     check('4 static resources + templates/{id}', (await CLIENT.listResources()).resources.length === 4
       && (await CLIENT.listResourceTemplates()).resourceTemplates.some((r) => r.uriTemplate === 'carbone://templates/{id}'));
 
@@ -147,11 +151,22 @@ async function run() {
     check('preserves Carbone tags (no templating)', text(cKeep).includes('{d.customer}') && text(cKeep).includes('{d.total:formatN(2)}'), why(cKeep));
     check('reportName', /bt-conv/.test(IS_STDIO ? text(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', reportName: 'bt-conv' })) : uriOf(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', reportName: 'bt-conv' }))));
     check('hardRefresh PDF → PDF applies formatOptions', isPdf(await call('convert_document', { file: INV, convertTo: { formatName: 'pdf', formatOptions: { Watermarks: [{ text: 'X', opacity: 0.2 }] } }, converter: 'C', hardRefresh: true })));
+    // PDF → PDF only applies formatOptions with hardRefresh (without it Carbone hands the PDF back unchanged).
+    // The server sets hardRefresh itself for a PDF input + pdf target with formatOptions, so a caller who just
+    // asks to password-protect a PDF must get an encrypted file back without knowing about hardRefresh.
+    const pdfIn = blobOf(await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', asAttachment: true }));
+    if (pdfIn) {
+      const pdfEnc = await call('convert_document', { file: pdfIn, convertTo: { formatName: 'pdf', formatOptions: { EncryptFile: true, DocumentOpenPassword: 's3cret' } }, asAttachment: true });
+      const pdfEncrypted = Buffer.from(blobOf(pdfEnc), 'base64').includes('/Encrypt');
+      check('PDF → PDF + EncryptFile is encrypted (hardRefresh set automatically)', pdfEncrypted, pdfEncrypted ? '' : (why(pdfEnc) || '→ NOT ENCRYPTED'));
+    } else {
+      note('PDF fixture', 'could not be produced — skipped');
+    }
     const cOut = await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'C', outputPath: `/tmp/bt-c-${Date.now()}.pdf` });
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(cOut).includes('bytes') : (cOut.isError && text(cOut).includes('stdio')));
 
     // ── converter I (Carbone ICE, API 5.14.0+) ────────────────────────────────────
-    // ICE is DOCX → PDF only, so it cannot reuse the HTML fixtures above. Rather than commit a
+    // ICE converts DOCX (ODT in beta) → PDF, so it cannot reuse the HTML fixtures above. Rather than commit a
     // binary .docx to the repo, build one with Carbone itself: HTML → DOCX with asAttachment forces
     // an EmbeddedResource (base64 blob) on BOTH transports, and the {d.…} tags survive as plain text,
     // so the same bytes work as a convert input AND as a render template.
@@ -166,12 +181,12 @@ async function run() {
       check('render DOCX → PDF, converter I', isPdf(iceR), why(iceR));
       const iceLink = await call('convert_document', { file: DOCX, convertTo: 'pdf', converter: 'I', returnLink: true });
       check('converter I + returnLink', isOneTimeLink(iceLink), why(iceLink));
-      // Documented ICE limitation, and a security-relevant one: password/permission options are accepted
-      // but never applied. Asserted so that the day Carbone starts honouring them, this suite says so and
-      // the "use L for passwords" warnings in the tool descriptions can be revisited.
+      // Security-relevant: the tool descriptions say ICE applies the Security PDF options (password,
+      // permissions). Asserted so that a deployment that stops honouring them is caught — a PDF the user
+      // asked to protect must never come back readable by anyone.
       const iceEnc = await call('convert_document', { file: DOCX, convertTo: { formatName: 'pdf', formatOptions: { EncryptFile: true, DocumentOpenPassword: 's3cret' } }, converter: 'I', asAttachment: true });
       const iceEncrypted = Buffer.from(blobOf(iceEnc), 'base64').includes('/Encrypt');
-      check('converter I ignores PDF encryption (documented footgun)', !iceEncrypted && blobOf(iceEnc).length > 0, iceEncrypted ? '→ NOW ENCRYPTED: docs/descriptions need updating' : '');
+      check('converter I applies PDF encryption (Security options)', iceEncrypted, iceEncrypted ? '' : `→ NOT ENCRYPTED: docs/descriptions need updating ${why(iceEnc)}`);
       // ICE claims DOCX only. Carbone may reject a non-DOCX input or quietly fall back to another
       // engine — undocumented either way, so record what this deployment actually did.
       const iceHtml = await call('convert_document', { file: INV, convertTo: 'pdf', converter: 'I' });
@@ -214,7 +229,16 @@ async function run() {
     const rOut = await call('render_document', { template: INV, data: { customer: 'S', total: 1 }, convertTo: 'pdf', converter: 'C', outputPath: `/tmp/bt-r-${Date.now()}.pdf` });
     check(IS_STDIO ? 'outputPath writes (stdio)' : 'outputPath rejected (HTTP)', IS_STDIO ? text(rOut).includes('bytes') : (rOut.isError && text(rOut).includes('stdio')));
 
-    // ── upload matrix ──────────────────────────────────────────────────────────────
+    // ── inspect: the undocumented isDebugActive render option ─────────────────────────
+    // {t()} translation tags are not listed by Carbone, so the fixture has none; its {d.items[i].x} loop must be.
+    console.log('\n[inspect_template]');
+    const insp = await call('inspect_template', { template: INSPECT });
+    const inspS = insp.structuredContent ?? {};
+    check('inline: lists {d.name} and {d.items[i].x}', ['{d.name}', '{d.items[i].x}'].every((t) => inspS.tags?.includes(t)), why(insp));
+    check('inline: sample.data has name and items', !!inspS.sample?.data && 'name' in inspS.sample.data && 'items' in inspS.sample.data, why(insp));
+    check('inspect XOR neither rejected', (await call('inspect_template', {})).isError === true);
+
+        // ── upload matrix ──────────────────────────────────────────────────────────────
     console.log('\n[upload_template]');
     const upV = track(await call('upload_template', { template: INV, name: `BattleTest-ver ${Date.now()}`, category: 'bt-cat', tags: ['bt'], comment: 'battle', versioning: true }));
     const id = upV.id, versionId = upV.versionId;
@@ -243,6 +267,8 @@ async function run() {
     console.log('\n[stored-template ops]');
     check('render by templateId', text(await call('render_document', { templateId: id, data: { customer: 'ById', total: 5 }, convertTo: 'html' })).includes('ById'));
     check('render by versionId', text(await call('render_document', { templateId: versionId, data: { customer: 'ByVer', total: 5 }, convertTo: 'html' })).includes('ByVer'));
+    const inspId = await call('inspect_template', { templateId: id });
+    check('inspect by templateId lists {d.customer}', !!inspId.structuredContent?.tags?.includes('{d.customer}'), why(inspId));
     check('download by id', !(await call('download_template', { templateId: id })).isError);
     check('download by versionId', !(await call('download_template', { templateId: versionId })).isError);
     check('download asAttachment = resource', typeOf(await call('download_template', { templateId: id, asAttachment: true })) === 'resource');
@@ -250,7 +276,9 @@ async function run() {
     check(IS_STDIO ? 'download outputPath writes (stdio)' : 'download outputPath rejected (HTTP)', IS_STDIO ? text(dOut).includes('bytes') : dOut.isError === true);
     check('update name+category+tags', !(await call('update_template_metadata', { templateId: id, name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'] })).isError);
     check('update deployedAt', !(await call('update_template_metadata', { templateId: id, deployedAt: 42000000000 })).isError);
-    // GET /template/{id}_sample.json — the sample dataset stored at upload, readable back as JSON.
+    // 1.6.0's \`id\` is a deprecated alias of moveToTemplateId: two different destinations are refused before any API call.
+    check('update id ≠ moveToTemplateId rejected', (await call('update_template_metadata', { templateId: versionId, id: '1', moveToTemplateId: '2' })).isError === true);
+    // sample: true → GET /template/{id}_sample.json — the sample dataset stored at upload, readable back as JSON.
     const smp = await call('download_template', { templateId: upS.id, sample: true });
     check('download sample dataset (JSON, inline)', typeOf(smp) === 'text' && text(smp).includes('SAMPLE-X'), why(smp));
     check('sample on a template without one → isError', (await call('download_template', { templateId: upL.templateId, sample: true })).isError === true);

@@ -32,7 +32,10 @@ export const RenderDocumentSchema = z.object(renderDocumentSchema)
 
 export const UploadTemplateSchema = z.object(uploadTemplateSchema);
 
-export const UpdateTemplateSchema = z.object(updateTemplateMetadataSchema);
+export const UpdateTemplateSchema = z.object(updateTemplateMetadataSchema).refine(
+  (d) => d.id === undefined || d.moveToTemplateId === undefined || d.id === d.moveToTemplateId,
+  { message: 'id is the deprecated name of moveToTemplateId: pass only moveToTemplateId', path: ['id'] }
+);
 
 export const DeleteTemplateSchema = z.object(deleteTemplateSchema);
 

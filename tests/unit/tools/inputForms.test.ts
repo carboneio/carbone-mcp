@@ -3,6 +3,7 @@ import { convertDocumentSchemaFor } from '../../../src/tools/convert.js';
 import { renderDocumentSchemaFor } from '../../../src/tools/render.js';
 import { uploadTemplateSchemaFor, downloadTemplateSchemaFor } from '../../../src/tools/templates.js';
 import { handleGetCapabilities } from '../../../src/tools/info.js';
+import { transportToolsFor } from '../../../src/tools/index.js';
 
 const STDIO = { allowLocalPath: true, allowFileOutput: true };
 const HTTP = { allowLocalPath: false, allowFileOutput: false };
@@ -48,5 +49,62 @@ describe('transport-dependent schema wording', () => {
     expect(stdio).toMatch(/a local file path, an HTTPS URL/);
     expect(http).toMatch(/not accepted over HTTP/);
     expect(http).not.toMatch(/\*\*Accepted file input:\*\* a local file path/);
+  });
+});
+
+describe('transport variants are built once and cached', () => {
+  test('the same I/O modes always return the same wrapped schemas (registerTools runs per HTTP request)', () => {
+    expect(transportToolsFor(HTTP)).toBe(transportToolsFor({ ...HTTP }));
+    expect(transportToolsFor(STDIO)).toBe(transportToolsFor({ ...STDIO }));
+    expect(transportToolsFor(HTTP)).not.toBe(transportToolsFor(STDIO));
+  });
+
+  test('the document tools\' annotations are part of the cached variant: not read-only over stdio', () => {
+    expect(transportToolsFor(STDIO).documentToolHints)
+      .toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
+    expect(transportToolsFor(HTTP).documentToolHints)
+      .toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
+    expect(transportToolsFor({ ...STDIO }).documentToolHints).toBe(transportToolsFor(STDIO).documentToolHints);
+  });
+
+  test('tool descriptions follow the transport as well as the parameters', () => {
+    const http = transportToolsFor(HTTP);
+    const stdio = transportToolsFor(STDIO);
+    expect(http.convertDocumentDescription).toMatch(/local file paths are not accepted over HTTP/);
+    expect(http.renderDocumentDescription).toMatch(/local file paths are not accepted over HTTP/);
+    expect(stdio.convertDocumentDescription).toMatch(/a local file path, an HTTPS URL/);
+  });
+});
+
+describe('input formats (live: legacy binary DOC/XLS/PPT are rejected as input)', () => {
+  test('file/template descriptions list RTF and PDF, not DOC, XLS or PPT as accepted inputs', () => {
+    for (const d of [
+      desc(convertDocumentSchemaFor(HTTP).file),
+      desc(renderDocumentSchemaFor(HTTP).template),
+      desc(uploadTemplateSchemaFor(HTTP).template),
+    ]) {
+      const accepted = d.match(/Supported input formats: ([^.]+)\./)?.[1] ?? '';
+      expect(accepted).toMatch(/\bRTF\b/);
+      expect(accepted).toMatch(/\bPDF\b/);
+      expect(accepted).not.toMatch(/\b(DOC|XLS|PPT)\b/);
+      expect(d).toMatch(/DOC, XLS and PPT are rejected as input/);
+    }
+  });
+});
+
+describe('converter I (Carbone ICE) wording', () => {
+  test('says ICE applies the Security and Watermark PDF options — never that it ignores them', async () => {
+    const capabilities = (await handleGetCapabilities(STDIO)).content[0]!.text;
+    for (const text of [
+      desc(convertDocumentSchemaFor(STDIO).converter),
+      desc(renderDocumentSchemaFor(STDIO).converter),
+      capabilities,
+    ]) {
+      expect(text).not.toMatch(/silently ignored|only watermarks/i);
+      expect(text).toMatch(/Security/);
+      expect(text).toMatch(/Watermarks?\b/);
+      expect(text).toMatch(/ODT/);
+      expect(text).toContain('#converters-carbone-ice-limitations');
+    }
   });
 });

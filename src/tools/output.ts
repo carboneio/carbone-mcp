@@ -1,6 +1,6 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
+import { join, basename, extname } from 'node:path';
 import {
   writeOutputFile, toToolContent, isInlineFormat,
   type FormatArg, type TextContent, type ImageContent, type EmbeddedResource,
@@ -82,9 +82,15 @@ export async function deliverDocument(params: {
 
   // Binary, no explicit delivery requested.
   if (params.allowFileOutput) {
-    // stdio: save to a temp file (persistent, re-openable — no fragile one-time link).
-    const path = join(tmpdir(), basename(params.filename) || `carbone-output.${fmt}`);
-    await writeFile(path, params.buffer);
+    // stdio: save to a temp file (persistent, re-openable — no fragile one-time link). Each document
+    // gets its own fresh private directory (mkdtemp, 0o700), so the shared temp dir is never written
+    // directly: no existing file is overwritten and no planted symlink is followed.
+    const name = basename(params.filename);
+    const dir = await mkdtemp(join(tmpdir(), 'carbone-mcp-'));
+    const { path } = await writeOutputFile(
+      join(dir, name && name !== '.' && name !== '..' ? name : `carbone-output.${fmt}`),
+      params.buffer
+    );
     return {
       content: [{
         type: 'text',
@@ -113,6 +119,25 @@ export function oneTimeLinkResult(
         'request consumes it and the user would then get a 404.',
     }],
   };
+}
+
+/**
+ * Name a delivered document "<reportName>.<ext>" on the MCP side. Carbone resolves `reportName` during the
+ * templating pass, so a request that skips templating (convert_document, render_document with keepTags) gets
+ * "report.<ext>" back whatever reportName says (verified live). The name is used literally: path separators and
+ * control characters become "_", and an extension already matching the output is not doubled.
+ * Results without bytes (returnLink renderId, async message) are returned unchanged.
+ */
+export function withReportName<R extends { buffer: Buffer; filename: string } | { renderId: string } | { async: true; message: string }>(
+  result: R,
+  reportName: string | undefined,
+  convertTo: FormatArg | undefined
+): R {
+  if (!reportName || !('filename' in result)) return result;
+  const target = convertTo === undefined ? '' : (typeof convertTo === 'string' ? convertTo : convertTo.formatName);
+  const ext = extname(result.filename) || (target ? `.${target}` : '');
+  const name = reportName.replace(/[/\\\x00-\x1f]/g, '_');
+  return { ...result, filename: ext && name.toLowerCase().endsWith(ext.toLowerCase()) ? name : name + ext };
 }
 
 /**

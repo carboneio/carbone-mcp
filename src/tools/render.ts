@@ -1,21 +1,34 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
-import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
+import {
+  CONVERTERS, CONVERTER_DESCRIPTION, INPUT_FORMATS_DESCRIPTION, OUTPUT_FORMAT_DESCRIPTION, OutputFormatSchema,
+} from '../validation/formats.js';
 import { resolveFileInput, resolveJsonInput } from '../utils/file.js';
-import { deliver, type FileContext } from './output.js';
+import { deliver, withReportName, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
-import { type IoModes, STDIO_IO, inputForms, jsonRefForms, outputPathDescription } from './inputForms.js';
+import { type IoModes, STDIO_IO, inputForms, inputFormsShort, jsonRefForms, outputPathDescription } from './inputForms.js';
 
 export const renderDocumentToolName = 'render_document';
 
-export const renderDocumentDescription =
-  'Generate a document by merging a Carbone template with JSON data. ' +
-  'Two modes: (1) pass templateId to use a previously uploaded template; ' +
-  '(2) pass template (file path, URL, or base64) to upload and render in a single request without storing a template. ' +
-  'Supports output format conversion, multilingual rendering, currency conversion, ' +
-  'batch generation, and advanced PDF options (watermark, password, PDF/A). ' +
-  'Async mode: pass webhookUrl to render asynchronously — Carbone will POST the renderId to your URL when the document is ready. ' +
-  'Async mode is required when using batch generation (batchSplitBy).';
+/** Returned when not exactly one of templateId / template is given (render_document, inspect_template). */
+export const TEMPLATE_XOR_MESSAGE = 'Provide either templateId or template, not both (and not neither).';
+
+export function renderDocumentDescriptionFor(io: IoModes): string {
+  return 'Generate a document by merging a Carbone template with JSON data. ' +
+    'Two modes: (1) pass templateId to use a previously uploaded template; ' +
+    '(2) pass template (' + inputFormsShort(io) + ') to upload and render in a single request without storing a template. ' +
+    'Supports output format conversion, multilingual rendering, currency conversion, ' +
+    'batch generation, and advanced PDF options (watermark, password, PDF/A). ' +
+    'Without data, every tag resolves to empty; to keep the tags as written, pass keepTags: true ' +
+    '(e.g. to proof a stored template), or use convert_document for a file. ' +
+    'Async mode: pass webhookUrl. This tool then returns only Carbone\'s acceptance message, never the document: ' +
+    'Carbone POSTs { "success": true, "data": { "renderId": "..." } } to the webhook, whose server downloads the document ' +
+    'itself from GET /render/{renderId} (one-time, no auth). You cannot fetch it from here. ' +
+    'Batch generation (batchSplitBy) is always delivered this way.';
+}
+
+/** Default (stdio) wording. */
+export const renderDocumentDescription = renderDocumentDescriptionFor(STDIO_IO);
 
 export function renderDocumentSchemaFor(io: IoModes) {
   return {
@@ -39,7 +52,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Inline template for one-shot render without storing a template first. ' + inputForms(io) +
         'The template is uploaded and rendered in a single API request — no Template ID is returned. ' +
         'Use this for ephemeral renders; use upload_template + templateId when you need to reuse the template. ' +
-        'Supported formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown (MD), PDF, and more. ' +
+        INPUT_FORMATS_DESCRIPTION + ' ' +
         'Mutually exclusive with templateId — provide exactly one, never both.'
       ),
 
@@ -55,63 +68,21 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Access fields with {d.fieldName} tags. ' +
         'Nested objects: {d.customer.name}. ' +
         'Array loops: {d.items[i].description} … {d.items[i+1]}. ' +
-        'Conditionals: {d.status == "active" ? "Yes" : "No"}. ' +
-        'Optional — if omitted, defaults to an empty object {} so the template is simply converted ' +
-        '(tags resolve to empty). Useful to convert a stored template by templateId without data injection. ' +
+        'Conditions: {d.status:ifEQ(active):show(Yes):elseShow(No)}. ' +
+        'Optional: if omitted, {} is sent, so every tag resolves to empty ("Hello {d.name}!" becomes "Hello !"). ' +
+        'To keep the tags as written instead, pass keepTags: true (and no data). ' +
         'Instead of inlining a large dataset, you may pass a STRING reference to the JSON: ' +
         jsonRefForms(io) + ' — it is read and parsed server-side.'
       ),
 
-    convertTo: z
-      .union([
-        z.enum(OUTPUT_FORMATS),
-        z.object({
-          formatName: z.enum(OUTPUT_FORMATS).describe('Target format name.'),
-          formatOptions: z
-            .record(z.string(), z.unknown())
-            .optional()
-            .describe(
-              'Advanced format options object. Examples by format: ' +
-              'PDF — { "EncryptFile": true, "DocumentOpenPassword": "secret", "DocumentPermissionPassword": "owner" } password-protect; ' +
-              'PDF — { "Watermarks": [{ "text": "DRAFT", "opacity": 0.2, "rotation": -45, "fontsize": 60 }] } up to 5 watermarks; ' +
-              'PDF — { "SelectPdfVersion": 1 } PDF/A-1b compliance (use 2 for PDF/A-2, 3 for PDF/A-3); ' +
-              'PDF — { "PageRange": "1-3,5" } export specific pages only; ' +
-              'PDF — { "ConvertSlideshow": true } convert each slide to a separate PDF page; ' +
-              'Images (PNG/JPG/WEBP) — { "Quality": 90 } compression quality 0-100; ' +
-              'Images — { "density": 150 } DPI for rasterisation (default 96); ' +
-              'CSV — { "fieldSeparator": ";" } custom column separator.'
-            ),
-        }),
-      ])
+    convertTo: OutputFormatSchema
       .optional()
-      .describe(
-        'Output format. If omitted, the output matches the template format. ' +
-        'Documents : "pdf", "docx", "xlsx", "pptx", "odt", "ods", "odp", "odg", "rtf", "epub". ' +
-        'Web/text  : "html", "xhtml", "txt", "csv", "md", "xml", "idml". ' +
-        'Images    : "png", "jpg", "jpeg", "webp", "svg", "tiff", "bmp", "gif". ' +
-        'Archive   : "zip" (use with batchSplitBy for batch output). ' +
-        'Simple usage: "pdf". ' +
-        'Advanced usage: { "formatName": "pdf", "formatOptions": { ... } } for PDF-specific options.'
-      ),
+      .describe('Output format. If omitted, the output keeps the template format. ' + OUTPUT_FORMAT_DESCRIPTION),
 
     converter: z
       .enum(CONVERTERS)
       .optional()
-      .describe(
-        'Converter engine. Only relevant when convertTo is "pdf" (or an image rasterised from a document). ' +
-        '"L" — LibreOffice (default): best all-round engine for DOCX, XLSX, PPTX, ODT, ODS, ODP. ' +
-        '"O" — OnlyOffice: highest fidelity for Microsoft Office formats (DOCX, XLSX, PPTX). ' +
-        '"C" — Chromium: best for HTML/CSS/JS templates — full browser rendering. ' +
-        '"I" — Carbone ICE (Instant Converter Engine, Carbone 5.14.0+): DOCX → PDF ONLY, no third-party converter — ' +
-        'up to 60x faster than LibreOffice on a 1000-page DOCX (3x on a one-page document). ' +
-        'Any other input or output format is REJECTED — use another converter for those. ' +
-        'PDF options: only Watermarks are applied. EncryptFile, DocumentOpenPassword, RestrictPermissions and the ' +
-        'other security options are SILENTLY IGNORED — the PDF comes back readable by anyone, with no error — ' +
-        'so NEVER pick "I" when the request needs a password or restricted permissions; use "L" for those. ' +
-        'Also unsupported: WEBP and EMF/WMF images, table of contents, SmartArt, complex charts, footnotes/endnotes, ' +
-        'comments, tracked changes, form fields, equations, bookmarks and links; a missing font falls back to Noto Sans. ' +
-        'If omitted, LibreOffice is used by default.'
-      ),
+      .describe(CONVERTER_DESCRIPTION),
 
     timezone: z
       .string()
@@ -151,12 +122,13 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .string()
       .optional()
       .describe(
-        'Carbone alias expressions evaluated once before rendering, available everywhere in the template. ' +
-        'Used to pre-compute reusable values or shorten repetitive paths. ' +
-        'Syntax: "{#aliasName = expression}". ' +
-        'Example: "{#fullName = d.firstName + \\" \\" + d.lastName}{#total = d.price * d.qty}". ' +
-        'Aliases are then used in the template as {#fullName}, {#total}. ' +
-        'Documentation: https://carbone.io/documentation.html#alias'
+        'Carbone alias definitions applied to the whole template, as if written in it. An alias is a shortcut to a ' +
+        'data path, not a variable: it stores no value and computes nothing (no arithmetic, no concatenation). ' +
+        'Define with {#alias = d.path}, optionally with $parameters: {#mealOf($weekday) = d[weekday = $weekday]}. ' +
+        'Use them in the template with {$alias}, e.g. {$mealOf(2).name}. ' +
+        'Example: "{#buyer = d.order.customer}", then {$buyer.name} in the template renders d.order.customer.name. ' +
+        'To store a computed value, use the :set formatter instead. ' +
+        'Documentation: https://carbone.io/documentation/design/substitutions/aliases.html#alias'
       ),
 
     reportName: z
@@ -167,7 +139,9 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Carbone automatically appends the extension that matches convertTo, so do not include one — ' +
         'passing "invoice.pdf" yields "invoice.pdf.pdf". ' +
         'Supports Carbone tags resolved against the data at render time. ' +
-        'Examples: "invoice" (static), "{d.type}-{d.id}" (dynamic), "{d.client}-{d.date:formatD(YYYY-MM)}".'
+        'Examples: "invoice" (static), "{d.type}-{d.id}" (dynamic), "{d.client}-{d.date:formatD(YYYY-MM)}". ' +
+        'With keepTags, Carbone skips templating and ignores reportName, so this server names the file ' +
+        '"<reportName>.<ext>" itself, literally (tags are not resolved).'
       ),
 
     enum: z
@@ -179,7 +153,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Example: { "STATUS": { "1": "Active", "2": "Inactive", "3": "Pending" }, "ROLE": { "A": "Admin", "U": "User" } }. ' +
         'Template usage: {d.status:convEnum(STATUS)}, {d.role:convEnum(ROLE)}. ' +
         'May instead be passed by reference as a string — ' + jsonRefForms(io) + '. ' +
-        'Documentation: https://carbone.io/documentation.html#convenum-type-'
+        'Documentation: https://carbone.io/documentation/design/advanced-features/key-value-mapping.html#convenum-type'
       ),
 
     translations: z
@@ -191,7 +165,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Template usage: {t(greeting)} is replaced by the matching string for the active locale. ' +
         'Example: { "fr-fr": { "greeting": "Bonjour", "total": "Total" }, "en-us": { "greeting": "Hello", "total": "Total" } }. ' +
         'These dictionaries get large, so you may instead pass a string reference — ' + jsonRefForms(io) + '. ' +
-        'Documentation: https://carbone.io/documentation.html#translations'
+        'Documentation: https://carbone.io/documentation/design/advanced-features/translations-i18n.html'
       ),
 
     currencySource: z
@@ -212,7 +186,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'The :formatC formatter converts amounts from currencySource to this currency using currencyRates. ' +
         'Must be set together with currencySource and currencyRates. ' +
         'Example: "USD" to display prices in US dollars. ' +
-        'Documentation: https://carbone.io/documentation.html#formatc-precisionorformat-'
+        'Documentation: https://carbone.io/documentation/design/formatters/currency.html#formatc-precisionorformat-targetcurrency'
       ),
 
     currencyRates: z
@@ -230,14 +204,13 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .boolean()
       .optional()
       .describe(
-        'If true, SKIP templating entirely and leave every Carbone tag in the document exactly as written — ' +
+        'If true, SKIP templating entirely and leave every Carbone tag in the document exactly as written: ' +
         '{d.customer} comes out as the literal text "{d.customer}", formatters included. ' +
         'Use it to proof a stored template in another format (e.g. render templateId to PDF to check the tag ' +
         'layout), or to convert a template between formats while it stays a template. ' +
-        'Mutually exclusive with data — passing both is rejected, because data would have nothing to fill. ' +
-        'Note the difference from omitting data: no data renders the template with an EMPTY dataset, so every ' +
-        'tag resolves to an empty string; keepTags leaves the tags themselves in place. ' +
-        'Requires Carbone 5.9.0+ (carbone-version: 5).'
+        'Mutually exclusive with data: passing both is rejected, because data would have nothing to fill. ' +
+        'Not the same as omitting data: no data renders the template with an EMPTY dataset, so every ' +
+        'tag resolves to an empty string; keepTags leaves the tags themselves in place.'
       ),
 
     hardRefresh: z
@@ -253,51 +226,64 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .string()
       .optional()
       .describe(
-        'JSON path to the array in your data that drives batch generation. ' +
-        'One document is generated per element of the array. ' +
-        'Two forms: "d" when data itself IS the array (one report per top-level element), or "d.arrayName" ' +
-        'to split on a child array. ' +
-        'Example: "d.invoices" — produces one PDF per item in data.invoices. ' +
-        'Example: "d.employees" — produces one contract per employee. ' +
-        'Carbone Cloud allows 1 to 100 objects per batch (on-premise follows the nbReportMaxPerBatch setting). ' +
-        'Batch is ALWAYS asynchronous — webhookUrl is required. ' +
-        'Pair with batchOutput to choose ZIP or a single concatenated PDF, and batchReportName to name each document.'
+        'Batch generation: one document per object of an array. ' +
+        'Use "d" when data itself is an array, or "d.items" for a direct child array of data. ' +
+        'Requires webhookUrl (batch is always asynchronous: the result goes to the webhook, not to this tool). ' +
+        'At most 100 objects on Carbone Cloud. Combine with batchOutput and batchReportName. ' +
+        'Docs: https://carbone.io/documentation/developer/http-api/generate-reports.html#batch-processing'
       ),
 
     batchOutput: z
       .enum(['zip', 'pdf'])
       .optional()
       .describe(
-        'How the batch result is packaged. Defaults to "zip". ' +
-        '"zip" — every generated document is bundled into a single ZIP archive (use batchReportName to name each entry). ' +
-        '"pdf" — all documents are CONCATENATED into one continuous PDF instead of being zipped; ' +
-        'this requires convertTo to be "pdf" as well. ' +
-        'Must be used together with batchSplitBy.'
+        'Batch result type, with batchSplitBy. ' +
+        '"zip" (default): an archive of all generated documents. ' +
+        '"pdf": the generated PDFs concatenated into one file; requires convertTo "pdf".'
       ),
 
     batchReportName: z
       .string()
       .optional()
       .describe(
-        'Filename pattern for each individual document inside the batch ZIP. Supports Carbone tags. ' +
-        'Tags are resolved against the item\'s data (relative path) or the full dataset (absolute path). ' +
-        'Examples: "invoice-{d.id}.pdf", "{d.client.name}-{d.date}.docx". ' +
-        'Carbone sanitises the result — path separators, "..", Windows-forbidden and control characters ' +
-        'each become an underscore — and appends an index to duplicates ("report_1.pdf", "report_2.pdf"), ' +
-        'so a pattern that resolves to the same name for several items will not silently drop documents. ' +
-        'Only meaningful with batchOutput: "zip"; a concatenated "pdf" batch is a single file. ' +
-        'Must be used together with batchSplitBy.'
+        'Name of each file inside the batch ZIP, WITHOUT extension (Carbone appends it). ' +
+        'Carbone tags are resolved against each batch item, e.g. "invoice-{d.id}". ' +
+        'Ignored when batchOutput is "pdf". From v5.14, an index is appended to every file ' +
+        'as soon as two names collide (invoice_1.pdf, invoice_2.pdf). Requires batchSplitBy.'
+      ),
+
+    preReleaseFeatureIn: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'Pre-release feature level for this render only: features and fixes introduced up to this tag apply, ' +
+        'later ones stay disabled. Overrides the server default; a tag set in the template overrides it. ' +
+        'Example: 5000000. Docs: https://carbone.io/documentation/design/overview/version-lifecycle.html#pre-release-features'
+      ),
+
+    failOn: z
+      .array(z.enum(['IMAGE_URL_ERROR']))
+      .optional()
+      .describe(
+        'Conditions that stop the render and return an error (Carbone v5.15.0+). ' +
+        '"IMAGE_URL_ERROR": an image that cannot be downloaded from its URL fails the render, instead of being ' +
+        'replaced with the broken-image placeholder. Empty image values are skipped; base64 images, barcodes and ' +
+        'charts are not concerned. Example: ["IMAGE_URL_ERROR"]. ' +
+        'Docs: https://carbone.io/documentation/developer/http-api/generate-reports.html#fail-on'
       ),
 
     webhookUrl: z
       .url()
       .optional()
       .describe(
-        'Webhook URL to enable asynchronous rendering. ' +
-        'When provided, Carbone returns immediately and POSTs { "success": true, "data": { "renderId": "..." } } to this URL when the document is ready. ' +
-        'The default render timeout is extended to 5 minutes on Carbone Cloud (vs 60 s for synchronous requests). ' +
-        'Download the document with GET /render/:renderId once the webhook is received. ' +
-        'Required when using batchSplitBy (batch generation is always asynchronous). ' +
+        'Webhook URL that enables asynchronous rendering (render timeout raised to 5 minutes). ' +
+        'This tool then returns only Carbone\'s acceptance message, never the document. ' +
+        'When the document is ready, Carbone POSTs { "success": true, "data": { "renderId": "..." } } to this URL; ' +
+        'the server behind it must download the document itself with GET /render/{renderId} on the Carbone API ' +
+        '(one-time, no auth). You cannot fetch it from here. ' +
+        'Required for batchSplitBy: batch output is always delivered this way. ' +
+        'outputPath, asAttachment and returnLink are ignored in this mode. ' +
         'Example: "https://your-server.com/carbone-webhook".'
       ),
 
@@ -315,13 +301,13 @@ export function renderDocumentSchemaFor(io: IoModes) {
 
     egressAuthorization: z
       .string()
-      .max(512)
+      .max(511)
       .optional()
       .describe(
         'Value for the Authorization header Carbone adds to its OUTBOUND (egress) requests while rendering — ' +
         'fetching external images ({d.imageUrl}), external PDFs (:appendFile / :attachFile), and calling webhooks. ' +
         'For example "Bearer abc123" or "my-secret" makes Carbone send `authorization: <value>` to those hosts. ' +
-        'Only the authorization header can be customised; max 512 characters. ' +
+        'Only the authorization header can be customised; max 511 characters. ' +
         'For webhook calls specifically, webhookHeaders.authorization (if set) overrides this value.'
       ),
 
@@ -339,7 +325,9 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .describe(
         'If true, return the document as a downloadable file attachment (a base64 EmbeddedResource), for any format. ' +
         'Default delivery: text and png/jpg/gif/webp are returned inline; other binary outputs (PDF, Office, …) are ' +
-        'saved to a temp file in stdio mode (path returned), or returned as an attachment in HTTP mode. ' +
+        (io.allowFileOutput
+          ? 'saved to a temp file (path returned). '
+          : 'returned as an attachment. ') +
         'Ignored when outputPath or returnLink is set.'
       ),
 
@@ -350,7 +338,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'If true, generate the document and return a public download URL instead of the file contents. ' +
         'The link is SHORT-LIVED and ONE-TIME — Carbone deletes the file after the first download — so it is ' +
         'meant for the end user to download once (do not fetch it programmatically). Works in stdio and HTTP. ' +
-        'Mutually exclusive with outputPath, asAttachment, and webhookUrl (async).'
+        'Mutually exclusive with outputPath and asAttachment. Ignored when webhookUrl is set (no link is returned).'
       ),
   };
 }
@@ -364,7 +352,7 @@ export async function handleRenderDocument(
     template?: string;
     data?: Record<string, unknown> | unknown[] | string;
     convertTo?: z.infer<typeof renderDocumentSchema.convertTo>;
-    converter?: string;
+    converter?: (typeof CONVERTERS)[number];
     timezone?: string;
     lang?: string;
     complement?: Record<string, unknown> | string;
@@ -380,6 +368,8 @@ export async function handleRenderDocument(
     batchSplitBy?: string;
     batchOutput?: 'zip' | 'pdf';
     batchReportName?: string;
+    preReleaseFeatureIn?: number;
+    failOn?: 'IMAGE_URL_ERROR'[];
     webhookUrl?: string;
     webhookHeaders?: Record<string, string>;
     egressAuthorization?: string;
@@ -395,7 +385,7 @@ export async function handleRenderDocument(
   if ((args.templateId != null) === (args.template != null)) {
     return {
       isError: true,
-      content: [{ type: 'text' as const, text: 'Provide either templateId or template, not both (and not neither).' }],
+      content: [{ type: 'text' as const, text: TEMPLATE_XOR_MESSAGE }],
     };
   }
 
@@ -417,6 +407,9 @@ export async function handleRenderDocument(
   }
 
   try {
+    // Authenticate first: a caller without credentials must not be able to trigger any URL download.
+    client.assertCanAuthenticate(options);
+
     // Gates apply to the template AND every by-reference JSON param (data, complement, …).
     const resolveOpts = {
       isCloud: client.isCloud,
@@ -448,7 +441,8 @@ export async function handleRenderDocument(
       currencyRates: currencyRates as Record<string, number> | undefined,
     }, options);
 
-    return deliver(result, args.convertTo, {
+    // Without templating (keepTags), Carbone ignores reportName: name the delivered file here instead.
+    return deliver(args.keepTags ? withReportName(result, args.reportName, args.convertTo) : result, args.convertTo, {
       outputPath: args.outputPath,
       asAttachment: args.asAttachment,
       allowFileOutput: fileCtx?.allowFileOutput ?? false,

@@ -5,14 +5,29 @@ export interface UploadTemplateVersionedResult {
   type: string;
   size: number;
   createdAt: number;
+  /** UTC Unix timestamp of deployment; 0 when this version is not explicitly deployed. */
+  deployedAt?: number;
 }
 
 // Response when versioning is disabled (backward compat)
 export interface UploadTemplateLegacyResult {
   templateId: string;
+  templateExtension?: string;
 }
 
 export type UploadTemplateResult = UploadTemplateVersionedResult | UploadTemplateLegacyResult;
+
+/** PATCH /template/{id} response: the patched versionId, plus every field sent in the request, echoed back. */
+export interface UpdateTemplateResult {
+  versionId: string;
+  id?: string;
+  name?: string;
+  comment?: string;
+  category?: string;
+  tags?: string[];
+  deployedAt?: number;
+  expireAt?: number;
+}
 
 export interface TemplateListItem {
   id: string;
@@ -38,4 +53,17 @@ export interface TemplateListResponse {
 export interface ApiStatus {
   version: string;
   message: string;
+}
+
+/**
+ * `data.debug` of a render with the undocumented `isDebugActive` option (POST /render/…, JSON mode).
+ * Measured on api.carbone.io: { markers: string[], sample: { data, complement }, error: {}, signatures: [], metrics }.
+ * Every field is left loose: inspect_template normalises it before it reaches the output schema.
+ */
+export interface TemplateDebugInfo {
+  markers?: unknown;
+  sample?: unknown;
+  error?: unknown;
+  signatures?: unknown;
+  [key: string]: unknown;
 }

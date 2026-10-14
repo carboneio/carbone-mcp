@@ -16,7 +16,7 @@ import {
 } from '../../../src/tools/templates.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
-import { CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
+import { CarboneAuthError, CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
 
 // ─── handleListTemplates ─────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ describe('handleUploadTemplate', () => {
   });
 
   const makeClient = (result: object) =>
-    ({ uploadTemplate: vi.fn().mockResolvedValue(result) }) as unknown as CarboneClient;
+    ({ assertCanAuthenticate: vi.fn(), uploadTemplate: vi.fn().mockResolvedValue(result) }) as unknown as CarboneClient;
 
   test('resolves template input before uploading', async () => {
     const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 1024 });
@@ -196,6 +196,48 @@ describe('handleUploadTemplate', () => {
     expect(result.structuredContent).toEqual({ name: 'Legacy Template', templateId: 'sha256legacy' });
   });
 
+  test('surfaces createdAt and a deployed version (deployedAt > 0)', async () => {
+    const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 10, createdAt: 1700000000, deployedAt: 1700000000 });
+    const result = await handleUploadTemplate({ template: 'data', name: 'T' }, client);
+
+    expect(result.structuredContent).toEqual({
+      name: 'T', id: 'tpl1', versionId: 'v1', type: 'docx', size: 10, createdAt: 1700000000, deployedAt: 1700000000,
+    });
+    expect((result.content[0] as { text: string }).text).toContain('Deployed at : 1700000000');
+  });
+
+  test('deployedAt 0: says the version is not explicitly deployed and how to make it the one used', async () => {
+    const client = makeClient({ id: 'tpl1', versionId: 'v2', type: 'docx', size: 10, createdAt: 1700000000, deployedAt: 0 });
+    const result = await handleUploadTemplate({ template: 'data', id: 'tpl1' }, client);
+
+    expect(result.structuredContent).toMatchObject({ versionId: 'v2', deployedAt: 0 });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain('not explicitly deployed: if another version of this Template ID is deployed, renders by Template ID keep using it');
+    expect(text).toContain('(templateId = this Version ID, deployedAt = 42000000000), or render it by its Version ID');
+    // A fresh Template ID with deployedAt 0 still renders (verified live), so never claim the version is unusable.
+    expect(text).not.toMatch(/not deployed\)|cannot|unusable/);
+  });
+
+  test('treats "deployedAt": null as absent (no structured field, no deployment line)', async () => {
+    const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 10, createdAt: 1700000000, deployedAt: null });
+    const result = await handleUploadTemplate({ template: 'data', name: 'T' }, client);
+
+    expect(result.structuredContent).not.toHaveProperty('deployedAt');
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).not.toContain('Deployed at');
+    expect(text).not.toContain('null');
+  });
+
+  test('surfaces templateExtension in legacy mode, and omits name when none was given', async () => {
+    const client = makeClient({ templateId: 'sha256legacy', templateExtension: 'docx' });
+    const result = await handleUploadTemplate({ template: 'data', versioning: false }, client);
+
+    expect(result.structuredContent).toEqual({ templateId: 'sha256legacy', templateExtension: 'docx' });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain('Extension   : docx');
+    expect(text).not.toContain('Name');
+  });
+
   test('passes all optional fields to client', async () => {
     const client = makeClient({ id: 'tpl1', versionId: 'v1', type: 'docx', size: 0 });
 
@@ -228,6 +270,7 @@ describe('handleUploadTemplate', () => {
 
   test('returns isError on client error', async () => {
     const client = {
+      assertCanAuthenticate: vi.fn(),
       uploadTemplate: vi.fn().mockRejectedValue(new CarboneError('Upload failed', 400)),
     } as unknown as CarboneClient;
 
@@ -239,13 +282,27 @@ describe('handleUploadTemplate', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].type).toBe('text');
   });
+
+  test('checks authentication BEFORE resolving the template (no URL is fetched without credentials)', async () => {
+    vi.mocked(resolveFileInput).mockClear();
+    const client = {
+      assertCanAuthenticate: vi.fn(() => { throw new CarboneAuthError('No API key provided.'); }),
+      uploadTemplate: vi.fn(),
+    } as unknown as CarboneClient;
+
+    const result = await handleUploadTemplate({ template: 'https://example.com/t.docx', name: 'T' }, client);
+
+    expect(result.isError).toBe(true);
+    expect(resolveFileInput).not.toHaveBeenCalled();
+    expect(vi.mocked(client.uploadTemplate)).not.toHaveBeenCalled();
+  });
 });
 
 // ─── handleUpdateTemplateMetadata ─────────────────────────────────────────────
 
 describe('handleUpdateTemplateMetadata', () => {
-  const makeClient = () =>
-    ({ updateTemplate: vi.fn().mockResolvedValue(undefined) }) as unknown as CarboneClient;
+  const makeClient = (result: object = { versionId: 'sha-v1' }) =>
+    ({ updateTemplate: vi.fn().mockResolvedValue(result) }) as unknown as CarboneClient;
 
   test('calls client.updateTemplate with args', async () => {
     const client = makeClient();
@@ -257,21 +314,60 @@ describe('handleUpdateTemplateMetadata', () => {
     );
   });
 
-  test('returns success message', async () => {
+  test('returns a success message naming the patched version', async () => {
     const client = makeClient();
     const result = await handleUpdateTemplateMetadata({ templateId: 'tpl1' }, client);
 
     expect(result.content[0].type).toBe('text');
     if (result.content[0].type === 'text') {
-      expect(result.content[0].text).toContain('updated successfully');
+      expect(result.content[0].text).toContain('Template metadata updated');
+      expect(result.content[0].text).toContain('sha-v1');
     }
   });
 
-  test('passes all optional fields to client', async () => {
+  test('returns the patched versionId and echoed fields as structured content (unknown keys dropped)', async () => {
+    const client = makeClient({ versionId: 'sha-v1', name: 'N', tags: ['a', 'b'], expireAt: 0, unexpected: true });
+    const result = await handleUpdateTemplateMetadata({ templateId: 'tpl1', name: 'N', tags: ['b', 'a'], expireAt: 0 }, client);
+
+    expect(result.structuredContent).toEqual({ versionId: 'sha-v1', name: 'N', tags: ['a', 'b'], expireAt: 0 });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain('version sha-v1 (the currently deployed version of Template ID tpl1)');
+    expect(text).toContain('"expireAt":0');
+  });
+
+  test('real API response: "deployedAt": null (not sent) is treated as absent', async () => {
+    // Shape returned by api.carbone.io for a PATCH of name + category + tags (deployedAt not sent).
+    const client = makeClient({
+      name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'], deployedAt: null, versionId: '4dc8abc',
+    });
+    const result = await handleUpdateTemplateMetadata(
+      { templateId: '1530905183164918624', name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'] },
+      client
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({
+      versionId: '4dc8abc', name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'],
+    });
+    expect((result.content[0] as { text: string }).text).not.toContain('null');
+  });
+
+  test('a Version ID in templateId is reported as that exact version', async () => {
+    const client = makeClient({ versionId: 'sha-v2', deployedAt: 1700000000 });
+    const result = await handleUpdateTemplateMetadata({ templateId: 'sha-v2', deployedAt: 42000000000 }, client);
+
+    expect(result.structuredContent).toEqual({ versionId: 'sha-v2', deployedAt: 1700000000 });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain('updated for version sha-v2.');
+    expect(text).not.toContain('currently deployed');
+  });
+
+  test('passes all optional fields to client, mapping moveToTemplateId to the API field id', async () => {
     const client = makeClient();
     await handleUpdateTemplateMetadata(
       {
-        templateId: 'tpl1',
+        templateId: 'sha-v1',
+        moveToTemplateId: '1234567890',
         name: 'N',
         comment: 'C',
         category: 'legal',
@@ -284,6 +380,7 @@ describe('handleUpdateTemplateMetadata', () => {
 
     expect(vi.mocked(client.updateTemplate)).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: '1234567890',
         comment: 'C',
         category: 'legal',
         tags: ['v2'],
@@ -292,6 +389,34 @@ describe('handleUpdateTemplateMetadata', () => {
       }),
       undefined
     );
+    expect(vi.mocked(client.updateTemplate).mock.calls[0][0]).not.toHaveProperty('moveToTemplateId');
+  });
+
+  test('accepts the deprecated 1.6.0 id as an alias of moveToTemplateId', async () => {
+    const client = makeClient();
+    await handleUpdateTemplateMetadata({ templateId: 'sha-v1', id: '1234567890' }, client);
+
+    expect(vi.mocked(client.updateTemplate)).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: 'sha-v1', id: '1234567890' }), undefined);
+  });
+
+  test('accepts id and moveToTemplateId together when they agree', async () => {
+    const client = makeClient();
+    const result = await handleUpdateTemplateMetadata(
+      { templateId: 'sha-v1', id: '1234567890', moveToTemplateId: '1234567890' }, client);
+
+    expect(result.isError).toBeUndefined();
+    expect(vi.mocked(client.updateTemplate).mock.calls[0][0]).toMatchObject({ id: '1234567890' });
+  });
+
+  test('rejects id and moveToTemplateId with different values, without calling the API', async () => {
+    const client = makeClient();
+    const result = await handleUpdateTemplateMetadata(
+      { templateId: 'sha-v1', id: '111', moveToTemplateId: '222' }, client);
+
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as { text: string }).text).toMatch(/moveToTemplateId "222" and id "111"/);
+    expect(vi.mocked(client.updateTemplate)).not.toHaveBeenCalled();
   });
 
   test('returns isError on client error', async () => {
@@ -434,7 +559,7 @@ describe('handleDownloadTemplate', () => {
     await handleDownloadTemplate({ templateId: 'tpl1' }, client);
 
     expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith(
-      'tpl1', expect.objectContaining({ sample: undefined }));
+      'tpl1', expect.objectContaining({ sample: false }));
   });
 
   test('sample:true requests the sample dataset', async () => {
@@ -472,6 +597,47 @@ describe('handleDownloadTemplate', () => {
     const result = await handleDownloadTemplate({ templateId: 'tpl1' }, client);
 
     expect(result.content[0].type).toBe('resource');
+  });
+
+  describe('sample download (returned filename without extension)', () => {
+    const sampleClient = () => ({
+      downloadTemplate: vi.fn().mockResolvedValue({ buffer: Buffer.from('[{"data":{"a":1}}]'), filename: 'document' }),
+    }) as unknown as CarboneClient;
+    const stdio = { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 100 };
+
+    test('sample:true is delivered inline as JSON text', async () => {
+      const client = sampleClient();
+      const result = await handleDownloadTemplate({ templateId: 'tpl1', sample: true }, client, undefined, stdio);
+
+      expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1', { sample: true });
+      expect(result.content[0]).toEqual({ type: 'text', text: '[{"data":{"a":1}}]' });
+    });
+
+    test('a raw "<id>_sample.json" id is treated as sample:true (suffix not doubled)', async () => {
+      const client = sampleClient();
+      const result = await handleDownloadTemplate({ templateId: 'tpl1_sample.json', sample: true }, client, undefined, stdio);
+
+      expect(vi.mocked(client.downloadTemplate)).toHaveBeenCalledWith('tpl1', { sample: true });
+      expect(result.content[0]).toEqual({ type: 'text', text: '[{"data":{"a":1}}]' });
+    });
+
+    test('outputPath (stdio) saves it as json', async () => {
+      vi.mocked(writeOutputFile).mockResolvedValue({ path: '/tmp/sample.json', size: 18 });
+      const result = await handleDownloadTemplate(
+        { templateId: 'tpl1', sample: true, outputPath: '/tmp/sample.json' }, sampleClient(), undefined, stdio
+      );
+
+      expect(vi.mocked(writeOutputFile)).toHaveBeenCalledWith('/tmp/sample.json', expect.any(Buffer));
+      expect((result.content[0] as { text: string }).text).toBe('Document saved to /tmp/sample.json (18 bytes, json).');
+    });
+
+    test('asAttachment labels it application/json', async () => {
+      const result = await handleDownloadTemplate(
+        { templateId: 'tpl1', sample: true, asAttachment: true }, sampleClient(), undefined, stdio
+      );
+
+      expect(result.content[0]).toMatchObject({ type: 'resource', resource: { mimeType: 'application/json' } });
+    });
   });
 
   test('returns TextContent for HTML download', async () => {

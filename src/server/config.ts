@@ -13,6 +13,7 @@ export interface ServerConfig {
   maxFileBytes: number;
   requireClientAuth: boolean;
   allowPrivateNetwork: boolean;
+  allowedOriginHostnames: string[];
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, name: string): number {
@@ -30,6 +31,34 @@ function parseBool(value: string | undefined, fallback: boolean, name: string): 
     throw new Error(`Invalid ${name} value "${value}". Must be "true" or "false".`);
   }
   return value === 'true';
+}
+
+/**
+ * Comma-separated Origin hostnames. Each entry must be exactly what a browser Origin's hostname
+ * can be (it survives URL normalization unchanged), or `<scheme>://*` for a browser-extension
+ * scheme. Anything else (a full origin, a port, a wildcard) could never match, and would silently
+ * reject every browser client, so it is refused at startup.
+ */
+function parseOriginHostnames(value: string | undefined, name: string): string[] {
+  const entries = (value ?? '').split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+  for (const entry of entries) {
+    const extensionScheme = /^([a-z][a-z0-9+.-]*):\/\/\*$/.exec(entry)?.[1];
+    if (extensionScheme ? extensionScheme !== 'http' && extensionScheme !== 'https' : isOriginHostname(entry)) continue;
+    throw new Error(
+      `Invalid ${name} entry "${entry}". Must be a hostname without scheme, port, path or wildcard ` +
+      '(e.g. "app.example.com"), or "<scheme>://*" for browser extensions (e.g. "moz-extension://*").'
+    );
+  }
+  return entries;
+}
+
+function isOriginHostname(entry: string): boolean {
+  if (entry.includes('*')) return false;
+  try {
+    return new URL(`http://${entry}`).hostname === entry;
+  } catch {
+    return false;
+  }
 }
 
 export function loadConfig(): ServerConfig {
@@ -74,10 +103,12 @@ export function loadConfig(): ServerConfig {
     maxFileBytes: parsePositiveInt(process.env['CARBONE_MAX_FILE_BYTES'], 100 * 1024 * 1024, 'CARBONE_MAX_FILE_BYTES'),
     // HTTP only: when true, a request without an Authorization: Bearer key is rejected instead of
     // falling back to the server-level CARBONE_API_KEY. Defaults to false so a deliberately
-    // shared-key deployment keeps working; startHttpServer warns when that combination is live.
+    // shared-key deployment keeps working; HTTP startup (src/index.ts) warns when that combination is live.
     requireClientAuth: parseBool(process.env['CARBONE_REQUIRE_CLIENT_AUTH_HEADER'], false, 'CARBONE_REQUIRE_CLIENT_AUTH_HEADER'),
     // When true, user-supplied URLs may resolve to private/internal addresses. Off by default to
     // block SSRF (cloud metadata, localhost, RFC1918); enable only on a trusted deployment.
     allowPrivateNetwork: parseBool(process.env['CARBONE_ALLOW_PRIVATE_NETWORK'], false, 'CARBONE_ALLOW_PRIVATE_NETWORK'),
+    // HTTP only: browser Origins allowed in addition to localhost (DNS-rebinding protection).
+    allowedOriginHostnames: parseOriginHostnames(process.env['MCP_ALLOWED_ORIGINS'], 'MCP_ALLOWED_ORIGINS'),
   };
 }
