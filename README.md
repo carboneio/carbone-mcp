@@ -1,7 +1,7 @@
 # Carbone MCP Server
 
 [![npm version](https://img.shields.io/npm/v/carbone-mcp.svg)](https://www.npmjs.com/package/carbone-mcp)
-[![MCP Registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.carbone%252Fcarbone-mcp%2Fversions%2Flatest&query=%24.server.version&label=MCP%20Registry&logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.carbone%2Fcarbone--mcp-blue?logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Generate PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files between 36 formats, from Claude, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
