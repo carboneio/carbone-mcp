@@ -128,11 +128,13 @@ describe('handleRenderDocument', () => {
         lang:           'fr-fr',
         timezone:       'Europe/Paris',
         complement:     { company: 'Acme' },
-        reportName:     'report.pdf',
+        reportName:     'report',
         hardRefresh:    true,
         batchSplitBy:   'd.items',
         batchOutput:    'zip',
-        batchReportName:'item-{d.id}.pdf',
+        batchReportName:'item-{d.id}',
+        preReleaseFeatureIn: 5000000,
+        failOn:         ['IMAGE_URL_ERROR'],
       },
       client
     );
@@ -143,11 +145,13 @@ describe('handleRenderDocument', () => {
         lang:           'fr-fr',
         timezone:       'Europe/Paris',
         complement:     { company: 'Acme' },
-        reportName:     'report.pdf',
+        reportName:     'report',
         hardRefresh:    true,
         batchSplitBy:   'd.items',
         batchOutput:    'zip',
-        batchReportName:'item-{d.id}.pdf',
+        batchReportName:'item-{d.id}',
+        preReleaseFeatureIn: 5000000,
+        failOn:         ['IMAGE_URL_ERROR'],
       }),
       undefined
     );

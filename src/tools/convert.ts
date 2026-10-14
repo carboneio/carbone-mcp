@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
-import { OUTPUT_FORMATS, CONVERTERS } from '../validation/formats.js';
+import { CONVERTERS, CONVERTER_DESCRIPTION, OUTPUT_FORMAT_DESCRIPTION, OutputFormatSchema } from '../validation/formats.js';
 import { resolveFileInput } from '../utils/file.js';
 import { deliver, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
@@ -8,14 +8,14 @@ import { formatError } from '../utils/errors.js';
 export const convertDocumentToolName = 'convert_document';
 
 export const convertDocumentDescription =
-  'Convert any document to another format without storing a template. ' +
-  'Supports 100+ input/output format combinations: Office documents, PDFs, images, web pages, spreadsheets, and more. ' +
+  'Convert a document to another format without storing a template. ' +
+  'Pure conversion: no data is sent, so Carbone tags such as {d.name} are kept as written. ' +
   'The source file can be a local path, a URL, or a base64 string. ' +
   'Use render_document instead when you need data injection ({d.field} tags), translations, or batch generation. ' +
   'Common conversions: ' +
-  'DOCX → PDF (file: "report.docx", convertTo: "pdf"), ' +
+  'DOCX → PDF (file: "report.docx", convertTo: "pdf"; add converter: "I" for the fastest conversion), ' +
   'XLSX → PDF (file: "data.xlsx", convertTo: "pdf"), ' +
-  'PPTX → PDF (file: "slides.pptx", convertTo: "pdf", converter: "O" for best fidelity), ' +
+  'PPTX → PDF (file: "slides.pptx", convertTo: "pdf"), ' +
   'HTML → PDF (file: "page.html", convertTo: "pdf", converter: "C" for full CSS/JS rendering), ' +
   'DOCX → HTML (file: "doc.docx", convertTo: "html"), ' +
   'XLSX → CSV (file: "sheet.xlsx", convertTo: "csv"), ' +
@@ -32,51 +32,25 @@ export const convertDocumentSchema = {
       '(1) Local file path — absolute or relative, e.g. "/home/user/report.docx" or "./invoice.xlsx". ' +
       '(2) HTTPS URL — the file is downloaded automatically, e.g. "https://example.com/file.pptx". ' +
       '(3) Base64-encoded string — the raw file content encoded as base64. ' +
-      'Supported input formats include: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, XML, IDML, ' +
-      'Markdown (MD), PDF, TXT, CSV, PNG, JPG, SVG, and more. ' +
-      'Full conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.md'
+      'Supported input formats: DOCX, DOC, XLSX, XLS, PPTX, PPT, PDF, ODT, ODS, ODP, ODG, RTF, TXT, CSV, ' +
+      'HTML, XHTML, MD (Markdown), IDML, XML. ' +
+      'Full conversion matrix: https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type'
     ),
 
-  convertTo: z
-    .union([
-      z.enum(OUTPUT_FORMATS),
-      z.object({
-        formatName: z.enum(OUTPUT_FORMATS).describe('Target format name.'),
-        formatOptions: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe(
-            'Advanced format options object. Examples by format: ' +
-            'PDF — { "EncryptFile": true, "DocumentOpenPassword": "secret", "DocumentPermissionPassword": "owner" } password-protect; ' +
-            'PDF — { "Watermarks": [{ "text": "DRAFT", "opacity": 0.2, "rotation": -45, "fontsize": 60 }] } up to 5 watermarks; ' +
-            'PDF — { "SelectPdfVersion": 1 } PDF/A-1b compliance (use 2 for PDF/A-2, 3 for PDF/A-3); ' +
-            'PDF — { "PageRange": "1-3,5" } export specific pages only; ' +
-            'PDF — { "ConvertSlideshow": true } convert each slide to a separate PDF page; ' +
-            'Images (PNG/JPG/WEBP) — { "Quality": 90 } set compression quality 0-100; ' +
-            'Images — { "density": 150 } set DPI for rasterisation (default 96); ' +
-            'CSV — { "fieldSeparator": ";" } custom column separator.'
-          ),
-      }),
-    ])
-    .describe(
-      'Target output format. ' +
-      'Documents : "pdf", "docx", "xlsx", "pptx", "odt", "ods", "odp", "odg", "rtf", "epub". ' +
-      'Web/text  : "html", "xhtml", "txt", "csv", "md", "xml", "idml". ' +
-      'Images    : "png", "jpg", "jpeg", "webp", "svg", "tiff", "bmp", "gif". ' +
-      'Archive   : "zip" (batch output). ' +
-      'Simple usage: "pdf". ' +
-      'Advanced usage: { "formatName": "pdf", "formatOptions": { "EncryptFile": true, "DocumentOpenPassword": "secret" } }.'
-    ),
+  convertTo: OutputFormatSchema.describe('Target output format. ' + OUTPUT_FORMAT_DESCRIPTION),
 
   converter: z
     .enum(CONVERTERS)
     .optional()
+    .describe(CONVERTER_DESCRIPTION),
+
+  hardRefresh: z
+    .boolean()
+    .optional()
     .describe(
-      'Converter engine. Only relevant when convertTo is "pdf" (or an image format rasterised from a document). ' +
-      '"L" — LibreOffice (default): best all-round engine for DOCX, XLSX, PPTX, ODT, ODS, ODP. ' +
-      '"O" — OnlyOffice: highest fidelity rendering for Microsoft Office formats (DOCX, XLSX, PPTX). ' +
-      '"C" — Chromium: best for HTML, CSS, JavaScript — full browser rendering. ' +
-      'If omitted, LibreOffice is used by default.'
+      'If true, Carbone recomputes pagination and refreshes the table of contents at the end of the conversion. ' +
+      'Carbone\'s own PDF → PDF/A-4 example uses it: { "hardRefresh": true, ' +
+      '"convertTo": { "formatName": "pdf", "formatOptions": { "SelectPdfVersion": 4 } } }.'
     ),
 
   outputPath: z
@@ -110,18 +84,18 @@ export const convertDocumentSchema = {
 
   egressAuthorization: z
     .string()
-    .max(512)
+    .max(511)
     .optional()
     .describe(
       'Value for the Authorization header Carbone adds to its OUTBOUND (egress) requests during conversion — ' +
       'e.g. when a Chromium HTML→PDF conversion fetches a protected external image or stylesheet. ' +
       'For example "Bearer abc123" makes Carbone send `authorization: Bearer abc123` to those hosts. ' +
-      'Only the authorization header can be customised; max 512 characters.'
+      'Only the authorization header can be customised; max 511 characters.'
     ),
 };
 
 export async function handleConvertDocument(
-  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: 'L' | 'C' | 'O'; outputPath?: string; asAttachment?: boolean; returnLink?: boolean; egressAuthorization?: string },
+  args: { file: string; convertTo: z.infer<typeof convertDocumentSchema.convertTo>; converter?: (typeof CONVERTERS)[number]; hardRefresh?: boolean; outputPath?: string; asAttachment?: boolean; returnLink?: boolean; egressAuthorization?: string },
   client: CarboneClient,
   options?: CallOptions,
   fileCtx?: FileContext

@@ -115,6 +115,16 @@ describe('handleConvertDocument', () => {
     );
   });
 
+  test('passes converter "I" and hardRefresh to client', async () => {
+    const client = makeClient();
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', converter: 'I', hardRefresh: true }, client);
+
+    expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ converter: 'I', hardRefresh: true }),
+      undefined
+    );
+  });
+
   test('accepts advanced convertTo object', async () => {
     const client = makeClient();
     const convertTo = { formatName: 'pdf' as const, formatOptions: { EncryptFile: true } };

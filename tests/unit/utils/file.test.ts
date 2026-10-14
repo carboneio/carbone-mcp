@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
-import { getMimeType, toToolContent, resolveFileInput, resolveJsonInput, writeOutputFile, isBlockedIp } from '../../../src/utils/file.js';
+import { getMimeType, toToolContent, resolveFileInput, resolveJsonInput, writeOutputFile, isBlockedIp, TEXT_OUTPUT_FORMATS } from '../../../src/utils/file.js';
+import { OUTPUT_FORMATS } from '../../../src/validation/formats.js';
 
 // Mock node:fs/promises at the top level so vi.mock hoisting works correctly
 vi.mock('node:fs/promises', () => ({
@@ -70,10 +71,41 @@ describe('getMimeType', () => {
     expect(getMimeType({ formatName: 'png' })).toBe('image/png');
   });
 
-  test('returns correct MIME type for idml, epub, and cdr', () => {
+  test('returns correct MIME type for idml and epub', () => {
     expect(getMimeType('idml')).toBe('application/vnd.adobe.indesign-idml-package');
     expect(getMimeType('epub')).toBe('application/epub+zip');
-    expect(getMimeType('cdr')).toBe('application/vnd.corel-draw');
+  });
+
+  test('maps every OUTPUT_FORMATS value to a specific MIME type', () => {
+    for (const format of OUTPUT_FORMATS) {
+      expect(getMimeType(format), format).not.toBe('application/octet-stream');
+    }
+  });
+
+  test('uses the Content-Type the Carbone API returns for the formats synced from the OpenAPI spec', () => {
+    expect(getMimeType('doc')).toBe('application/msword');
+    expect(getMimeType('xls')).toBe('application/vnd.ms-excel');
+    expect(getMimeType('ppt')).toBe('application/vnd.ms-powerpoint');
+    expect(getMimeType('ott')).toBe('application/vnd.oasis.opendocument.text-template');
+    expect(getMimeType('ots')).toBe('application/vnd.oasis.opendocument.spreadsheet-template');
+    expect(getMimeType('otp')).toBe('application/vnd.oasis.opendocument.presentation-template');
+    expect(getMimeType('dbf')).toBe('application/vnd.dbf');
+    expect(getMimeType('emf')).toBe('image/emf');
+    expect(getMimeType('wmf')).toBe('image/wmf');
+    expect(getMimeType('eps')).toBe('application/postscript');
+    // The API sends no Content-Type for DIF: the OpenAPI spec's text/dif is kept.
+    expect(getMimeType('dif')).toBe('text/dif');
+  });
+
+  test('every inline text format is an output format, the markdown alias, or json (template samples)', () => {
+    for (const format of TEXT_OUTPUT_FORMATS) {
+      expect([...OUTPUT_FORMATS, 'markdown', 'json'], format).toContain(format);
+    }
+  });
+
+  test('json (template sample downloads) is application/json, returned inline as text', () => {
+    expect(getMimeType('json')).toBe('application/json');
+    expect(toToolContent(Buffer.from('{"a":1}'), 'tpl_sample.json', 'json')).toEqual({ type: 'text', text: '{"a":1}' });
   });
 
   test('returns octet-stream for unknown formats', () => {

@@ -1,5 +1,6 @@
-// Shared MCP server identity and usage instructions for both transports.
+// Shared MCP server identity, usage instructions and options for both transports.
 
+import type { McpServerOptions } from '@modelcontextprotocol/server';
 import { CARBONE_ICON_SVG, CARBONE_ICON_PNG } from './icons.js';
 
 export function serverInfo(version: string) {
@@ -36,3 +37,13 @@ export const SERVER_INSTRUCTIONS =
   'outputPath to save large outputs to disk instead of returning them inline.\n' +
   '- Docs are LLM-friendly: replace .html with .md on any carbone.io doc URL for Markdown, or load ' +
   'https://carbone.io/llms.txt (index) / https://carbone.io/llms-full.txt (full corpus).';
+
+/**
+ * Options for every McpServer instance, on both transports and both protocol eras. The tool and
+ * resource lists are static, so `listChanged` is not advertised: a client then has no reason to keep
+ * an idle change-notification stream (`subscriptions/listen`) open.
+ */
+export const SERVER_OPTIONS = {
+  instructions: SERVER_INSTRUCTIONS,
+  capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
+} satisfies McpServerOptions;

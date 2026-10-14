@@ -39,6 +39,7 @@ import {
   updateTemplateMetadataToolName,
   updateTemplateMetadataDescription,
   updateTemplateMetadataSchema,
+  updateTemplateMetadataOutputSchema,
   handleUpdateTemplateMetadata,
   deleteTemplateToolName,
   deleteTemplateDescription,
@@ -60,6 +61,22 @@ import {
   handleGetCapabilities,
 } from './info.js';
 
+// Tool schemas wrapped with z.object() once, at module scope: registerTools() runs for every HTTP request
+// (a fresh McpServer each time), and the SDK deprecates passing raw shapes to registerTool.
+const listTemplatesInput           = z.object(listTemplatesSchema);
+const listTemplatesOutput          = z.object(listTemplatesOutputSchema);
+const convertDocumentInput         = z.object(convertDocumentSchema);
+const renderDocumentInput          = z.object(renderDocumentSchema);
+const listCategoriesOutput         = z.object(listCategoriesOutputSchema);
+const listTagsOutput               = z.object(listTagsOutputSchema);
+const uploadTemplateInput          = z.object(uploadTemplateSchema);
+const uploadTemplateOutput         = z.object(uploadTemplateOutputSchema);
+const updateTemplateMetadataInput  = z.object(updateTemplateMetadataSchema);
+const updateTemplateMetadataOutput = z.object(updateTemplateMetadataOutputSchema);
+const deleteTemplateInput          = z.object(deleteTemplateSchema);
+const downloadTemplateInput        = z.object(downloadTemplateSchema);
+const getApiStatusOutput           = z.object(getApiStatusOutputSchema);
+
 export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext): void {
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
   // badges and help models reason about which tools are read-only, repeatable, or destructive.
@@ -72,11 +89,11 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'List Templates',
       description: listTemplatesDescription,
-      inputSchema: listTemplatesSchema,
-      outputSchema: listTemplatesOutputSchema,
+      inputSchema: listTemplatesInput,
+      outputSchema: listTemplatesOutput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, ctx) => handleListTemplates(args, client, { apiKey: ctx.http?.authInfo?.token })
+    (args, ctx) => handleListTemplates(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerTool(
@@ -84,10 +101,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Convert Document',
       description: convertDocumentDescription,
-      inputSchema: convertDocumentSchema,
+      inputSchema: convertDocumentInput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, ctx) => handleConvertDocument(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
+    (args, ctx) => handleConvertDocument(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
 
   server.registerTool(
@@ -95,10 +112,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Generate Document',
       description: renderDocumentDescription,
-      inputSchema: renderDocumentSchema,
+      inputSchema: renderDocumentInput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, ctx) => handleRenderDocument(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
+    (args, ctx) => handleRenderDocument(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
 
   server.registerTool(
@@ -106,10 +123,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'List Categories',
       description: listCategoriesDescription,
-      outputSchema: z.object(listCategoriesOutputSchema),
+      outputSchema: listCategoriesOutput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (ctx) => handleListCategories({} as never, client, { apiKey: ctx.http?.authInfo?.token })
+    (ctx) => handleListCategories({} as never, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerTool(
@@ -117,10 +134,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'List Tags',
       description: listTagsDescription,
-      outputSchema: z.object(listTagsOutputSchema),
+      outputSchema: listTagsOutput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (ctx) => handleListTags({} as never, client, { apiKey: ctx.http?.authInfo?.token })
+    (ctx) => handleListTags({} as never, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerTool(
@@ -128,11 +145,11 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Upload Template',
       description: uploadTemplateDescription,
-      inputSchema: uploadTemplateSchema,
-      outputSchema: uploadTemplateOutputSchema,
+      inputSchema: uploadTemplateInput,
+      outputSchema: uploadTemplateOutput,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    (args, ctx) => handleUploadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
+    (args, ctx) => handleUploadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
 
   server.registerTool(
@@ -140,10 +157,11 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Update Template Metadata',
       description: updateTemplateMetadataDescription,
-      inputSchema: updateTemplateMetadataSchema,
+      inputSchema: updateTemplateMetadataInput,
+      outputSchema: updateTemplateMetadataOutput,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    (args, ctx) => handleUpdateTemplateMetadata(args, client, { apiKey: ctx.http?.authInfo?.token })
+    (args, ctx) => handleUpdateTemplateMetadata(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerTool(
@@ -151,10 +169,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Delete Template',
       description: deleteTemplateDescription,
-      inputSchema: deleteTemplateSchema,
+      inputSchema: deleteTemplateInput,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, ctx) => handleDeleteTemplate(args, client, { apiKey: ctx.http?.authInfo?.token })
+    (args, ctx) => handleDeleteTemplate(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerTool(
@@ -162,10 +180,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'Download Template',
       description: downloadTemplateDescription,
-      inputSchema: downloadTemplateSchema,
+      inputSchema: downloadTemplateInput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (args, ctx) => handleDownloadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token }, fileCtx)
+    (args, ctx) => handleDownloadTemplate(args, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal }, fileCtx)
   );
 
   server.registerTool(
@@ -173,10 +191,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     {
       title: 'API Status',
       description: getApiStatusDescription,
-      outputSchema: z.object(getApiStatusOutputSchema),
+      outputSchema: getApiStatusOutput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    (ctx) => handleGetApiStatus(client, { apiKey: ctx.http?.authInfo?.token })
+    (ctx) => handleGetApiStatus(client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerTool(

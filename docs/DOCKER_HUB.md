@@ -26,6 +26,8 @@ docker run -d \
 
 Connect your MCP client to `http://your-host:3000` with `Authorization: Bearer your_api_key_here`.
 
+> Browser-based MCP tools on `localhost` work as before; one served from another origin gets HTTP 403 until its hostname is added to `MCP_ALLOWED_ORIGINS`. Desktop, CLI and server-side clients send no `Origin` header and are unaffected.
+
 ### Health check
 
 ```bash
@@ -34,7 +36,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "1.2.2" },
+  "mcp": { "version": "1.x.x" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -113,6 +115,7 @@ Claude Desktop does not support HTTP Bearer token authentication. Use stdio tran
 | `MCP_PORT` | `3000` | HTTP server port. |
 | `MCP_PATH` | `/` | HTTP endpoint path. |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size (60 MB). Returns HTTP 413 when exceeded. |
+| `MCP_ALLOWED_ORIGINS` | `localhost`, `127.0.0.1`, `[::1]` | Browser `Origin` hostnames allowed in addition to the localhost default — comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme. A request with any other `Origin` gets HTTP 403; requests without one are unaffected. Invalid entries stop the container at startup. |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Require `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server — anyone reaching the port can spend it). Set `true` to require per-client keys. No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs to resolve to private/internal addresses. Off by default to block SSRF. |
 
@@ -133,7 +136,7 @@ docker run -d \
 
 ## Output & file delivery
 
-In HTTP mode (the Docker default), a generated PDF / Office / ZIP file is returned as a **download attachment** (an MCP `EmbeddedResource`); text and PNG/JPG/GIF/WEBP come back inline. Two options on `convert_document` / `render_document` change this:
+In HTTP mode (the Docker default), a generated PDF / Office file is returned as a **download attachment** (an MCP `EmbeddedResource`); text and PNG/JPG/GIF/WEBP come back inline. Two options on `convert_document` / `render_document` change this:
 
 - `asAttachment` — force a download attachment for any format
 - `returnLink` — return Carbone's public **one-time** download URL instead of the bytes (hand it to the user; it is consumed by the first download)

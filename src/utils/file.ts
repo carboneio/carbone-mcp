@@ -153,6 +153,7 @@ function assertWithinLimit(bytes: number, maxBytes: number, isCloud: boolean): v
   );
 }
 
+/** Must cover every OUTPUT_FORMATS name (asserted in tests/unit/utils/file.test.ts). */
 const MIME_TYPES: Record<string, string> = {
   // Documents
   pdf:  'application/pdf',
@@ -163,9 +164,14 @@ const MIME_TYPES: Record<string, string> = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   ppt:  'application/vnd.ms-powerpoint',
   odt:  'application/vnd.oasis.opendocument.text',
+  ott:  'application/vnd.oasis.opendocument.text-template',
   ods:  'application/vnd.oasis.opendocument.spreadsheet',
+  ots:  'application/vnd.oasis.opendocument.spreadsheet-template',
   odp:  'application/vnd.oasis.opendocument.presentation',
+  otp:  'application/vnd.oasis.opendocument.presentation-template',
   odg:  'application/vnd.oasis.opendocument.graphics',
+  dbf:  'application/vnd.dbf',
+  dif:  'text/dif', // the API sends no Content-Type for DIF; no IANA-registered type exists
   // Web / text
   html:     'text/html',
   xhtml:    'application/xhtml+xml',
@@ -174,6 +180,7 @@ const MIME_TYPES: Record<string, string> = {
   md:       'text/markdown',
   markdown: 'text/markdown',
   xml:      'application/xml',
+  json:     'application/json', // template sample downloads (download_template "<id>_sample.json")
   rtf:      'application/rtf',
   // Images
   png:  'image/png',
@@ -184,12 +191,14 @@ const MIME_TYPES: Record<string, string> = {
   tiff: 'image/tiff',
   bmp:  'image/bmp',
   gif:  'image/gif',
-  // Archives
+  emf:  'image/emf',
+  wmf:  'image/wmf',
+  eps:  'application/postscript',
+  // Archives (batch output only: batchOutput "zip", never a convertTo value)
   zip: 'application/zip',
   // Publishing / other
   epub: 'application/epub+zip',
   idml: 'application/vnd.adobe.indesign-idml-package',
-  cdr:  'application/vnd.corel-draw',
 };
 
 /** Returns the MIME type for a given output format (string or object form). */
@@ -322,7 +331,7 @@ export async function writeOutputFile(
 }
 
 /** Output formats represented inline as plain text. */
-export const TEXT_OUTPUT_FORMATS = new Set(['html', 'xhtml', 'txt', 'csv', 'md', 'markdown', 'xml']);
+export const TEXT_OUTPUT_FORMATS = new Set(['html', 'xhtml', 'txt', 'csv', 'md', 'markdown', 'xml', 'json']);
 
 /**
  * MIME types Anthropic's tool-result image block accepts (verified: JPEG, PNG, GIF, WebP).
@@ -340,7 +349,7 @@ export function isInlineFormat(format: FormatArg): boolean {
 /**
  * Build the MCP tool content entry for a generated/converted document.
  * - asAttachment = true                            → EmbeddedResource with blob (downloadable file), any format
- * - Plain-text formats (HTML, CSV, TXT, MD, XML)  → TextContent (read inline)
+ * - Plain-text formats (HTML, CSV, TXT, MD, XML, JSON) → TextContent (read inline)
  * - png / jpeg / gif / webp                        → ImageContent (viewable)
  * - Everything else (PDF, DOCX, svg, tiff, bmp, …) → EmbeddedResource with blob
  */

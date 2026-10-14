@@ -2,11 +2,14 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { CarboneClient } from '../../../src/carbone/client.js';
 import {
   CarboneAuthError,
+  CarboneConnectionError,
   CarboneError,
+  CarboneGenerationError,
   CarboneNotFoundError,
   CarboneRateLimitError,
   CarboneValidationError,
 } from '../../../src/carbone/errors.js';
+import { formatError } from '../../../src/utils/errors.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -413,6 +416,31 @@ describe('CarboneClient', () => {
       expect(body.converter).toBe('C');
     });
 
+    test('sends a pure conversion body: no data key, so Carbone keeps the tags', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+
+      await client.convertDocument({ template: 'abc', convertTo: 'pdf' });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ template: 'abc', convertTo: 'pdf' });
+    });
+
+    test('passes converter "I" and hardRefresh through when set', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="out.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(10),
+      });
+      const convertTo = { formatName: 'pdf', formatOptions: { SelectPdfVersion: 4 } };
+
+      await client.convertDocument({ template: 'abc', convertTo, converter: 'I', hardRefresh: true });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ template: 'abc', convertTo, converter: 'I', hardRefresh: true });
+    });
+
     test('returns buffer and filename from content-disposition', async () => {
       mockFetch({
         headers: new Headers({ 'content-disposition': 'filename="invoice.pdf"' }),
@@ -494,7 +522,7 @@ describe('CarboneClient', () => {
         timezone: 'Europe/Paris',
         complement: { company: 'Acme' },
         variableStr: '{#total = d.price * 2}',
-        reportName: 'report-{d.id}.pdf',
+        reportName: 'report-{d.id}',
         enum: { STATUS: { '1': 'Active' } },
         translations: { 'fr-fr': { hello: 'Bonjour' } },
         currencySource: 'EUR',
@@ -503,7 +531,7 @@ describe('CarboneClient', () => {
         hardRefresh: true,
         batchSplitBy: 'd.invoices',
         batchOutput: 'zip',
-        batchReportName: 'invoice-{d.id}.pdf',
+        batchReportName: 'invoice-{d.id}',
       });
 
       const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
@@ -513,14 +541,51 @@ describe('CarboneClient', () => {
       expect(body.timezone).toBe('Europe/Paris');
       expect(body.complement).toEqual({ company: 'Acme' });
       expect(body.variableStr).toBe('{#total = d.price * 2}');
-      expect(body.reportName).toBe('report-{d.id}.pdf');
+      expect(body.reportName).toBe('report-{d.id}');
       expect(body.currencySource).toBe('EUR');
       expect(body.currencyTarget).toBe('USD');
       expect(body.currencyRates).toEqual({ EUR: 1, USD: 1.08 });
       expect(body.hardRefresh).toBe(true);
       expect(body.batchSplitBy).toBe('d.invoices');
       expect(body.batchOutput).toBe('zip');
-      expect(body.batchReportName).toBe('invoice-{d.id}.pdf');
+      expect(body.batchReportName).toBe('invoice-{d.id}');
+    });
+
+    test('defaults data to {} (templating runs) and omits failOn / preReleaseFeatureIn when not set', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({ template: 'base64abc==', convertTo: 'pdf' });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ data: {}, template: 'base64abc==', convertTo: 'pdf' });
+    });
+
+    test('passes failOn, preReleaseFeatureIn and converter "I" through when set', async () => {
+      const spy = mockFetch({
+        headers: new Headers({ 'content-disposition': 'filename="doc.pdf"' }),
+        _arrayBuffer: new ArrayBuffer(20),
+      });
+
+      await client.renderDocument({
+        templateId: 'tpl1',
+        data: { id: 1 },
+        convertTo: 'pdf',
+        converter: 'I',
+        failOn: ['IMAGE_URL_ERROR'],
+        preReleaseFeatureIn: 5000000,
+      });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({
+        data: { id: 1 },
+        convertTo: 'pdf',
+        converter: 'I',
+        failOn: ['IMAGE_URL_ERROR'],
+        preReleaseFeatureIn: 5000000,
+      });
     });
 
     test('uses /render/{templateId} without ?download=true when webhookUrl is provided', async () => {
@@ -626,6 +691,23 @@ describe('CarboneClient', () => {
       expect(body.versioning).toBe(true);
     });
 
+    test('omits name when not given, and sends a single partial sample as is', async () => {
+      const spy = mockFetch({ _json: { data: { id: 'tpl1', versionId: 'v1', deployedAt: 0 } } });
+
+      const result = await client.uploadTemplate({ template: 'data', sample: [{ data: { name: 'Acme' } }] });
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ template: 'data', versioning: true, sample: [{ data: { name: 'Acme' } }] });
+      expect(result).toEqual({ id: 'tpl1', versionId: 'v1', deployedAt: 0 });
+    });
+
+    test('returns templateExtension in legacy mode', async () => {
+      mockFetch({ _json: { data: { templateId: 'sha', templateExtension: 'docx' } } });
+
+      const result = await client.uploadTemplate({ template: 'data', versioning: false });
+      expect(result).toEqual({ templateId: 'sha', templateExtension: 'docx' });
+    });
+
     test('includes category and tags when provided', async () => {
       const spy = mockFetch({ _json: { data: { id: 'tpl1', versionId: 'v1' } } });
 
@@ -675,6 +757,21 @@ describe('CarboneClient', () => {
 
       const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
       expect(Object.keys(body)).toEqual(['name']);
+    });
+
+    test('sends id (move) and expireAt: 0 (cancel deletion), and returns the response data', async () => {
+      const data = { versionId: 'sha-v1', id: '1234567890', expireAt: 0 };
+      const spy = mockFetch({ _json: { success: true, data } });
+
+      const result = await client.updateTemplate({ templateId: 'sha-v1', id: '1234567890', expireAt: 0 });
+
+      expect(spy).toHaveBeenCalledWith(
+        'https://api.carbone.io/template/sha-v1',
+        expect.objectContaining({ method: 'PATCH' })
+      );
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ id: '1234567890', expireAt: 0 });
+      expect(result).toEqual(data);
     });
   });
 
@@ -815,18 +912,17 @@ describe('CarboneClient', () => {
       ).rejects.toBeInstanceOf(CarboneValidationError);
     });
 
-    test('throws CarboneError with 413 for file too large', async () => {
-      mockFetchError(413, {});
-      await expect(
-        client.convertDocument({ template: 'x', convertTo: 'pdf' })
-      ).rejects.toThrow('File too large');
+    test('throws CarboneError with 413, keeping the API message and code', async () => {
+      mockFetchError(413, { success: false, error: 'Template too large, the file size limit is X Bytes', code: 'w119' });
+      const err = await client.convertDocument({ template: 'x', convertTo: 'pdf' }).catch((e) => e);
+      expect(err).toBeInstanceOf(CarboneError);
+      expect(err).toMatchObject({ statusCode: 413, code: 'w119', message: 'Template too large, the file size limit is X Bytes' });
     });
 
-    test('throws CarboneError on 422 rendering failed', async () => {
-      mockFetchError(422, { error: 'Template parsing error' });
-      await expect(
-        client.renderDocument({ templateId: 'x', data: {} })
-      ).rejects.toThrow('Rendering failed');
+    test('throws CarboneError on 422, keeping the API message and code', async () => {
+      mockFetchError(422, { success: false, error: '"template" field is empty', code: 'w112' });
+      const err = await client.renderDocument({ templateId: 'x', data: {} }).catch((e) => e);
+      expect(err).toMatchObject({ statusCode: 422, code: 'w112', message: '"template" field is empty' });
     });
 
     test('throws CarboneRateLimitError on 429', async () => {
@@ -868,11 +964,12 @@ describe('CarboneClient', () => {
       ).rejects.toThrow('Batch processing deactivated');
     });
 
-    test('throws CarboneError on 500 — falls back to generic message when body is empty', async () => {
+    test('throws CarboneError on 500 — falls back to the HTTP status when body is empty (shown as temporarily unavailable)', async () => {
       mockFetchError(500, {});
-      await expect(
-        client.convertDocument({ template: 'x', convertTo: 'pdf' })
-      ).rejects.toThrow('temporarily unavailable');
+      const err = await client.convertDocument({ template: 'x', convertTo: 'pdf' }).catch((e) => e);
+      expect(err).not.toBeInstanceOf(CarboneGenerationError);
+      expect(err.message).toBe('HTTP 500 Error');
+      expect(formatError(err)).toContain('temporarily unavailable');
     });
 
     test('throws CarboneError on 502', async () => {
@@ -907,6 +1004,188 @@ describe('CarboneClient', () => {
         .catch((e) => e);
       // 400 with neither 'convertTo' nor 'template' → generic validation error using "error" field
       expect(err.message).toContain('correct error');
+    });
+  });
+
+  // ── agent-facing error text (buildError → formatError) ───────────────────────
+
+  describe('agent-facing error text', () => {
+    /** The text a tool returns for a failed call: formatError of what the client throws. */
+    const agentText = (call: Promise<unknown>) => call.then(() => { throw new Error('expected a rejection'); }, formatError);
+    const convert = (c: CarboneClient = client) => c.convertDocument({ template: 'x', convertTo: 'pdf' });
+
+    test('400: keeps the API message and code; the matrix link only when about conversion or formats', async () => {
+      mockFetchError(400, { success: false, error: '"Content-Type" header is not "application/json"', code: 'w110' });
+      const text = await agentText(convert());
+      expect(text).toBe('Invalid input (Carbone w110): "Content-Type" header is not "application/json"');
+
+      mockFetchError(400, { success: false, error: 'Invalid convertTo format' });
+      const formatText = await agentText(convert());
+      expect(formatText).toContain('Invalid convertTo format');
+      expect(formatText).toContain('generate-reports.html#output-file-type');
+    });
+
+    test('401 in stdio: keeps the API detail and points to CARBONE_API_KEY', async () => {
+      mockFetchError(401, { success: false, error: 'Unauthorized Access: The API key or access token has expired.' });
+      const text = await agentText(convert(new CarboneClient({ apiKey: 'k', transport: 'stdio' })));
+      expect(text).toBe(
+        'Authentication failed: Unauthorized Access: The API key or access token has expired. ' +
+        'Check the CARBONE_API_KEY environment variable.'
+      );
+    });
+
+    test('401 in http: points to the Bearer header, never to the env var', async () => {
+      mockFetchError(401, { success: false, error: 'Unauthorized, please provide a correct API key', code: 'w120' });
+      const text = await agentText(convert(new CarboneClient({ apiKey: 'k', transport: 'http' })));
+      expect(text).toBe(
+        'Authentication failed (Carbone w120): Unauthorized, please provide a correct API key ' +
+        'Send a valid Carbone API key as "Authorization: Bearer <key>".'
+      );
+      expect(text).not.toContain('CARBONE_API_KEY');
+    });
+
+    test('404: keeps the API message and code, and points to the list_templates tool', async () => {
+      mockFetchError(404, { success: false, error: 'Template not found', code: 'w100' });
+      const text = await agentText(client.downloadTemplate('missing'));
+      expect(text).toContain('Not found (Carbone w100): Template not found');
+      expect(text).toContain('list_templates tool');
+    });
+
+    test('413: keeps the size-limit message and code, with a size hint', async () => {
+      mockFetchError(413, { success: false, error: 'Template too large, the file size limit is X Bytes', code: 'w119' });
+      const text = await agentText(convert());
+      expect(text).toContain('Request too large (Carbone w119): Template too large, the file size limit is X Bytes');
+      expect(text).toContain('size limit');
+    });
+
+    test('422: keeps the message and code, with a missing-field hint', async () => {
+      mockFetchError(422, { success: false, error: '"template" field is empty', code: 'w112' });
+      const text = await agentText(convert());
+      expect(text).toContain('Missing field (Carbone w112): "template" field is empty');
+      expect(text).toContain('missing or empty');
+    });
+
+    test('429 with an HTML body (as Carbone Cloud sends it) is a rate-limit error', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: new Headers({ 'content-type': 'text/html', 'retry-after': '12' }),
+        json: async () => { throw new SyntaxError('Unexpected token < in JSON at position 0'); },
+      } as unknown as Response);
+      expect(await agentText(convert())).toBe('Rate limit exceeded. Please wait 12 second(s) and try again.');
+    });
+
+    test('500 w101 (live body): a generation failure caused by the request, with the code and no "try again"', async () => {
+      mockFetchError(500, {
+        success: false,
+        error: 'Unable to generate the document. Error: The HTML document cannot be converted to XLS format with LibreOffice converter',
+        code: 'w101',
+        data: { renderId: '' },
+      });
+      const err = await convert().catch((e) => e);
+      expect(err).toBeInstanceOf(CarboneGenerationError);
+      expect(err.code).toBe('w101');
+
+      const text = formatError(err);
+      expect(text).toContain('Document generation failed (Carbone w101): Unable to generate the document.');
+      expect(text).toContain('not a Carbone outage');
+      expect(text).toContain('generate-reports.html#output-file-type'); // "cannot be converted" → matrix hint
+      expect(text).not.toMatch(/try again|temporarily/i);
+    });
+
+    test('500 w117 points to the webhook', async () => {
+      mockFetchError(500, { success: false, error: 'Error while setting up the webhook', code: 'w117' });
+      const text = await agentText(convert());
+      expect(text).toContain('Document generation failed (Carbone w117)');
+      expect(text).toContain('webhookUrl');
+    });
+
+    test('500 with no message, 500 "Server or Database error." and 503 are temporarily unavailable', async () => {
+      mockFetchError(500, {});
+      expect(await agentText(convert())).toBe('Carbone service temporarily unavailable: HTTP 500 Error\n\nPlease try again in a moment.');
+
+      mockFetchError(500, { success: false, error: 'Server or Database error.' });
+      expect(await agentText(client.listTemplates())).toContain('temporarily unavailable: Server or Database error.');
+
+      mockFetchError(503, { success: false, code: 503, message: 'Service cannot execute render' });
+      expect(await agentText(client.getStatus())).toBe(
+        'Carbone service temporarily unavailable: Service cannot execute render\n\nPlease try again in a moment.'
+      );
+    });
+
+    test('501 (stateless mode) keeps the message and code, without "try again"', async () => {
+      mockFetchError(501, { success: false, error: 'Carbone is running in stateless mode (no database)', code: 'w130' });
+      const text = await agentText(client.listTemplates());
+      expect(text).toBe('Error (Carbone w130): Carbone is running in stateless mode (no database)');
+    });
+
+    test('network failure names the host and the error code, never the key', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+        new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } })
+      );
+      const c = new CarboneClient({ apiKey: 'secret-key-123', baseUrl: 'https://carbone.my-company.com:8443' });
+      const err = await convert(c).catch((e) => e);
+      expect(err).toBeInstanceOf(CarboneConnectionError);
+      const text = formatError(err);
+      expect(text).toBe('Could not reach the Carbone API at carbone.my-company.com:8443: ECONNREFUSED.');
+      expect(text).not.toContain('secret-key-123');
+    });
+
+    test('network failure without a cause code falls back to the error message', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('fetch failed'));
+      expect(await agentText(convert())).toBe('Could not reach the Carbone API at api.carbone.io: fetch failed.');
+    });
+  });
+
+  // ── cancellation (CallOptions.signal) ────────────────────────────────────────
+
+  describe('cancellation signal', () => {
+    /** A fetch that never answers and, like the real one, rejects with the signal's reason once it aborts. */
+    function hangingFetch() {
+      return vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+        const signal = init!.signal!;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }));
+    }
+
+    test('an already-aborted signal aborts the fetch (also through getStatus\'s options spread)', async () => {
+      hangingFetch();
+      const reason = new Error('cancelled');
+      await expect(client.getStatus({ signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
+    });
+
+    test('aborting the signal mid-call aborts the in-flight fetch', async () => {
+      const fetchSpy = hangingFetch();
+      const controller = new AbortController();
+      const call = client.convertDocument({ template: 'x', convertTo: 'pdf' }, { signal: controller.signal });
+      controller.abort(new Error('client disconnected'));
+      await expect(call).rejects.toThrow('client disconnected');
+      expect(fetchSpy.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    });
+
+    test.each([
+      ['without a signal', undefined],
+      ['with a live signal', new AbortController().signal],
+    ])('the timeout still aborts, reported as "timed out after N s" %s', async (_, signal) => {
+      hangingFetch();
+      const c = new CarboneClient({ apiKey: 'k', timeout: 20 });
+      const error = await c.getTags({ signal }).catch((e) => e);
+      expect(error).toBeInstanceOf(CarboneConnectionError);
+      expect(error.originalError.name).toBe('TimeoutError');
+      expect(formatError(error)).toBe('Carbone API request timed out after 0.02 s.');
+    });
+
+    test('a cancellation (AbortError) is rethrown as is, not reported as a timeout', async () => {
+      hangingFetch();
+      const controller = new AbortController();
+      const call = client.getTags({ signal: controller.signal });
+      controller.abort(); // default reason: an AbortError DOMException
+      const error = await call.catch((e) => e);
+      expect(error.name).toBe('AbortError');
+      expect(error).not.toBeInstanceOf(CarboneConnectionError);
+      expect(formatError(error)).not.toContain('timed out');
     });
   });
 });

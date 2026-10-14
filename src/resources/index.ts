@@ -20,7 +20,7 @@ export function registerResources(server: McpServer, client: CarboneClient): voi
     'carbone-templates',
     TEMPLATES_URI,
     { description: templatesResourceDescription, mimeType: 'application/json' },
-    (uri, ctx) => readTemplatesResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
+    (uri, ctx) => readTemplatesResource(uri, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   // Parameterized: a single template by ID/version, with Template ID autocompletion. Completion
@@ -33,27 +33,27 @@ export function registerResources(server: McpServer, client: CarboneClient): voi
     }),
     { description: templateByIdResourceDescription, mimeType: 'application/json' },
     (uri, variables, ctx) =>
-      readTemplateByIdResource(uri, String(variables['id']), client, { apiKey: ctx.http?.authInfo?.token })
+      readTemplateByIdResource(uri, String(variables['id']), client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerResource(
     'carbone-categories',
     CATEGORIES_URI,
     { description: categoriesResourceDescription, mimeType: 'application/json' },
-    (uri, ctx) => readCategoriesResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
+    (uri, ctx) => readCategoriesResource(uri, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerResource(
     'carbone-tags',
     TAGS_URI,
     { description: tagsResourceDescription, mimeType: 'application/json' },
-    (uri, ctx) => readTagsResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
+    (uri, ctx) => readTagsResource(uri, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 
   server.registerResource(
     'carbone-status',
     STATUS_URI,
     { description: statusResourceDescription, mimeType: 'application/json' },
-    (uri, ctx) => readStatusResource(uri, client, { apiKey: ctx.http?.authInfo?.token })
+    (uri, ctx) => readStatusResource(uri, client, { apiKey: ctx.http?.authInfo?.token, signal: ctx.mcpReq.signal })
   );
 }

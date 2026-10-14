@@ -4,7 +4,8 @@ import { McpServer, InMemoryTransport } from '@modelcontextprotocol/server';
 import { CarboneClient } from '../../src/carbone/client.js';
 import { registerTools } from '../../src/tools/index.js';
 import { registerResources } from '../../src/resources/index.js';
-import { serverInfo, SERVER_INSTRUCTIONS } from '../../src/server/serverInfo.js';
+import { serverInfo, SERVER_OPTIONS } from '../../src/server/serverInfo.js';
+import { OUTPUT_FORMATS } from '../../src/validation/formats.js';
 
 /**
  * In-process protocol test: a real MCP Client talks to our McpServer over a linked in-memory
@@ -16,7 +17,7 @@ describe('MCP registration surface (in-process, no API key)', () => {
   let client: Client;
 
   beforeAll(async () => {
-    const server = new McpServer(serverInfo('0.0.0-test'), { instructions: SERVER_INSTRUCTIONS });
+    const server = new McpServer(serverInfo('0.0.0-test'), SERVER_OPTIONS);
     // The Carbone client is never called by registration / get_capabilities, so a dummy key is fine.
     const carbone = new CarboneClient({ apiKey: 'unused', baseUrl: CarboneClient.CLOUD_API_URL });
     registerTools(server, carbone, {
@@ -43,8 +44,9 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(info?.icons?.length).toBe(2);
 
     const caps = client.getServerCapabilities();
-    expect(caps?.tools).toBeTruthy();
-    expect(caps?.resources).toBeTruthy();
+    // The tool and resource lists are static, so list changes are not advertised (SERVER_OPTIONS).
+    expect(caps?.tools).toEqual({ listChanged: false });
+    expect(caps?.resources).toEqual({ listChanged: false });
     expect(caps?.completions).toBeTruthy();
 
     expect(client.getInstructions()).toContain('get_capabilities');
@@ -60,6 +62,60 @@ describe('MCP registration surface (in-process, no API key)', () => {
 
     expect(tools.find((t) => t.name === 'delete_template')?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === 'list_templates')?.outputSchema).toBeTruthy();
+  });
+
+  test('convert_document / render_document advertise the OpenAPI-synced enums and limits', async () => {
+    type Prop = { type?: string; enum?: unknown[]; maxLength?: number; anyOf?: Prop[]; items?: Prop };
+    const { tools } = await client.listTools();
+    const props = (name: string) => tools.find((t) => t.name === name)!.inputSchema.properties as Record<string, Prop>;
+    const convert = props('convert_document');
+    const render = props('render_document');
+
+    for (const p of [convert, render]) {
+      expect(p['converter']?.enum).toEqual(['L', 'O', 'C', 'I']);
+      expect(p['egressAuthorization']?.maxLength).toBe(511);
+      expect(p['convertTo']?.anyOf?.[0]?.enum).toEqual([...OUTPUT_FORMATS]);
+      expect(p['convertTo']?.anyOf?.[0]?.enum).toHaveLength(36);
+    }
+    expect(convert).not.toHaveProperty('data'); // pure conversion: no data input
+    expect(convert['hardRefresh']?.type).toBe('boolean');
+    expect(render['batchOutput']?.enum).toEqual(['zip', 'pdf']);
+    expect(render['failOn']?.items?.enum).toEqual(['IMAGE_URL_ERROR']);
+    expect(render['preReleaseFeatureIn']?.type).toBe('integer');
+  });
+
+  test('no tool presents 42000000000 as an expireAt value (that NOW sentinel exists only for deployedAt)', async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      const props = (tool.inputSchema.properties ?? {}) as Record<string, { description?: string }>;
+      expect(props['expireAt']?.description ?? '', tool.name).not.toContain('42000000000');
+      for (const text of [tool.description ?? '', ...Object.values(props).map((p) => p.description ?? '')]) {
+        expect(text, tool.name).not.toMatch(/expireAt[^.]*42000000000/);
+      }
+    }
+  });
+
+  test('upload_template / update_template_metadata advertise the OpenAPI-synced schemas', async () => {
+    type Prop = { maxItems?: number; maxLength?: number; minimum?: number; items?: { additionalProperties?: unknown; required?: string[] } };
+    type Schema = { properties?: Record<string, Prop>; required?: string[] };
+    const { tools } = await client.listTools();
+    const upload = tools.find((t) => t.name === 'upload_template')!;
+    const update = tools.find((t) => t.name === 'update_template_metadata')!;
+    const up = upload.inputSchema as Schema;
+    const upd = update.inputSchema as Schema;
+
+    expect(up.required).toEqual(['template']);
+    expect(up.properties?.['sample']).toMatchObject({ maxItems: 1, items: { additionalProperties: false } });
+    expect(up.properties?.['sample']?.items?.required).toBeUndefined();
+    for (const p of [up, upd]) {
+      for (const field of ['name', 'comment', 'category']) expect(p.properties?.[field]?.maxLength, field).toBe(200);
+      expect(p.properties?.['expireAt']?.minimum).toBe(0);
+    }
+    expect(upd.properties).toHaveProperty('moveToTemplateId');
+    expect(upd.properties).not.toHaveProperty('id'); // the API body field `id` is only exposed as moveToTemplateId
+    expect((update.outputSchema as Schema | undefined)?.required).toEqual(['versionId']);
+    expect((upload.outputSchema as Schema | undefined)?.properties).toHaveProperty('deployedAt');
+    expect((upload.outputSchema as Schema | undefined)?.properties).toHaveProperty('templateExtension');
   });
 
   test('resources/list and resource templates expose the registered URIs', async () => {
@@ -81,5 +137,59 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(text).toContain('Carbone');
     expect(text).toContain('convert_document');
     expect(text).toContain('carbone://templates/{id}');
+  });
+});
+
+/**
+ * Tool calls through a real MCP client, so the SDK validates each structuredContent against the registered
+ * outputSchema (handler unit tests bypass that check). The Carbone client is a stub returning response shapes
+ * recorded from api.carbone.io.
+ */
+describe('structured output passes SDK output-schema validation (live API response shapes)', () => {
+  let client: Client;
+  const carbone = {
+    isCloud: true,
+    // PATCH name + category + tags: the API echoes "deployedAt": null although it was not sent.
+    updateTemplate: async () => ({
+      name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'], deployedAt: null, versionId: '4dc8abc',
+    }),
+    // POST /template with versioning.
+    uploadTemplate: async () => ({
+      id: '1530905183164918624', versionId: '929a', templateId: '929a', type: 'html',
+      createdAt: 1791957319, deployedAt: 0, size: 46, templateExtension: 'html',
+    }),
+  } as unknown as CarboneClient;
+
+  beforeAll(async () => {
+    const server = new McpServer(serverInfo('0.0.0-test'), SERVER_OPTIONS);
+    registerTools(server, carbone, {
+      allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1024,
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: 'output-schema-test', version: '0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  });
+
+  afterAll(async () => {
+    await client.close();
+  });
+
+  test('update_template_metadata: "deployedAt": null in the API response is not an error', async () => {
+    const result = await client.callTool({
+      name: 'update_template_metadata',
+      arguments: { templateId: '1530905183164918624', name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'] },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({
+      versionId: '4dc8abc', name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'],
+    });
+  });
+
+  test('upload_template: the live versioned response passes', async () => {
+    const result = await client.callTool({ name: 'upload_template', arguments: { template: 'aGVsbG8=', name: 'Invoice' } });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({
+      name: 'Invoice', id: '1530905183164918624', versionId: '929a', type: 'html', size: 46, createdAt: 1791957319, deployedAt: 0,
+    });
   });
 });

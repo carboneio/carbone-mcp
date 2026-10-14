@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { createRequire } from 'module';
-import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { McpServer } from '@modelcontextprotocol/server';
 import { CarboneClient } from './carbone/client.js';
 import { loadConfig } from './server/config.js';
 import { startHttpServer } from './server/http.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
-import { serverInfo, SERVER_INSTRUCTIONS } from './server/serverInfo.js';
+import { serverInfo, SERVER_OPTIONS } from './server/serverInfo.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -24,24 +24,34 @@ async function main() {
   });
 
   if (config.transport === 'http') {
-    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork });
+    if (config.carboneApiKey && !config.requireClientAuth) {
+      process.stderr.write(
+        '[carbone-mcp] Warning: requests without an Authorization: Bearer key use the server-level CARBONE_API_KEY. ' +
+        'Set CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true to require every client to send its own key.\n'
+      );
+    }
+    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork, allowedOriginHostnames: config.allowedOriginHostnames });
     return;
   }
 
-  // stdio mode (default) — one server, one client, key from env var
-  const server = new McpServer(serverInfo(version), { instructions: SERVER_INSTRUCTIONS });
-  // stdio runs locally, so writing outputPath files to disk is meaningful.
-  // stdio runs locally as the caller, so reading/writing local paths is the documented behavior.
-  registerTools(server, client, {
-    allowFileOutput: true,
-    allowFileInput: true,
-    allowPrivateNetwork: config.allowPrivateNetwork,
-    maxFileBytes: config.maxFileBytes,
+  // stdio mode (default) — one client, key from env var. serveStdio serves both 2026-07-28 and
+  // 2025-era (initialize) clients, calls the factory for each server instance it needs, and closes
+  // when stdin ends so the process exits.
+  serveStdio(() => {
+    const server = new McpServer(serverInfo(version), SERVER_OPTIONS);
+    // stdio runs locally, so writing outputPath files to disk is meaningful.
+    // stdio runs locally as the caller, so reading/writing local paths is the documented behavior.
+    registerTools(server, client, {
+      allowFileOutput: true,
+      allowFileInput: true,
+      allowPrivateNetwork: config.allowPrivateNetwork,
+      maxFileBytes: config.maxFileBytes,
+    });
+    registerResources(server, client);
+    return server;
+  }, {
+    onerror: (error) => process.stderr.write(`[carbone-mcp] MCP error: ${error.message}\n`),
   });
-  registerResources(server, client);
-
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
 
   // MCP servers communicate over stdio — use stderr for diagnostic messages
   // so they don't interfere with the MCP protocol on stdout.

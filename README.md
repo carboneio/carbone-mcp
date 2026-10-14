@@ -12,13 +12,15 @@ Give Claude, ChatGPT, and other AI assistants the power to:
 - 📚 **Template Library** — Upload, version, categorize, and manage reusable templates
 - 🎨 **PDF Customization** — Fill PDF forms, add watermarks, passwords, encryption, multiple converter engines
 - 🌍 **Localization** — Multi-language support, currency conversion, timezone handling
-- ⚡ **Batch Generation** — Create hundreds of documents in one request (async via webhook)
+- ⚡ **Batch Generation** — Create up to 100 documents per request on Carbone Cloud (async, delivered to your webhook)
 
 ---
 
 ## Installation
 
 Get your free API key at [account.carbone.io](https://account.carbone.io).
+
+The server supports MCP protocol 2026-07-28 and still serves clients on the earlier 2025-era protocol, over both stdio and HTTP.
 
 ### stdio — Claude Desktop, VS Code, Cursor, Claude Code, and more
 
@@ -145,6 +147,7 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `MCP_PORT` | `3000` | HTTP server port (only used when `MCP_TRANSPORT=http`) |
 | `MCP_PATH` | `/` | HTTP endpoint path (only used when `MCP_TRANSPORT=http`) |
 | `MCP_MAX_BODY_BYTES` | `62914560` | Maximum request body size in bytes (60 MB default, matching Carbone Cloud limit) |
+| `MCP_ALLOWED_ORIGINS` | `localhost`, `127.0.0.1`, `[::1]` | HTTP mode only — browser `Origin` hostnames allowed in addition to the localhost default: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request whose `Origin` is present but not allowed gets `403`; requests without an `Origin` (desktop, CLI, server-side clients) are unaffected. Invalid entries stop the server at startup |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP mode only — require `Authorization: Bearer <key>` on every request. **Leave `false` only if you intend a shared-key server:** with a server-level `CARBONE_API_KEY` set, requests that carry no Bearer key fall back to it, so anyone who can reach the port can spend that Carbone account. Set to `true` to require each client to bring its own key. Irrelevant when no server key is set (e.g. on-premise) |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs (templates, `data`, …) to resolve to private/internal addresses. Off by default to block SSRF (cloud metadata, `localhost`, RFC1918). Enable only on a trusted deployment with internal template hosts |
 
@@ -158,7 +161,7 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 
 | Tool | Description | Docs |
 |---|---|---|
-| `convert_document` | Convert documents between 100+ formats without storing a template | [→](https://carbone.io/documentation/developer/http-api/convert-reports.html) |
+| `convert_document` | Convert documents between 100+ formats without storing a template (pure conversion: tags are kept) | [→](https://carbone.io/documentation/developer/http-api/convert-reports.html) |
 | `render_document` | Generate documents from templates by merging with JSON data | [→](https://carbone.io/documentation/developer/http-api/generate-reports.html) |
 
 ### Template Management
@@ -170,7 +173,7 @@ CARBONE_BASE_URL=https://your-carbone-server.com npx carbone-mcp
 | `list_tags` | List all tags used across your templates | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#list-tags) |
 | `upload_template` | Store reusable templates with versioning, categorization, and metadata | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#upload-a-template) |
 | `update_template_metadata` | Rename, categorize, tag, deploy, or expire template versions | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#patch-a-template) |
-| `delete_template` | Soft-delete templates (marked for removal, gone after ~24h) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#delete-a-template) |
+| `delete_template` | Delete templates — takes effect immediately (the file is purged after the retention delay) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#delete-a-template) |
 | `download_template` | Download original template files (DOCX, XLSX, PDF, etc.) | [→](https://carbone.io/documentation/developer/http-api/manage-templates.html#download-a-template) |
 
 ### Discovery
@@ -190,9 +193,9 @@ By default, a generated or converted file is returned based on its type and tran
 
 | Output | stdio (local clients) | HTTP (remote / self-hosted) |
 |---|---|---|
-| Text — HTML, TXT, CSV, MD, XML | inline text | inline text |
+| Text — HTML, TXT, CSV, MD, XML, JSON (template samples) | inline text | inline text |
 | Inline images — PNG, JPG, GIF, WEBP | inline image | inline image |
-| Everything else — PDF, Office, ZIP, SVG… | saved to a temp file, path returned | returned as a download attachment |
+| Everything else — PDF, Office, SVG, TIFF… | saved to a temp file, path returned | returned as a download attachment |
 
 Three optional parameters on `convert_document` and `render_document` (and `outputPath` / `asAttachment` on `download_template`) override this:
 
@@ -214,18 +217,18 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 "Turn my Excel spreadsheet into CSV format"
 "Convert this HTML page to a PNG image"
 "Convert my Markdown README to PDF"
-"Convert this PPTX to PNG — use OnlyOffice for best fidelity"
-"Rasterize this PDF to PNG images — one per page"
+"Convert this DOCX to PDF with the Carbone ICE converter — the fastest for Word files"
+"Render this PDF as a PNG thumbnail"
 ```
 
 ### 💼 Finance & Invoicing
 ```
 "Generate an invoice using template T123 with: {customer: 'Acme Corp', total: 1500, items: [...]}"
 "Generate invoices from the data in /data/invoices.json"
-"Create 500 invoices from my billing data and bundle them in a ZIP"
+"Create 100 invoices from my billing data as one ZIP, delivered to my webhook https://example.com/hook"
 "Generate a French invoice for my Paris client — use EUR currency and fr-fr locale"
-"Render this monthly report for each client in clients.json and ZIP them all"
-"Generate invoice-{d.id}.pdf for each row in my sales data"
+"Render this monthly report for each client in clients.json as one merged PDF, sent to my webhook"
+"Generate one invoice per row in my sales data, named invoice-{d.id}"
 ```
 
 ### ⚖️ Legal & Compliance
@@ -260,7 +263,7 @@ Three optional parameters on `convert_document` and `render_document` (and `outp
 "Add a semi-transparent DRAFT watermark to every page"
 "Generate a PDF/A-1b compliant version of this document for archiving"
 "Export only pages 1–5 of this presentation as a PDF"
-"Convert each slide of this PPTX to a separate PDF page"
+"Make this PDF accessible: tagged PDF with PDF/UA compliance"
 ```
 
 ### 📚 Template Management
@@ -317,7 +320,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp":    { "version": "1.2.2" },
+  "mcp":    { "version": "1.x.x" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -337,7 +340,10 @@ Tools accept a local path, an HTTPS URL, or base64 for `file` / `template` and t
 - **Local paths** are readable in **stdio only**, where the server already runs as you. In HTTP mode they are refused, so a remote caller can never make the server read its own filesystem.
 
 ⚠️ **Sharing a server-level API key (HTTP mode)**
-If you set `CARBONE_API_KEY` on an HTTP server and leave `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=false` (the default), requests without a Bearer key fall back to that key — anyone who can reach the port can spend that Carbone account. Set it to `true` to require each client to bring its own key, or only expose the port on a trusted network. (Not applicable when no server key is set, e.g. on-premise Carbone without authentication.)
+If you set `CARBONE_API_KEY` on an HTTP server and leave `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=false` (the default), requests without a Bearer key fall back to that key — anyone who can reach the port can spend that Carbone account. The server prints a warning at startup in that configuration. Set it to `true` to require each client to bring its own key, or only expose the port on a trusted network. (Not applicable when no server key is set, e.g. on-premise Carbone without authentication.)
+
+⚠️ **Browser origins and DNS rebinding (HTTP mode)**
+The MCP endpoint answers `403` when a request's `Origin` header is present but not allowed, so a malicious web page cannot reach a locally running server (e.g. through DNS rebinding) and spend its key. `localhost`, `127.0.0.1` and `[::1]` are allowed by default; list the hostnames of browser-based clients you trust in `MCP_ALLOWED_ORIGINS`. Requests without an `Origin` header (desktop, CLI and server-side clients) are unaffected.
 
 ⚠️ **Prompt Injection**
 Connecting an AI assistant to any external service carries inherent risks. A malicious document or template could contain instructions that trick the AI into performing unintended actions (e.g. exfiltrating data, deleting templates). Always review what your AI client is about to do before confirming tool calls.
@@ -385,9 +391,13 @@ Items:
 
 | Category | Formats |
 |---|---|
-| Documents | PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, RTF, EPUB |
-| Images | PNG, JPG, WEBP, SVG, TIFF, BMP, GIF |
-| Web / Text | HTML, TXT, CSV, MD, XML |
+| Documents | PDF, DOCX, DOC, ODT, OTT, RTF, EPUB |
+| Spreadsheets | XLSX, XLS, ODS, OTS, CSV, DBF, DIF |
+| Presentations & drawings | PPTX, PPT, ODP, OTP, ODG |
+| Web / Text | HTML, XHTML, TXT, MD, XML, IDML |
+| Images | PNG, JPG / JPEG, WEBP, GIF, TIFF, BMP, SVG, EMF, WMF, EPS |
+
+Valid outputs depend on the input format.
 
 Full conversion matrix: [carbone.io/documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type)
 

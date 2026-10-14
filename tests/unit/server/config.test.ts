@@ -265,4 +265,42 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).toThrow('Invalid CARBONE_REQUIRE_CLIENT_AUTH_HEADER value "yes"');
     });
   });
+
+  // ── MCP_ALLOWED_ORIGINS ──────────────────────────────────────────────────
+  describe('MCP_ALLOWED_ORIGINS', () => {
+    test.each([undefined, '', ' , ,, '])('defaults to no extra hostnames when %j', (value) => {
+      stubHttp();
+      vi.stubEnv('MCP_ALLOWED_ORIGINS', value);
+      expect(loadConfig().allowedOriginHostnames).toEqual([]);
+    });
+
+    test('trims, lowercases and drops empty entries', () => {
+      stubHttp();
+      vi.stubEnv('MCP_ALLOWED_ORIGINS', ' App.Example.com, ,localhost,[FD00::1] ,');
+      expect(loadConfig().allowedOriginHostnames).toEqual(['app.example.com', 'localhost', '[fd00::1]']);
+    });
+
+    test('accepts the browser-extension forms: "<scheme>://*" and a bare extension ID', () => {
+      stubHttp();
+      vi.stubEnv('MCP_ALLOWED_ORIGINS', 'MOZ-EXTENSION://*,abcdefghijklmnopabcdefghijklmnop');
+      expect(loadConfig().allowedOriginHostnames).toEqual(['moz-extension://*', 'abcdefghijklmnopabcdefghijklmnop']);
+    });
+
+    // Each of these could never equal a browser Origin's hostname, so it would silently 403 every browser client.
+    test.each([
+      'https://app.example.com', // full origin
+      'app.example.com:8080',    // port
+      'app.example.com/mcp',     // path
+      '*.example.com',           // no wildcard support
+      '*',                       // no allow-all
+      'https://*',               // the SDK never honours http(s)://*
+      '127.1',                   // not in the normalized form browsers send
+    ])('throws a clear error for "%s"', (entry) => {
+      stubHttp();
+      vi.stubEnv('MCP_ALLOWED_ORIGINS', `localhost,${entry}`);
+      expect(() => loadConfig()).toThrow(
+        `Invalid MCP_ALLOWED_ORIGINS entry "${entry}". Must be a hostname without scheme, port, path or wildcard`
+      );
+    });
+  });
 });

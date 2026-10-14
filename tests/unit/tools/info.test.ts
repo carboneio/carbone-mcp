@@ -1,6 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { handleGetApiStatus, handleGetCapabilities } from '../../../src/tools/info.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
+import { OUTPUT_FORMATS, CONVERTERS } from '../../../src/validation/formats.js';
 
 const client = {
   getStatus: vi.fn(),
@@ -86,6 +87,23 @@ describe('handleGetCapabilities', () => {
     const { text } = result(handleGetCapabilities());
 
     expect(text).toContain('convertTo');
+  });
+
+  test('stays in sync with the code: exact convertTo list, every converter, no stale advice', () => {
+    const { text } = result(handleGetCapabilities());
+
+    const formatsLine = text.split('\n').find((line) => line.startsWith(`${OUTPUT_FORMATS[0]}, `));
+    expect(formatsLine?.split(', ')).toEqual([...OUTPUT_FORMATS]);
+    for (const converter of CONVERTERS) expect(text).toContain(`- \`${converter}\` `);
+
+    expect(text).not.toMatch(/Archive:|convertTo[^\n]*\bzip\b|\bcdr\b|\bxlsb\b/i);
+    expect(text).not.toMatch(/fontsize|ConvertSlideshow|density|DocumentPermissionPassword/);
+    expect(text).not.toMatch(/expireAt[^.\n]*42000000000/);
+    expect(text).toContain('tags such as `{d.name}` are kept'); // convert_document = pure conversion
+    expect(text).toContain('GET /render/{renderId}');           // async: the webhook's server downloads it
+    expect(text).toContain('failOn');
+    expect(text).toContain('preReleaseFeatureIn');
+    expect(text).toContain('max 511');
   });
 
   test('mentions LLM authoring capabilities', () => {

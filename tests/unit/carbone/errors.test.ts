@@ -5,6 +5,8 @@ import {
   CarboneValidationError,
   CarboneNotFoundError,
   CarboneRateLimitError,
+  CarboneGenerationError,
+  CarboneConnectionError,
 } from '../../../src/carbone/errors.js';
 
 describe('CarboneError', () => {
@@ -25,6 +27,26 @@ describe('CarboneError', () => {
   test('originalError is undefined when not provided', () => {
     const error = new CarboneError('msg', 400);
     expect(error.originalError).toBeUndefined();
+  });
+
+  test('stores the API error code when provided', () => {
+    expect(new CarboneError('msg', 500, undefined, 'w101').code).toBe('w101');
+    expect(new CarboneError('msg', 500).code).toBeUndefined();
+  });
+});
+
+describe('CarboneGenerationError / CarboneConnectionError', () => {
+  test('a generation error is a 500 CarboneError with its code', () => {
+    const error = new CarboneGenerationError('Unable to generate the document.', 'w101');
+    expect(error).toBeInstanceOf(CarboneError);
+    expect(error).toMatchObject({ name: 'CarboneGenerationError', statusCode: 500, code: 'w101' });
+  });
+
+  test('a connection error has no HTTP status (0)', () => {
+    const cause = new Error('fetch failed');
+    const error = new CarboneConnectionError('Could not reach the Carbone API at api.carbone.io: ECONNREFUSED.', cause);
+    expect(error).toBeInstanceOf(CarboneError);
+    expect(error).toMatchObject({ name: 'CarboneConnectionError', statusCode: 0, originalError: cause });
   });
 });
 

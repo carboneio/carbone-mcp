@@ -40,7 +40,10 @@ export const listTemplatesSchema = {
     .number()
     .int()
     .optional()
-    .describe('Filter by upload origin. 0 = uploaded via API, 1 = uploaded via Carbone Studio.'),
+    .describe(
+      'Filter by upload origin: 0 = API, 1 = Carbone Studio, 2 = Salesforce integration, ' +
+      '3 = Odoo integration, 4 = HubSpot integration.'
+    ),
   includeVersions: z
     .boolean()
     .optional()
@@ -108,16 +111,24 @@ export const uploadTemplateDescription =
   'Upload and store a reusable Carbone template. ' +
   'Once uploaded, use render_document with the returned Template ID to generate documents from it. ' +
   'Supports versioning: multiple versions can live under a single stable Template ID, ' +
-  'with deployedAt controlling which version is active. ' +
+  'and rendering by Template ID uses the version with the most recent deployedAt. ' +
+  'A result deployedAt of 0 means the version is not explicitly deployed: if another version of the same ' +
+  'Template ID is deployed, renders by Template ID keep using that one. ' +
   'Accepted formats: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, XHTML, IDML, XML, Markdown, PDF, and more.';
 
 export const uploadTemplateOutputSchema = {
   id: z.string().optional().describe('Stable Template ID (when versioning is enabled).'),
   versionId: z.string().optional().describe('Version ID (SHA-256) of this uploaded version.'),
   templateId: z.string().optional().describe('Template ID returned in legacy/non-versioned mode.'),
-  name: z.string().describe('Template display name.'),
+  templateExtension: z.string().optional().describe('Detected file extension, e.g. "docx" (legacy/non-versioned mode).'),
+  name: z.string().optional().describe('Template display name, when one was given.'),
   type: z.string().optional().describe('Detected template file type.'),
   size: z.number().optional().describe('Template size in bytes.'),
+  createdAt: z.number().optional().describe('UTC Unix timestamp (seconds) of the upload.'),
+  deployedAt: z
+    .number()
+    .optional()
+    .describe('UTC Unix timestamp of deployment; 0 means this version is not explicitly deployed.'),
 };
 
 export const uploadTemplateSchema = {
@@ -133,7 +144,12 @@ export const uploadTemplateSchema = {
   name: z
     .string()
     .min(1)
-    .describe('Display name for the template (e.g. "Invoice Template", "NDA Contract").'),
+    .max(200)
+    .optional()
+    .describe(
+      'Display name for the template, max 200 characters (e.g. "Invoice Template", "NDA Contract"). ' +
+      'Optional but recommended: list_templates shows it and its search matches it.'
+    ),
   id: z
     .string()
     .optional()
@@ -149,33 +165,39 @@ export const uploadTemplateSchema = {
     .describe(
       'Enable template versioning (default: true). ' +
       'When true, a stable Template ID is generated and multiple versions can be managed under it. ' +
-      'When false, behaves as legacy mode and returns only a templateId (SHA-256 hash).'
+      'When false, behaves as legacy mode and returns only a templateId (SHA-256 hash) and templateExtension.'
     ),
   category: z
     .string()
+    .max(200)
     .optional()
-    .describe('Group templates into folders/categories (e.g. "invoices", "legal", "hr").'),
+    .describe('Group templates into folders/categories, max 200 characters (e.g. "invoices", "legal", "hr").'),
   comment: z
     .string()
+    .max(200)
     .optional()
-    .describe('Free-text comment to describe the template version or its purpose.'),
+    .describe('Free-text comment to describe the template version or its purpose, max 200 characters.'),
   tags: z
     .array(z.string())
     .optional()
-    .describe('Tags for searchability and filtering (e.g. ["sales", "billing", "v2"]).'),
+    .describe(
+      'Labels shown by list_tags (e.g. ["sales", "billing", "v2"]); list_templates cannot filter by tag. ' +
+      'Duplicates are removed and the list is sorted; the whole list is limited to 100 characters (about 8 tags of 9 characters).'
+    ),
   sample: z
     .array(
-      z.object({
-        data:         z.record(z.string(), z.unknown()).describe('JSON dataset for {d.} tags.'),
-        complement:   z.record(z.string(), z.unknown()).describe('Extra data for {c.} tags.'),
-        translations: z.record(z.string(), z.unknown()).describe('Localization map for {t()} tags.'),
-        enum:         z.record(z.string(), z.unknown()).describe('Enumerations for :convEnum() formatter.'),
+      z.strictObject({
+        data:         z.record(z.string(), z.unknown()).optional().describe('JSON dataset for {d.} tags.'),
+        complement:   z.record(z.string(), z.unknown()).optional().describe('Extra data for {c.} tags.'),
+        translations: z.record(z.string(), z.unknown()).optional().describe('Localization map for {t()} tags.'),
+        enum:         z.record(z.string(), z.unknown()).optional().describe('Enumerations for :convEnum() formatter.'),
       })
     )
+    .max(1)
     .optional()
     .describe(
-      'Sample input data attached to the template for testing in Carbone Studio. ' +
-      'Each item must include data, complement, translations, and enum objects.'
+      'Sample input data attached to the template for testing in Carbone Studio: an array with at most ONE object, ' +
+      'whose keys data, complement, translations and enum are all optional. Example: [{ "data": { "name": "Acme" } }].'
     ),
   deployedAt: z
     .number()
@@ -184,28 +206,30 @@ export const uploadTemplateSchema = {
     .describe(
       'UTC Unix timestamp (seconds) to set as the deployment time for this version. ' +
       'Carbone uses the version with the most recent deployedAt when rendering via Template ID. ' +
-      'Use 42000000000 to deploy immediately (special "NOW" sentinel value).'
+      'Use 42000000000 to deploy immediately (special "NOW" sentinel value). Future values are not allowed.'
     ),
   expireAt: z
     .number()
     .int()
+    .min(0)
     .optional()
     .describe(
-      'UTC Unix timestamp (seconds) at which this template will be automatically deleted. ' +
-      'Use 42000000000 to delete immediately (special "NOW" sentinel value).'
+      'Schedule deletion at a UTC Unix timestamp (seconds); 0 (default) means the template never expires. ' +
+      'After that time it is no longer listed, downloadable or renderable (404), and the file is purged after ' +
+      'the retention delay. To remove a template now, use delete_template.'
     ),
 };
 
 export async function handleUploadTemplate(
   args: {
     template:    string;
-    name:        string;
+    name?:       string;
     id?:         string;
     versioning?: boolean;
     category?:   string;
     comment?:    string;
     tags?:       string[];
-    sample?:     Array<{ data: Record<string, unknown>; complement: Record<string, unknown>; translations: Record<string, unknown>; enum: Record<string, unknown> }>;
+    sample?:     Array<{ data?: Record<string, unknown>; complement?: Record<string, unknown>; translations?: Record<string, unknown>; enum?: Record<string, unknown> }>;
     deployedAt?: number;
     expireAt?:   number;
   },
@@ -224,7 +248,7 @@ export async function handleUploadTemplate(
 
     // The API returns different shapes depending on whether versioning is enabled
     const lines: string[] = ['Template uploaded successfully!', ''];
-    const structuredContent: Record<string, unknown> = { name: args.name };
+    const structuredContent: Record<string, unknown> = args.name ? { name: args.name } : {};
     if ('id' in result) {
       lines.push(`Template ID : ${result.id}`);
       lines.push(`Version ID  : ${result.versionId}`);
@@ -232,12 +256,27 @@ export async function handleUploadTemplate(
       structuredContent['versionId'] = result.versionId;
       if (result.type) { lines.push(`Type        : ${result.type}`); structuredContent['type'] = result.type; }
       if (result.size) { lines.push(`Size        : ${result.size} bytes`); structuredContent['size'] = result.size; }
+      if (result.createdAt) structuredContent['createdAt'] = result.createdAt;
+      // Renders by Template ID use the most recently deployed version. With deployedAt 0, they keep using another
+      // deployed version if there is one; a fresh Template ID still renders (verified live).
+      if (result.deployedAt != null) { // null: absent (the output schema rejects it)
+        structuredContent['deployedAt'] = result.deployedAt;
+        lines.push(result.deployedAt > 0
+          ? `Deployed at : ${result.deployedAt} (renders by Template ID use the most recently deployed version)`
+          : 'Deployed at : 0 (not explicitly deployed: if another version of this Template ID is deployed, ' +
+            'renders by Template ID keep using it). To use this version, deploy it with update_template_metadata ' +
+            '(templateId = this Version ID, deployedAt = 42000000000), or render it by its Version ID.');
+      }
     } else {
       // Legacy / versioning disabled response
       lines.push(`Template ID : ${result.templateId}`);
       structuredContent['templateId'] = result.templateId;
+      if (result.templateExtension) {
+        lines.push(`Extension   : ${result.templateExtension}`);
+        structuredContent['templateExtension'] = result.templateExtension;
+      }
     }
-    lines.push(`Name        : ${args.name}`);
+    if (args.name) lines.push(`Name        : ${args.name}`);
 
     return { content: [{ type: 'text' as const, text: lines.join('\n') }], structuredContent };
   } catch (error) {
@@ -253,45 +292,80 @@ export async function handleUploadTemplate(
 export const updateTemplateMetadataToolName = 'update_template_metadata';
 
 export const updateTemplateMetadataDescription =
-  'Update the metadata of a stored template: name, comment, category, tags, deployment timestamp, or expiration. ' +
-  'Use deployedAt to activate a specific version for rendering. ' +
-  'Use expireAt to schedule or trigger immediate deletion.';
+  'Update the metadata of ONE stored template version: name, comment, category, tags, deployment (deployedAt), ' +
+  'scheduled deletion (expireAt), or the Template ID it belongs to (moveToTemplateId). ' +
+  'With a Template ID, Carbone patches its currently deployed version only; with a Version ID, that exact version. ' +
+  'Use deployedAt to choose the version used when rendering by Template ID. ' +
+  'Returns the patched versionId and the updated fields, as echoed back by Carbone. To delete a template now, use delete_template.';
+
+export const updateTemplateMetadataOutputSchema = {
+  versionId: z.string().describe('Version ID of the patched version.'),
+  id: z.string().optional().describe('Template ID the version now belongs to (returned when moveToTemplateId was used).'),
+  name: z.string().optional().describe('Name, returned if updated.'),
+  comment: z.string().optional().describe('Comment, returned if updated.'),
+  category: z.string().optional().describe('Category, returned if updated.'),
+  tags: z.array(z.string()).optional().describe('Tags, returned if updated.'),
+  deployedAt: z.number().optional().describe('Deployment timestamp, returned if updated.'),
+  expireAt: z.number().optional().describe('Deletion timestamp (0 = never expires), returned if updated.'),
+};
 
 export const updateTemplateMetadataSchema = {
   templateId: z
     .string()
     .min(1)
     .describe(
-      'Template ID (64-bit) or Version ID (SHA-256) to update. ' +
-      'Using a Template ID updates the metadata shared by all versions. ' +
-      'Using a Version ID updates only that specific version.'
+      'Template ID (64-bit) or Version ID (SHA-256) of the version to update. ' +
+      'A Template ID patches only its currently deployed version (not every version). ' +
+      'A Version ID patches that exact version.'
     ),
-  name: z.string().optional().describe('New display name.'),
-  comment: z.string().optional().describe('New free-text comment.'),
-  category: z.string().optional().describe('New category.'),
-  tags: z.array(z.string()).optional().describe('New list of tags — replaces existing tags entirely.'),
+  moveToTemplateId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'CAUTION, structural change: moves the patched version to this other Template ID (64-bit; a Version ID is rejected). ' +
+      'It is NOT the template to patch (that is templateId). ' +
+      'Pass the version\'s Version ID as templateId; with a Template ID, its currently deployed version is moved and ' +
+      'that Template ID falls back to its next most recent version (or stops resolving if none is left). ' +
+      'Fails if the move creates a deployedAt conflict at the destination. Only use it when the user asks to move a version.'
+    ),
+  name: z.string().max(200).optional().describe('New display name, max 200 characters.'),
+  comment: z.string().max(200).optional().describe('New free-text comment, max 200 characters.'),
+  category: z.string().max(200).optional().describe('New category, max 200 characters.'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'New list of tags, replacing the existing ones. Duplicates are removed and the list is sorted; ' +
+      'the whole list is limited to 100 characters (about 8 tags of 9 characters).'
+    ),
   deployedAt: z
     .number()
     .int()
     .optional()
     .describe(
       'Unix timestamp (seconds) to set as the deployment time for this version. ' +
-      'Carbone picks the version with the most recent deployedAt when rendering. ' +
-      'Use 42000000000 to deploy immediately (special "NOW" value).'
+      'Carbone picks the version with the most recent deployedAt when rendering by Template ID. ' +
+      'Use 42000000000 to deploy immediately (special "NOW" value). ' +
+      'Future values are not allowed, and the deployed version\'s deployedAt cannot move back in time.'
     ),
   expireAt: z
     .number()
     .int()
+    .min(0)
     .optional()
     .describe(
-      'Unix timestamp (seconds) at which this template will be automatically deleted. ' +
-      'Use 42000000000 to delete immediately.'
+      'Schedule deletion of the patched version at a UTC Unix timestamp (seconds). After that time it is no longer ' +
+      'listed, downloadable or renderable (404), and the file is purged after the retention delay. ' +
+      'Send 0 to cancel a scheduled deletion (permanent again); omit to leave it unchanged. ' +
+      'To delete now, use delete_template.'
     ),
 };
 
 export async function handleUpdateTemplateMetadata(
   args: {
     templateId:  string;
+    moveToTemplateId?: string;
     name?:       string;
     comment?:    string;
     category?:   string;
@@ -303,10 +377,24 @@ export async function handleUpdateTemplateMetadata(
   options?: CallOptions
 ) {
   try {
-    await client.updateTemplate(args, options);
+    // moveToTemplateId is the API body field `id` (renamed so it is not confused with templateId).
+    const { moveToTemplateId, ...fields } = args;
+    const result = await client.updateTemplate({ ...fields, id: moveToTemplateId }, options);
+
+    // Keep only the declared fields: the output schema rejects unknown keys. Treat null as absent too:
+    // the live API echoes "deployedAt": null even when it was not sent, which the schema would reject.
+    const { versionId, id, name, comment, category, tags, deployedAt, expireAt } = result;
+    const updated = Object.fromEntries(
+      Object.entries({ id, name, comment, category, tags, deployedAt, expireAt }).filter(([, v]) => v != null)
+    );
+    // A Version ID in the URL is echoed back as versionId; anything else was a Template ID.
+    const target = versionId === args.templateId
+      ? `version ${versionId}`
+      : `version ${versionId} (the currently deployed version of Template ID ${args.templateId})`;
 
     return {
-      content: [{ type: 'text' as const, text: 'Template metadata updated successfully.' }],
+      content: [{ type: 'text' as const, text: `Template metadata updated for ${target}.\nUpdated fields: ${JSON.stringify(updated)}` }],
+      structuredContent: { versionId, ...updated },
     };
   } catch (error) {
     return {
@@ -321,10 +409,10 @@ export async function handleUpdateTemplateMetadata(
 export const deleteTemplateToolName = 'delete_template';
 
 export const deleteTemplateDescription =
-  'Delete a stored Carbone template. ' +
-  'This is a soft delete: the template is marked for garbage collection and removed after a delay (default 24 hours). ' +
+  'Delete a stored Carbone template. Takes effect immediately: the template is no longer listed, downloadable ' +
+  'or renderable (404); the file itself is purged after the retention delay (Carbone Cloud: 24 hours). ' +
   'You can delete by Template ID (removes all versions) or by Version ID (removes only that specific version). ' +
-  'For immediate or scheduled deletion, use update_template_metadata with expireAt = 42000000000 (NOW) or a future Unix timestamp.';
+  'To schedule a deletion instead, use update_template_metadata with expireAt set to a future Unix timestamp.';
 
 export const deleteTemplateSchema = {
   templateId: z
@@ -442,7 +530,8 @@ export const downloadTemplateToolName = 'download_template';
 export const downloadTemplateDescription =
   'Download the original source file of a stored Carbone template (e.g. the DOCX, XLSX, PPTX, or HTML file that was uploaded). ' +
   'Use this to inspect, edit, or back up a template. ' +
-  'Pass a Template ID to download the currently deployed version, or a Version ID to download a specific version.';
+  'Pass a Template ID to download the currently deployed version, or a Version ID to download a specific version. ' +
+  'Append "_sample.json" to either ID to download the JSON sample data stored with it instead.';
 
 export const downloadTemplateSchema = {
   templateId: z
@@ -452,7 +541,8 @@ export const downloadTemplateSchema = {
       'Template ID (64-bit) or Version ID (SHA-256) to download. ' +
       'Template ID — downloads the currently deployed version of the template. ' +
       'Version ID — downloads that exact version regardless of deployment status. ' +
-      'Both formats are returned by upload_template and list_templates.'
+      'Both formats are returned by upload_template and list_templates. ' +
+      'Use "<id>_sample.json" (e.g. "1234567890_sample.json") to get the sample data (JSON) stored with it.'
     ),
   outputPath: z
     .string()
@@ -479,7 +569,8 @@ export async function handleDownloadTemplate(
 ) {
   try {
     const result = await client.downloadTemplate(args.templateId, options);
-    const ext = result.filename.split('.').pop() ?? 'bin';
+    // A sample ("<id>_sample.json") is JSON; take the extension from the request, as the returned filename may lack it.
+    const ext = args.templateId.endsWith('_sample.json') ? 'json' : (result.filename.split('.').pop() ?? 'bin');
 
     return deliverDocument({
       buffer: result.buffer,
