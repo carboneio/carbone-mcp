@@ -7,6 +7,7 @@ import { createMcpHandler, localhostAllowedOrigins, McpServer, type AuthInfo } f
 import type { CarboneClient } from '../carbone/client.js';
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
 import { AuthorizationServerUnavailableError, logOAuth } from '../carbone/tokenExchange.js';
+import { isBlockedIp } from '../utils/file.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
 import { serverInfo, SERVER_OPTIONS } from './serverInfo.js';
@@ -41,19 +42,22 @@ export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unkno
 }
 
 /**
- * The client's address: the TCP peer, or with `trustedHops` reverse proxies in front (MCP_TRUST_PROXY_HOPS), the
- * X-Forwarded-For entry the outermost trusted one recorded. Each proxy appends the address it received from, so
- * that entry is `trustedHops` from the end; anything left of it was written by the client and is never trusted.
- * A port the proxy wrote ("203.0.113.7:51000", "[2001:db8::1]:443") is dropped; an entry that is no IP address
- * gives the peer.
+ * The client's address. While the address a request came from is one only infrastructure has (an internal proxy:
+ * loopback, private, CGNAT… the URL guard's own list), the client is the X-Forwarded-For entry that proxy recorded,
+ * one step left. No configuration: it finds the client behind any number of internal proxies, a direct connection
+ * never reads the header, and entries a client writes sit left of its real address, out of reach. A port the proxy
+ * wrote ("203.0.113.7:51000", "[2001:db8::1]:443") is dropped; an entry that is no IP address ends the walk.
  */
-export function clientAddress(req: IncomingMessage, trustedHops: number): string {
-  const peer = req.socket.remoteAddress ?? '';
-  if (trustedHops === 0) return peer;
+export function clientAddress(req: IncomingMessage): string {
   const forwarded = req.headers['x-forwarded-for'];
   const entries = (Array.isArray(forwarded) ? forwarded.join(',') : forwarded ?? '').split(',');
-  const entry = (entries[entries.length - trustedHops] ?? '').trim().replace(/^\[([^\]]+)\](?::\d+)?$|^([\d.]+):\d+$/, '$1$2');
-  return isIP(entry) ? entry : peer;
+  let address = req.socket.remoteAddress ?? '';
+  for (let i = entries.length - 1; i >= 0 && isBlockedIp(address); i--) {
+    const entry = entries[i].trim().replace(/^\[([^\]]+)\](?::\d+)?$|^([\d.]+):\d+$/, '$1$2');
+    if (!isIP(entry)) break;
+    address = entry;
+  }
+  return address;
 }
 
 export function extractBearerToken(req: IncomingMessage): string | undefined {
@@ -139,8 +143,7 @@ export async function startHttpServer(options: {
   const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork, allowedOriginHostnames } = options;
   // Built before listening, so a bad issuer stops the server at startup.
   const oauthGate = options.oauth ? createOAuthGate(options.oauth) : undefined;
-  const trustProxyHops = options.oauth?.trustProxyHops ?? 0;
-  /** OAuth mode: how the first MCP requests were addressed is logged, to check MCP_TRUST_PROXY_HOPS on a deployment. */
+  /** OAuth mode: how the first MCP requests were addressed is logged, to check the client address on a new platform. */
   let addressSamples = oauthGate ? 3 : 0;
 
   // ── Public static files — loaded once at startup into memory ────────────
@@ -213,12 +216,11 @@ export async function startHttpServer(options: {
         res.writeHead(400).end('Bad Request');
         return;
       }
-      // OAuth mode: the address the failed-token limit applies to, from the TCP peer or a trusted proxy.
-      const address = clientAddress(req, trustProxyHops);
-      // Logged: that address when proxies are trusted; otherwise the first X-Forwarded-For entry (set by reverse
-      // proxies such as Cloudflare or nginx, but also by the client itself) or the socket address.
+      // OAuth mode: the address the failed-token limit applies to, and the one logged. API-key mode logs, as before,
+      // the first X-Forwarded-For entry (set by reverse proxies such as nginx, but also by the client) or the socket.
+      const address = oauthGate ? clientAddress(req) : undefined;
       // Sanitize to prevent log injection — keep only printable ASCII characters.
-      const clientIp = (trustProxyHops ? address : (req.headers['x-forwarded-for'] as string | undefined)
+      const clientIp = (address ?? (req.headers['x-forwarded-for'] as string | undefined)
         ?.split(',')[0].trim() ?? req.socket.remoteAddress ?? '-')
         .replace(/[^\x20-\x7E]/g, '');
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -291,8 +293,7 @@ export async function startHttpServer(options: {
           if (addressSamples > 0) {
             addressSamples--;
             const forwarded = [req.headers['x-forwarded-for'] ?? ''].flat().join(', ').slice(0, 200);
-            logOAuth(`request from peer ${req.socket.remoteAddress ?? '-'}, X-Forwarded-For "${forwarded}", ` +
-              `MCP_TRUST_PROXY_HOPS ${trustProxyHops}: limited as ${address}`);
+            logOAuth(`request from peer ${req.socket.remoteAddress ?? '-'}, X-Forwarded-For "${forwarded}": limited as ${address}`);
           }
 
           const token = extractBearerToken(req);
@@ -392,7 +393,7 @@ export async function startHttpServer(options: {
   process.stderr.write(`MCP endpoint : http://0.0.0.0:${port}${mcpPath}\n`);
   process.stderr.write(`Health check : http://0.0.0.0:${port}/health\n`);
   if (options.oauth) {
-    process.stderr.write(`OAuth mode   : resource ${options.oauth.resourceUrl}, authorization server ${options.oauth.issuer}, trusted proxies ${trustProxyHops}\n`);
+    process.stderr.write(`OAuth mode   : resource ${options.oauth.resourceUrl}, authorization server ${options.oauth.issuer}\n`);
   }
   return httpServer;
 }

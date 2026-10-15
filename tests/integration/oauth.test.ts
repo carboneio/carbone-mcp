@@ -424,11 +424,11 @@ function postUnsentBody(url: string, bytes: number, headers: Record<string, stri
   });
 }
 
-describe('OAuth mode: flood protection (MCP_TRUST_PROXY_HOPS 1)', () => {
+describe('OAuth mode: flood protection, behind a reverse proxy', () => {
   let url: string;
   beforeAll(async () => {
     url = await mcpServer({
-      oauth: { issuer: asUrl, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, resourceUrl: RESOURCE, trustProxyHops: 1 },
+      oauth: { issuer: asUrl, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, resourceUrl: RESOURCE },
     });
   });
   /** As the proxy forwards it: the client's own (untrusted) claim, then the address the proxy saw. */

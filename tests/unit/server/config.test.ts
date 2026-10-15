@@ -315,10 +315,10 @@ describe('loadConfig: OAuth mode', () => {
   };
 
   /** HTTP, no server key, MCP_PATH "/" (the hosted setup), and the given OAuth variables (all others unset). */
-  function stubOAuth(env: Partial<Record<'MCP_OAUTH_ISSUER' | 'MCP_TRUST_PROXY_HOPS' | keyof typeof OAUTH_ENV, string>> = OAUTH_ENV) {
+  function stubOAuth(env: Partial<Record<'MCP_OAUTH_ISSUER' | keyof typeof OAUTH_ENV, string>> = OAUTH_ENV) {
     stubHttp('');
     vi.stubEnv('MCP_PATH', '/');
-    for (const name of ['MCP_OAUTH_ISSUER', 'MCP_TRUST_PROXY_HOPS', ...Object.keys(OAUTH_ENV)]) vi.stubEnv(name, '');
+    for (const name of ['MCP_OAUTH_ISSUER', ...Object.keys(OAUTH_ENV)]) vi.stubEnv(name, '');
     for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
   }
 
@@ -334,7 +334,6 @@ describe('loadConfig: OAuth mode', () => {
     const config = loadConfig();
     expect(config.oauth).toEqual({
       issuer: 'https://account.carbone.io', clientId: 'mcp-server', clientSecret: 'server-secret', resourceUrl: 'https://mcp.example.test',
-      trustProxyHops: 0,
     });
     expect(config.requireClientAuth).toBe(true);
   });
@@ -383,14 +382,6 @@ describe('loadConfig: OAuth mode', () => {
     expect(() => loadConfig()).toThrow(`Invalid MCP_OAUTH_ISSUER value "${issuer}". Must be an https origin without a path or trailing slash`);
   });
 
-  test('MCP_TRUST_PROXY_HOPS: 0 by default, a small whole number otherwise', () => {
-    stubOAuth({ ...OAUTH_ENV, MCP_TRUST_PROXY_HOPS: '1' });
-    expect(loadConfig().oauth?.trustProxyHops).toBe(1);
-    for (const value of ['-1', '1.5', 'one', '100']) {
-      stubOAuth({ ...OAUTH_ENV, MCP_TRUST_PROXY_HOPS: value });
-      expect(() => loadConfig()).toThrow(`Invalid MCP_TRUST_PROXY_HOPS value "${value}"`);
-    }
-  });
 
   // ── (a) D2: the resource is the URL clients connect to ───────────────────
 

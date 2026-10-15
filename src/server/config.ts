@@ -26,11 +26,6 @@ export interface OAuthConfig {
   clientSecret: string;
   /** The URL MCP clients connect to, exactly as they enter it (MCP_RESOURCE_URL): the RFC 8707 resource. */
   resourceUrl: string;
-  /**
-   * Reverse proxies in front of the server whose X-Forwarded-For entry is trusted (MCP_TRUST_PROXY_HOPS): the
-   * client address the failed-token limit applies to. 0 (default): the TCP peer.
-   */
-  trustProxyHops?: number;
 }
 
 export const DEFAULT_OAUTH_ISSUER = 'https://account.carbone.io';
@@ -101,16 +96,11 @@ function loadOAuthConfig(transport: TransportMode, mcpPath: string, apiKey: stri
   if (!issuerUrl || !isSecureUrl(issuerUrl) || issuer !== issuerUrl.origin) {
     throw new Error(`Invalid MCP_OAUTH_ISSUER value "${issuer}". Must be an https origin without a path or trailing slash, such as "${DEFAULT_OAUTH_ISSUER}".`);
   }
-  const hops = env('MCP_TRUST_PROXY_HOPS') ?? '0';
-  if (!/^\d{1,2}$/.test(hops)) {
-    throw new Error(`Invalid MCP_TRUST_PROXY_HOPS value "${hops}". Must be the number of reverse proxies in front of the server (0 to 99).`);
-  }
   return {
     issuer,
     clientId: env('MCP_OAUTH_CLIENT_ID')!,
     clientSecret: env('MCP_OAUTH_CLIENT_SECRET')!,
     resourceUrl: parseResourceUrl(env('MCP_RESOURCE_URL')!, mcpPath),
-    trustProxyHops: Number(hops),
   };
 }
 

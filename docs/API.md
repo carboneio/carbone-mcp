@@ -505,7 +505,6 @@ Setting only some of these variables, or `CARBONE_API_KEY` with them, stops the 
 | `MCP_OAUTH_CLIENT_ID` | none | This server's client ID, registered at the authorization server as the resource server for `MCP_RESOURCE_URL` (`client_secret_basic`). |
 | `MCP_OAUTH_CLIENT_SECRET` | none | This server's client secret; never logged. |
 | `MCP_RESOURCE_URL` | none | The URL MCP clients connect to, exactly as they enter it: the protected resource advertised at `/.well-known/oauth-protected-resource[/<path>]` (RFC 9728) and the audience every token must be bound to. An origin is written without a trailing slash (`https://mcp.carbone.io`); its path (`/` for an origin) must equal `MCP_PATH`. |
-| `MCP_TRUST_PROXY_HOPS` | `0` | The number of reverse proxies in front of the server, used to find the client's address: `0` takes the TCP peer, `n` the `X-Forwarded-For` entry the outermost of them recorded (`n` from the end); entries further left are written by the client and never trusted. Set it only when every request goes through those proxies. The first three MCP requests after startup are logged with their peer and `X-Forwarded-For`, to check the value on a deployment. |
 
 ---
 
