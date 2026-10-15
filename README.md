@@ -4,7 +4,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.carbone%2Fcarbone--mcp-blue?logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Generate PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files between 36 formats, from Claude, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
+Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files between 36 formats, from Claude, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
 
 - **Convert files:** DOCX, XLSX, PPTX, HTML, Markdown or PDF to PDF, images, CSV, ODT and [the other output formats](docs/API.md#supported-output-formats).
 - **Fill templates with JSON:** design them in Word, Excel, PowerPoint, LibreOffice, HTML or Markdown with `{d.field}` tags, or fill an existing PDF form.
@@ -14,7 +14,7 @@ Generate PDF, Word, Excel and PowerPoint documents from templates and JSON data,
 
 ## What you can ask
 
-These work with the free test key, which outputs watermarked PDFs:
+These work on any Carbone account, even without a plan (you then get watermarked PDFs):
 
 - *"Convert this Markdown to PDF: # Quarterly update …"*
 - *"Fill my invoice template with this JSON and give me a PDF: {"customer": "Acme", "total": 1500}"*
@@ -28,7 +28,7 @@ More in [Example prompts](#example-prompts), including with Salesforce, HubSpot,
 
 ### Prerequisites
 
-- **A Carbone API key** from [account.carbone.io](https://account.carbone.io). Your account has two keys ([details](https://carbone.io/documentation/developer/http-api/introduction.html#requirements)):
+- **A Carbone account** at [account.carbone.io](https://account.carbone.io). The hosted server signs you in with it and uses your production key once your account has a plan (the free Sandbox plan included), the test key until then. The local package and Docker use one of the two keys directly ([details](https://carbone.io/documentation/developer/http-api/introduction.html#requirements)):
   - **Test key**: unlimited watermarked PDFs, free (PDF output only). Templates stored with it are kept for up to 30 days.
   - **Production key**: any output format, no watermark. The free Sandbox plan includes 100 credits per month.
 - **Node.js 20.3 or later** for the local package (`npx carbone-mcp`). Check with `node --version`. The Docker image needs Docker only.
@@ -37,11 +37,11 @@ More in [Example prompts](#example-prompts), including with Salesforce, HubSpot,
 
 | Setup | Runs | Clients | Local files |
 |---|---|---|---|
+| [Hosted server (HTTP)](#hosted-server-mcpcarboneio) | `https://mcp.carbone.io`, nothing to install | claude.ai, Claude Desktop, Claude Code, VS Code, Cursor, …: sign in with your Carbone account | ❌ URLs and base64 only |
 | [Local package (stdio)](#local-package-stdio) | `npx carbone-mcp` on your machine | Claude Desktop, Claude Code, VS Code, Cursor, and any client that starts local servers | ✅ reads local paths, saves documents to disk |
-| [Hosted server (HTTP)](#hosted-server-mcpcarboneio) | `https://mcp.carbone.io`, nothing to install | Clients that can send an `Authorization` header: Claude Code, VS Code, Cursor, … | ❌ URLs and base64 only |
-| [Docker (HTTP)](#docker) | Your own server | Same as the hosted server | ❌ URLs and base64 only |
+| [Docker (HTTP)](#docker) | Your own server | Clients that can send an `Authorization` header: Claude Code, VS Code, Cursor, … | ❌ URLs and base64 only |
 
-**Claude Desktop:** use the local package. **claude.ai** on the web reaches remote servers only, as connectors: see [claude.ai and Claude Desktop connectors](#claudeai-and-claude-desktop-connectors).
+**claude.ai and Claude Desktop:** add the hosted server as a [connector](#claudeai-and-claude-desktop-connectors). In Claude Desktop, use the local package instead to read and save files on your computer.
 
 ### Local package (stdio)
 
@@ -96,52 +96,40 @@ Client docs: [Claude Desktop](https://modelcontextprotocol.io/docs/develop/conne
 
 ### Hosted server (mcp.carbone.io)
 
-Nothing to install: connect to `https://mcp.carbone.io` over Streamable HTTP and send your key in the header `Authorization: Bearer <your API key>`. Over HTTP, file inputs must be URLs or base64 ([File inputs](#file-inputs)).
+Nothing to install: connect to `https://mcp.carbone.io` over Streamable HTTP, and sign in with your Carbone account when your client opens account.carbone.io in your browser. Over HTTP, file inputs must be URLs or base64 ([File inputs](#file-inputs)).
 
-**Claude Code:**
+**Claude Code:** add the server, then run `/mcp`, select `carbone` and choose **Authenticate**.
 
 ```bash
-claude mcp add --transport http carbone https://mcp.carbone.io --header "Authorization: Bearer your_api_key_here"
+claude mcp add --transport http carbone https://mcp.carbone.io
 ```
 
-**VS Code** (`.vscode/mcp.json`):
+**VS Code** (`.vscode/mcp.json`), which asks you to sign in when it starts the server:
 
 ```json
 {
-  "inputs": [
-    { "type": "promptString", "id": "carbone-api-key", "description": "Carbone API key", "password": true }
-  ],
   "servers": {
-    "carbone": {
-      "type": "http",
-      "url": "https://mcp.carbone.io",
-      "headers": { "Authorization": "Bearer ${input:carbone-api-key}" }
-    }
+    "carbone": { "type": "http", "url": "https://mcp.carbone.io" }
   }
 }
 ```
 
-**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`; `"Bearer ${env:CARBONE_API_KEY}"` reads the key from your environment):
+**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`), then sign in from Cursor's MCP settings:
 
 ```json
 {
   "mcpServers": {
-    "carbone": {
-      "url": "https://mcp.carbone.io",
-      "headers": { "Authorization": "Bearer your_api_key_here" }
-    }
+    "carbone": { "url": "https://mcp.carbone.io" }
   }
 }
 ```
 
 ### claude.ai and Claude Desktop connectors
 
-mcp.carbone.io authenticates with your Carbone API key, which a custom connector sends through **Request headers** (an Anthropic beta: check that your organization has it; [setup](https://claude.com/docs/connectors/custom/add-unlisted#authenticate-with-request-headers)):
+1. Add a [custom connector](https://claude.com/docs/connectors/custom/add-unlisted) with the URL `https://mcp.carbone.io`. Leave the OAuth client ID and secret empty.
+2. Click **Connect**, sign in with your Carbone account and approve.
 
-1. Add a custom connector with the URL `https://mcp.carbone.io` and the authentication **No sign-in**.
-2. Under **Request headers**, choose `authorization` and enter `Bearer <your Carbone API key>`, including `Bearer ` and the space.
-
-An Owner enters the key once and every member of the organization uses it, so every document counts against that one Carbone account: use a dedicated key. Without Request headers, custom connectors on claude.ai and Claude Desktop [authenticate](https://claude.com/docs/connectors/building/authentication) with OAuth or not at all; in Claude Desktop, use the [local package](#local-package-stdio).
+In an organization, each member connects with their own Carbone account, and their documents count against it. Claude Desktop uses the same connectors; to read and save files on your computer, use the [local package](#local-package-stdio) instead.
 
 ## Files in and out
 
@@ -223,31 +211,38 @@ Every parameter, with examples: [docs/API.md](docs/API.md).
 
 | Symptom | Cause and fix |
 |---|---|
-| Tool error `Authentication failed: …` (no key, or a key the Carbone API rejects with `401`) | **stdio:** set `CARBONE_API_KEY` in the client config's `env` and restart the client (without it, the server stops at startup with `CARBONE_API_KEY environment variable is required`). **HTTP:** send `Authorization: Bearer <key>`; a server with `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true` requires it on every request. Check the key at [account.carbone.io](https://account.carbone.io). |
+| Tool error `Authentication failed: …` (no key, or a key the Carbone API rejects with `401`) | **stdio:** set `CARBONE_API_KEY` in the client config's `env` and restart the client (without it, the server stops at startup with `CARBONE_API_KEY environment variable is required`). **Self-hosted HTTP:** send `Authorization: Bearer <key>`; a server with `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true` requires it on every request. Check the key at [account.carbone.io](https://account.carbone.io). |
+| mcp.carbone.io asks you to sign in again, or sign-in fails | Reconnect: in Claude, **Disconnect** then **Connect** the connector; in Claude Code, `/mcp` → **Clear authentication**, then **Authenticate**. |
 | HTTP `403` `Invalid Origin: <host>` | A browser-based client served from a host other than `localhost`. Add its hostname to `MCP_ALLOWED_ORIGINS`. |
 | HTTP `405` `Method not allowed` when you open the endpoint in a browser | Expected: the endpoint only answers MCP `POST` requests. Connect with an MCP client; check the server with `GET /health`. |
 | HTTP `413` `Request body too large`, or the stdio connection closes | One MCP message is over `MCP_MAX_BODY_BYTES` (60 MB by default; it applies to stdio messages too). Pass large files by URL (or a local path in stdio) instead of inline base64, or raise the limit. |
 | `Rate limit exceeded. Please wait N second(s)` | The Carbone API answered `429`. Wait the time given and try again. |
 | Tags such as `{d.name}` still visible in the output | `convert_document` is a pure conversion and keeps tags. Use `render_document` with your data. |
-| Watermark on every PDF, or only PDF works | You use the **test** API key: it produces watermarked PDFs only. Use the production key. |
+| Watermark on every PDF, or only PDF works | You use the **test** key: it produces watermarked PDFs only. On mcp.carbone.io, start a plan at [account.carbone.io](https://account.carbone.io) (the free Sandbox plan is enough): the server switches to your production key by itself. Locally, use the production key. |
 | A file given by name (`invoice.docx`) fails | A bare name is read as base64. Pass an absolute path (stdio), a URL, or base64 ([File inputs](#file-inputs)). |
 | Rendering by Template ID still uses the old version after an upload | Renders by Template ID use the **deployed** version (most recent `deployedAt`). Deploy the new version with `update_template_metadata` (`templateId` = its Version ID, `deployedAt` = `42000000000`), or render by Version ID. |
 | Password, watermark or PDF/A missing from a PDF | PDF/A, page ranges and accessibility use the default converter `L` (LibreOffice); `O`, `C` and `I` apply passwords, permissions and watermarks. For PDF → PDF the server sets `hardRefresh` for you: don't pass `hardRefresh: false`. |
-| Claude Desktop shows no Carbone tools, or the server disconnects | Read `mcp-server-carbone.log` (the server's stderr) in `~/Library/Logs/Claude/` (macOS) or `%APPDATA%\Claude\logs\` (Windows). A good start logs `Carbone MCP Server v2.0.0 started (stdio)`. |
+| Claude Desktop shows no Carbone tools, or the server disconnects | Read `mcp-server-carbone.log` (the server's stderr) in `~/Library/Logs/Claude/` (macOS) or `%APPDATA%\Claude\logs\` (Windows). A good start logs `Carbone MCP Server v<version> started (stdio)`. |
 | You want to test the server without an AI client | Run the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) (Node.js 22.19+): `npx @modelcontextprotocol/inspector -e CARBONE_API_KEY=your_api_key_here npx carbone-mcp`. It lists the tools and shows each request and response. |
 
 ## Self-hosting
 
 ### Docker
 
-The image serves Streamable HTTP on port 3000. This quick start sets **no server key**: each client sends its own key in `Authorization: Bearer <key>`, exactly as with mcp.carbone.io, and the port is reachable from your machine only.
+The image serves Streamable HTTP on port 3000. This quick start sets **no server key**: each client sends its own key in `Authorization: Bearer <key>` (signing in with a Carbone account is for mcp.carbone.io only), and the port is reachable from your machine only.
 
 ```bash
 docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 carbone/carbone-mcp
 curl http://localhost:3000/health
 ```
 
-Connect your client with the [hosted server config](#hosted-server-mcpcarboneio), replacing `https://mcp.carbone.io` with `http://localhost:3000`. To serve other machines, publish the port behind a TLS reverse proxy, keep the server without `CARBONE_API_KEY` (or set `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true`), and list the hostnames of browser-based clients in `MCP_ALLOWED_ORIGINS`.
+Connect your client with your key in the `Authorization` header:
+
+```bash
+claude mcp add --transport http carbone http://localhost:3000 --header "Authorization: Bearer your_api_key_here"
+```
+
+In VS Code and Cursor, take the [hosted server config](#hosted-server-mcpcarboneio) with the URL `http://localhost:3000` and add `"headers": { "Authorization": "Bearer your_api_key_here" }` next to `"url"`. VS Code can prompt for the key with an `inputs` entry of type `promptString` (`"Bearer ${input:carbone-api-key}"`), and Cursor can read it from your environment (`"Bearer ${env:CARBONE_API_KEY}"`). To serve other machines, publish the port behind a TLS reverse proxy, keep the server without `CARBONE_API_KEY` (or set `CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true`), and list the hostnames of browser-based clients in `MCP_ALLOWED_ORIGINS`.
 
 **Shared-key variant, for one user on one machine.** A server-level key lets clients connect without sending one:
 

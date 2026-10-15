@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.carbone/carbone-mcp",
   "title": "Carbone MCP",
-  "description": "Generate PDF, DOCX, XLSX and PPTX from templates and JSON; convert files between 36 formats",
-  "version": "2.1.0",
+  "description": "Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data",
+  "version": "2.1.1",
   "websiteUrl": "https://carbone.io",
   "license": "Apache-2.0",
   "icons": [{
@@ -17,23 +17,14 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://mcp.carbone.io",
-      "headers": [
-        {
-          "name": "Authorization",
-          "description": "Your Carbone API key as a Bearer token: \"Bearer <your API key>\". Get your key at https://account.carbone.io",
-          "placeholder": "Bearer <your Carbone API key>",
-          "isRequired": true,
-          "isSecret": true
-        }
-      ]
+      "url": "https://mcp.carbone.io"
     }
   ],
   "packages": [
     {
       "registryType": "npm",
       "identifier": "carbone-mcp",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

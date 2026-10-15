@@ -1,6 +1,6 @@
 # Carbone MCP Server
 
-Run the official Carbone MCP server yourself: a Streamable HTTP endpoint that lets AI assistants generate PDF, Word, Excel and PowerPoint documents from templates and JSON through the Carbone API.
+Run the official Carbone MCP server yourself: a Streamable HTTP endpoint that lets AI assistants automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON through the Carbone API.
 
 > **Upgrading from 1.x?** Every 1.x HTTP deployment should upgrade now (security fixes): read the [upgrade notes](https://github.com/carboneio/carbone-mcp/blob/master/CHANGELOG.md#upgrading-from-1x).
 
@@ -133,7 +133,7 @@ Claude Desktop starts local (stdio) servers from its config file (**Settings →
 
 In this mode, local paths and saved documents refer to the **container's** filesystem, which `--rm` deletes: pass URLs or base64 and ask for `returnLink`, or mount a folder with `-v` and use paths inside it. The npm package (`npx -y carbone-mcp`, Node.js 20.3+) reads and writes your own files directly.
 
-From Claude Desktop, the stdio mode above works on every plan. A claude.ai or Claude Desktop custom connector connects from Anthropic's cloud: it can also reach this server once it is published at a public HTTPS URL (not `127.0.0.1`), where your organization has Anthropic's **Request headers** beta, which sends the Bearer key ([Anthropic docs](https://claude.com/docs/connectors/building/authentication)).
+From Claude Desktop, the stdio mode above works on every plan. A claude.ai or Claude Desktop custom connector connects from Anthropic's cloud: it can also reach this server once it is published at a public HTTPS URL (not `127.0.0.1`), where your organization has Anthropic's **Request headers** beta, which sends the Bearer key ([Anthropic docs](https://claude.com/docs/connectors/building/authentication)). To connect without a key, use Carbone's hosted server `https://mcp.carbone.io`, which signs you in with your Carbone account.
 
 ## On-premise Carbone
 

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.1.1] — 2026-10-15
+
+Patch release: documentation and registry entry for sign-in on mcp.carbone.io. No code changes; every setup behaves as in 2.1.0.
+
+### Changed
+
+- **mcp.carbone.io now signs you in with your Carbone account.** claude.ai and Claude Desktop connectors, Claude Code, VS Code, Cursor and other MCP clients sign in from your browser; the README shows how. Existing setups keep working.
+- Signed in, the hosted server uses your production key once your account has a plan (the free Sandbox plan included), and the test key, which outputs watermarked PDFs, until then.
+- The MCP Registry entry for the hosted server now uses sign-in, with a new description.
+
+---
+
 ## [2.1.0] — 2026-10-15
 
 Minor release: sign-in with a Carbone account for Carbone's hosted server (opt-in, off unless configured), and a fix for `Authorization` headers that do not carry a Carbone key. Self-hosted, on-premise and stdio setups behave as in 2.0.0.
