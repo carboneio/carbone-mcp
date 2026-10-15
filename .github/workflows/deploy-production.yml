@@ -1,0 +1,122 @@
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows: [Docker]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to deploy (e.g. 2.1.0)
+        required: true
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  SCW_REGION: ${{ vars.SCW_REGION || 'fr-par' }}
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v') &&
+       !contains(github.event.workflow_run.head_branch, '-'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve version
+        id: version
+        run: |
+          version="${INPUT_VERSION:-$TAG}"
+          version="${version#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Not a release version: '$version' (expected X.Y.Z)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=rg.${SCW_REGION}.scw.cloud/${NAMESPACE}/carbone-mcp:$version" >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          NAMESPACE: ${{ vars.SCW_REGISTRY_NAMESPACE }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Login to the deployment registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: rg.${{ env.SCW_REGION }}.scw.cloud
+          username: nologin
+          password: ${{ secrets.SCW_SECRET_KEY }}
+
+      - name: Copy the release image
+        run: docker buildx imagetools create --tag "$IMAGE" "docker.io/carbone/carbone-mcp:$VERSION"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE: ${{ steps.version.outputs.image }}
+
+      - name: Install CLI
+        uses: scaleway/action-scw@2e34a1eb35cf3cac627f24643a101fea269cbd83 # v0.0.3
+        with:
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-organization-id: ${{ vars.SCW_ORGANIZATION_ID }}
+          default-project-id: ${{ vars.SCW_PROJECT_ID }}
+
+      - name: Deploy and wait until ready
+        id: deploy
+        run: |
+          scw container container update "$CONTAINER_ID" \
+            image="$IMAGE" region="$SCW_REGION" -o json > /dev/null
+          echo "Deploying $IMAGE"
+
+          for i in $(seq 1 60); do
+            json=$(scw container container get "$CONTAINER_ID" region="$SCW_REGION" -o json)
+            status=$(jq -r .status <<< "$json")
+            case "$status" in
+              ready)
+                echo "domain=$(jq -r .domain_name <<< "$json")" >> "$GITHUB_OUTPUT"
+                echo "Container ready, image: $(jq -r .registry_image <<< "$json")"
+                exit 0 ;;
+              error)
+                echo "::error::Deployment failed: $(jq -r '.error_message // "unknown error"' <<< "$json")"
+                exit 1 ;;
+            esac
+            echo "status=$status, waiting…"
+            sleep 10
+          done
+          echo "::error::Timed out waiting for the container to become ready"
+          exit 1
+        env:
+          CONTAINER_ID: ${{ vars.SCW_PRODUCTION_CONTAINER_ID }}
+          IMAGE: ${{ steps.version.outputs.image }}
+
+      - name: Check the new version is served
+        run: |
+          for i in $(seq 1 18); do
+            served=$(curl -fsS --max-time 10 "https://$DOMAIN/health" | jq -r .mcp.version) || served=""
+            if [ "$served" = "$VERSION" ]; then
+              echo "https://$DOMAIN serves $VERSION"
+              exit 0
+            fi
+            echo "serving '${served}', waiting for $VERSION…"
+            sleep 10
+          done
+          echo "::error::https://$DOMAIN/health still reports '${served}' instead of $VERSION"
+          exit 1
+        env:
+          DOMAIN: ${{ steps.deploy.outputs.domain }}
+          VERSION: ${{ steps.version.outputs.version }}
