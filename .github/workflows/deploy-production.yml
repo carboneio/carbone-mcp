@@ -88,8 +88,8 @@ jobs:
             status=$(jq -r .status <<< "$json")
             case "$status" in
               ready)
-                echo "domain=$(jq -r .domain_name <<< "$json")" >> "$GITHUB_OUTPUT"
-                echo "Container ready, image: $(jq -r .registry_image <<< "$json")"
+                echo "endpoint=$(jq -r .public_endpoint <<< "$json")" >> "$GITHUB_OUTPUT"
+                echo "Container ready, image: $(jq -r .image <<< "$json")"
                 exit 0 ;;
               error)
                 echo "::error::Deployment failed: $(jq -r '.error_message // "unknown error"' <<< "$json")"
@@ -107,16 +107,16 @@ jobs:
       - name: Check the new version is served
         run: |
           for i in $(seq 1 18); do
-            served=$(curl -fsS --max-time 10 "https://$DOMAIN/health" | jq -r .mcp.version) || served=""
+            served=$(curl -fsS --max-time 10 "$ENDPOINT/health" | jq -r .mcp.version) || served=""
             if [ "$served" = "$VERSION" ]; then
-              echo "https://$DOMAIN serves $VERSION"
+              echo "$ENDPOINT serves $VERSION"
               exit 0
             fi
             echo "serving '${served}', waiting for $VERSION…"
             sleep 10
           done
-          echo "::error::https://$DOMAIN/health still reports '${served}' instead of $VERSION"
+          echo "::error::$ENDPOINT/health still reports '${served}' instead of $VERSION"
           exit 1
         env:
-          DOMAIN: ${{ steps.deploy.outputs.domain }}
+          ENDPOINT: ${{ steps.deploy.outputs.endpoint }}
           VERSION: ${{ steps.version.outputs.version }}

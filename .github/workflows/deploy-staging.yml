@@ -82,8 +82,8 @@ jobs:
             status=$(jq -r .status <<< "$json")
             case "$status" in
               ready)
-                echo "Container ready: https://$(jq -r .domain_name <<< "$json")"
-                echo "Image: $(jq -r .registry_image <<< "$json")"
+                echo "Container ready: $(jq -r .public_endpoint <<< "$json")"
+                echo "Image: $(jq -r .image <<< "$json")"
                 exit 0 ;;
               error)
                 echo "::error::Deployment failed: $(jq -r '.error_message // "unknown error"' <<< "$json")"
