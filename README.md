@@ -28,9 +28,9 @@ More in [Example prompts](#example-prompts), including with Salesforce, HubSpot,
 
 ### Prerequisites
 
-- **A Carbone account** at [account.carbone.io](https://account.carbone.io). The hosted server signs you in with it and uses your production key once your account has a plan (the free Sandbox plan included), the test key until then. The local package and Docker use one of the two keys directly ([details](https://carbone.io/documentation/developer/http-api/introduction.html#requirements)):
+- **A Carbone account** at [account.carbone.io](https://account.carbone.io). The hosted server signs you in with it and uses your production key once your account has a plan (the Free plan included), the test key until then. The local package and Docker use one of the two keys directly ([details](https://carbone.io/documentation/developer/http-api/introduction.html#requirements)):
   - **Test key**: unlimited watermarked PDFs, free (PDF output only). Templates stored with it are kept for up to 30 days.
-  - **Production key**: any output format, no watermark. The free Sandbox plan includes 100 credits per month.
+  - **Production key**: any output format, no watermark. The Free plan includes 100 documents per month.
 - **Node.js 20.3 or later** for the local package (`npx carbone-mcp`). Check with `node --version`. The Docker image needs Docker only.
 
 ### Choose a setup
@@ -218,7 +218,7 @@ Every parameter, with examples: [docs/API.md](docs/API.md).
 | HTTP `413` `Request body too large`, or the stdio connection closes | One MCP message is over `MCP_MAX_BODY_BYTES` (60 MB by default; it applies to stdio messages too). Pass large files by URL (or a local path in stdio) instead of inline base64, or raise the limit. |
 | `Rate limit exceeded. Please wait N second(s)` | The Carbone API answered `429`. Wait the time given and try again. |
 | Tags such as `{d.name}` still visible in the output | `convert_document` is a pure conversion and keeps tags. Use `render_document` with your data. |
-| Watermark on every PDF, or only PDF works | You use the **test** key: it produces watermarked PDFs only. On mcp.carbone.io, start a plan at [account.carbone.io](https://account.carbone.io) (the free Sandbox plan is enough): the server switches to your production key by itself. Locally, use the production key. |
+| Watermark on every PDF, or only PDF works | You use the **test** key: it produces watermarked PDFs only. On mcp.carbone.io, start a plan at [account.carbone.io](https://account.carbone.io) (the Free plan is enough): the server switches to your production key by itself. Locally, use the production key. |
 | A file given by name (`invoice.docx`) fails | A bare name is read as base64. Pass an absolute path (stdio), a URL, or base64 ([File inputs](#file-inputs)). |
 | Rendering by Template ID still uses the old version after an upload | Renders by Template ID use the **deployed** version (most recent `deployedAt`). Deploy the new version with `update_template_metadata` (`templateId` = its Version ID, `deployedAt` = `42000000000`), or render by Version ID. |
 | Password, watermark or PDF/A missing from a PDF | PDF/A, page ranges and accessibility use the default converter `L` (LibreOffice); `O`, `C` and `I` apply passwords, permissions and watermarks. For PDF → PDF the server sets `hardRefresh` for you: don't pass `hardRefresh: false`. |

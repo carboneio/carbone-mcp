@@ -11,7 +11,7 @@ Patch release: documentation and registry entry for sign-in on mcp.carbone.io. N
 ### Changed
 
 - **mcp.carbone.io now signs you in with your Carbone account.** claude.ai and Claude Desktop connectors, Claude Code, VS Code, Cursor and other MCP clients sign in from your browser; the README shows how. Existing setups keep working.
-- Signed in, the hosted server uses your production key once your account has a plan (the free Sandbox plan included), and the test key, which outputs watermarked PDFs, until then.
+- Signed in, the hosted server uses your production key once your account has a plan (the Free plan included), and the test key, which outputs watermarked PDFs, until then.
 - The MCP Registry entry for the hosted server now uses sign-in, with a new description.
 
 ---
