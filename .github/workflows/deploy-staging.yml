@@ -8,6 +8,7 @@ name: Deploy staging
 # Setup (repo Settings → Environments → "staging" → secrets and variables):
 #   secrets.SCW_ACCESS_KEY          IAM API key with ContainerRegistryFullAccess + ContainersFullAccess
 #   secrets.SCW_SECRET_KEY          its secret key (also used as the registry password)
+#   vars.SCW_ORGANIZATION_ID        the Scaleway organization ID (Console → Organization → Settings)
 #   vars.SCW_PROJECT_ID             the Scaleway project ID
 #   vars.SCW_REGION                 fr-par | nl-ams | pl-waw | it-mil (defaults to fr-par)
 #   vars.SCW_REGISTRY_NAMESPACE     Container Registry namespace NAME, not its UUID: the segment after
@@ -87,15 +88,12 @@ jobs:
           export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-organization-id: ${{ vars.SCW_ORGANIZATION_ID }} # the CLI refuses to run without it
           default-project-id: ${{ vars.SCW_PROJECT_ID }}
 
       # Changing the image on a Serverless Container triggers a rolling deployment.
       - name: Deploy to staging and wait until ready
         run: |
-          # action-scw exports SCW_DEFAULT_ORGANIZATION_ID="" when not given, and the CLI
-          # refuses an empty value ("default organization ID cannot be empty"): drop it.
-          [ -n "${SCW_DEFAULT_ORGANIZATION_ID:-}" ] || unset SCW_DEFAULT_ORGANIZATION_ID
-
           scw container container update "$CONTAINER_ID" \
             image="$IMAGE" region="$SCW_REGION" -o json > /dev/null
           echo "Deploying $IMAGE"
