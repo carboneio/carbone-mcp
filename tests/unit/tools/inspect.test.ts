@@ -100,7 +100,7 @@ describe('handleInspectTemplate', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(
       JSON.stringify({ success: true, data: { renderId: 'r.docx' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }
     ));
-    const client = new CarboneClient({ baseUrl: 'https://carbone.acme.internal' });
+    const client = new CarboneClient({ baseUrl: 'https://carbone.example.test' });
 
     const result = await handleInspectTemplate({ templateId: 'tpl1' }, client);
 

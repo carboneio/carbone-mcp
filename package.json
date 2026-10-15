@@ -1,6 +1,6 @@
 {
   "name": "carbone-mcp",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Official Carbone MCP server: generate PDF, DOCX, XLSX and PPTX from templates and JSON, and convert Office, HTML and Markdown files, from Claude, Cursor or any MCP client.",
   "type": "module",
   "main": "dist/index.js",

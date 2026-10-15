@@ -76,7 +76,7 @@ describe('CarboneClient', () => {
         ['HTTP, cloud, server key (shared-key default)',      new CarboneClient({ transport: 'http', apiKey: 'op' }), { apiKey: undefined }, true],
         ['HTTP, server key, requireClientAuth, no bearer',    new CarboneClient({ transport: 'http', apiKey: 'op', requireClientAuth: true }), undefined, false],
         ['HTTP, server key, requireClientAuth, bearer',       new CarboneClient({ transport: 'http', apiKey: 'op', requireClientAuth: true }), { apiKey: 'k' }, true],
-        ['HTTP, on-premise base URL, no key',                 new CarboneClient({ transport: 'http', baseUrl: 'http://carbone.internal:4000' }), undefined, true],
+        ['HTTP, on-premise base URL, no key',                 new CarboneClient({ transport: 'http', baseUrl: 'http://carbone.example.test:4000' }), undefined, true],
         ['stdio, env key',                                    new CarboneClient({ apiKey: 'env' }), undefined, true],
       ];
       for (const [name, c, options, allowed] of cases) {

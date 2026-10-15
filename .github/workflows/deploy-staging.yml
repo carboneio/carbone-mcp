@@ -1,0 +1,122 @@
+name: Deploy staging
+
+# Runs after the "Tests" workflow succeeds on master: builds the linux/amd64 image,
+# pushes it to the Scaleway Container Registry as carbone-mcp:staging-<short-sha>
+# (and :staging), then points the staging Serverless Container at that tag, which
+# triggers a rolling deployment, and waits until the container is ready.
+#
+# Setup (repo Settings → Environments → "staging" → secrets and variables):
+#   secrets.SCW_ACCESS_KEY          IAM API key with ContainerRegistryFullAccess + ContainersFullAccess
+#   secrets.SCW_SECRET_KEY          its secret key (also used as the registry password)
+#   vars.SCW_PROJECT_ID             the Scaleway project ID
+#   vars.SCW_REGION                 fr-par | nl-ams | pl-waw | it-mil (defaults to fr-par)
+#   vars.SCW_REGISTRY_NAMESPACE     Container Registry namespace NAME, not its UUID: the segment after
+#                                   rg.<region>.scw.cloud/ in Console → Container Registry
+#   vars.SCW_STAGING_CONTAINER_ID   the Serverless Container UUID (Console → Containers → container → Settings)
+# The container must already exist: create it once in the console with the image below,
+# port 3000, env vars MCP_TRANSPORT=http MCP_PORT=3000 CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true.
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch: # Manual redeploy of the current master from the Actions UI
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  SCW_REGION: ${{ vars.SCW_REGION || 'fr-par' }}
+
+jobs:
+  deploy:
+    # Only a green push-triggered Tests run on master deploys (PR runs are skipped).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging # Environment-scoped secrets and variables are only exposed to a job that names it
+      url: https://mcp.carbone.website
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # workflow_run checks out the default branch by default: pin to the tested commit.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Compute image reference
+        id: image
+        run: |
+          echo "tag=staging-${SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "repo=rg.${SCW_REGION}.scw.cloud/${NAMESPACE}/carbone-mcp" >> "$GITHUB_OUTPUT"
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          NAMESPACE: ${{ vars.SCW_REGISTRY_NAMESPACE }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Login to Scaleway Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: rg.${{ env.SCW_REGION }}.scw.cloud
+          username: nologin
+          password: ${{ secrets.SCW_SECRET_KEY }}
+
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64 # Serverless Containers run amd64 only
+          push: true
+          tags: |
+            ${{ steps.image.outputs.repo }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.repo }}:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@2e34a1eb35cf3cac627f24643a101fea269cbd83 # v0.0.3
+        with:
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ vars.SCW_PROJECT_ID }}
+
+      # Changing the image on a Serverless Container triggers a rolling deployment.
+      - name: Update the staging container image
+        run: |
+          scw container container update "$CONTAINER_ID" \
+            image="$IMAGE" region="$SCW_REGION" -o json > /dev/null
+          echo "Deploying $IMAGE"
+        env:
+          CONTAINER_ID: ${{ vars.SCW_STAGING_CONTAINER_ID }}
+          IMAGE: ${{ steps.image.outputs.repo }}:${{ steps.image.outputs.tag }}
+
+      - name: Wait for the deployment
+        run: |
+          for i in $(seq 1 60); do
+            json=$(scw container container get "$CONTAINER_ID" region="$SCW_REGION" -o json)
+            status=$(jq -r .status <<< "$json")
+            case "$status" in
+              ready)
+                echo "Container ready: https://$(jq -r .domain_name <<< "$json")"
+                echo "Image: $(jq -r .registry_image <<< "$json")"
+                exit 0 ;;
+              error)
+                echo "::error::Deployment failed: $(jq -r '.error_message // "unknown error"' <<< "$json")"
+                exit 1 ;;
+            esac
+            echo "status=$status, waiting…"
+            sleep 10
+          done
+          echo "::error::Timed out waiting for the container to become ready"
+          exit 1
+        env:
+          CONTAINER_ID: ${{ vars.SCW_STAGING_CONTAINER_ID }}

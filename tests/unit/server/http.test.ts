@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { IncomingMessage } from 'node:http';
-import { extractBearerToken, parseBody } from '../../../src/server/http.js';
+import { clientAddress, extractBearerToken, parseBody } from '../../../src/server/http.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,16 @@ describe('extractBearerToken', () => {
 
   test('returns undefined when the token after "Bearer " is empty', () => {
     expect(extractBearerToken(makeReq({ authorization: 'Bearer ' }))).toBeUndefined();
+    expect(extractBearerToken(makeReq({ authorization: 'Bearer' }))).toBeUndefined();
+  });
+
+  test('a tab is no separator (RFC 6750): "Bearer<TAB>key" carries no key, as the OAuth gate reads it too', () => {
+    expect(extractBearerToken(makeReq({ authorization: 'Bearer\tmy-key' }))).toBeUndefined();
+  });
+
+  test('returns undefined for another scheme: its credentials are never forwarded as a key', () => {
+    expect(extractBearerToken(makeReq({ authorization: 'Basic bWU6cHc=' }))).toBeUndefined();
+    expect(extractBearerToken(makeReq({ authorization: 'Digest username="me", realm="x"' }))).toBeUndefined();
   });
 
   test('returns undefined when the header is only whitespace', () => {
@@ -57,6 +67,37 @@ describe('extractBearerToken', () => {
   test('trims surrounding whitespace from the token', () => {
     expect(extractBearerToken(makeReq({ authorization: 'Bearer   my-key  ' }))).toBe('my-key');
     expect(extractBearerToken(makeReq({ authorization: '  my-key  ' }))).toBe('my-key');
+  });
+});
+
+// ─── clientAddress ────────────────────────────────────────────────────────────
+
+describe('clientAddress', () => {
+  const req = (remoteAddress: string, forwardedFor?: string | string[]) =>
+    ({ socket: { remoteAddress }, headers: forwardedFor === undefined ? {} : { 'x-forwarded-for': forwardedFor } }) as unknown as IncomingMessage;
+
+  test('no trusted proxy: the TCP peer, whatever X-Forwarded-For claims', () => {
+    expect(clientAddress(req('192.0.2.1', '203.0.113.7'), 0)).toBe('192.0.2.1');
+  });
+
+  test('n trusted proxies: the entry the outermost one recorded, n from the end; what the client wrote is ignored', () => {
+    expect(clientAddress(req('192.0.2.1', '198.51.100.1, 203.0.113.7'), 1)).toBe('203.0.113.7');
+    expect(clientAddress(req('192.0.2.1', '198.51.100.1, 203.0.113.7, 192.0.2.2'), 2)).toBe('203.0.113.7');
+    expect(clientAddress(req('192.0.2.1', ['198.51.100.1', '203.0.113.7']), 1)).toBe('203.0.113.7');
+  });
+
+  test('a port the proxy wrote is dropped; an entry that is no IP address gives the peer', () => {
+    expect(clientAddress(req('192.0.2.1', '203.0.113.7:51000'), 1)).toBe('203.0.113.7');
+    expect(clientAddress(req('192.0.2.1', '[2001:db8::1]:443'), 1)).toBe('2001:db8::1');
+    expect(clientAddress(req('192.0.2.1', '[2001:db8::1]'), 1)).toBe('2001:db8::1');
+    expect(clientAddress(req('192.0.2.1', '2001:db8::1'), 1)).toBe('2001:db8::1');
+    expect(clientAddress(req('192.0.2.1', 'unknown'), 1)).toBe('192.0.2.1');
+    expect(clientAddress(req('192.0.2.1', '203.0.113.7:x'), 1)).toBe('192.0.2.1');
+  });
+
+  test('fewer entries than trusted proxies, or none: the TCP peer', () => {
+    expect(clientAddress(req('192.0.2.1', '203.0.113.7'), 2)).toBe('192.0.2.1');
+    expect(clientAddress(req('192.0.2.1'), 1)).toBe('192.0.2.1');
   });
 });
 

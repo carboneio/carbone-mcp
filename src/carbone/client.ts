@@ -6,6 +6,7 @@ import {
   CarboneNotFoundError,
   CarboneRateLimitError,
   CarboneValidationError,
+  SIGN_IN_REFUSED_MESSAGE,
 } from './errors.js';
 import type {
   ApiStatus, TemplateDebugInfo, TemplateListItem, TemplateListResponse, UpdateTemplateResult, UploadTemplateResult,
@@ -36,6 +37,28 @@ export interface CallOptions {
   skipAuthCheck?: boolean;
   /** Aborts the API call (e.g. the MCP request was cancelled); the timeout still applies. */
   signal?: AbortSignal;
+  /**
+   * HTTP OAuth mode: `apiKey` is a short-lived token exchanged for the client's own one. When the Carbone API
+   * answers 401 to it, this returns a freshly exchanged key, and the call is retried once with it.
+   */
+  refreshKey?: (signal?: AbortSignal) => Promise<string>;
+}
+
+/**
+ * The CallOptions of one MCP request: its Bearer key (HTTP; in OAuth mode the exchanged token, with the means to
+ * renew it) and its cancellation signal. In stdio there is no authInfo, so the constructor key is used.
+ */
+export function callOptionsFrom(ctx: {
+  http?: { authInfo?: { token: string; extra?: Record<string, unknown> } };
+  mcpReq: { signal: AbortSignal };
+}): CallOptions {
+  const authInfo = ctx.http?.authInfo;
+  const refreshKey = authInfo?.extra?.['refreshKey'];
+  return {
+    apiKey: authInfo?.token,
+    signal: ctx.mcpReq.signal,
+    ...(typeof refreshKey === 'function' && { refreshKey: refreshKey as NonNullable<CallOptions['refreshKey']> }),
+  };
 }
 
 export type OutputFormat = string | { formatName: string; formatOptions?: Record<string, unknown> };
@@ -46,7 +69,7 @@ export type OutputFormat = string | { formatName: string; formatOptions?: Record
  * or an HTTP-date ("Wed, 21 Oct 2025 07:28:00 GMT"). Returns undefined
  * when the header is absent or unparseable.
  */
-function parseRetryAfter(value: string | null): number | undefined {
+export function parseRetryAfter(value: string | null): number | undefined {
   if (!value) return undefined;
   const seconds = Number(value);
   if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
@@ -485,6 +508,34 @@ export class CarboneClient {
     callOptions?: CallOptions
   ): Promise<Response> {
     const key = this.resolveKey(callOptions);
+    let response = await this.send(endpoint, init, key, callOptions);
+    // OAuth mode: the exchanged key was refused (expired or revoked early). Exchange once more and retry once;
+    // a second 401 is reported like any other. Every request body is a string, so it can be sent again.
+    if (response.status === 401 && key && callOptions?.refreshKey) {
+      await response.body?.cancel().catch(() => {});
+      response = await this.send(endpoint, init, await callOptions.refreshKey(callOptions.signal), callOptions);
+    }
+
+    if (!response.ok) {
+      // Non-2xx: parse the JSON error body (when there is one) and throw a typed error
+      const error = await this.buildError(response);
+      // OAuth mode: the client signed in and has no API key to fix, so the advice is to sign in again.
+      if (error instanceof CarboneAuthError && callOptions?.refreshKey) {
+        throw new CarboneAuthError(SIGN_IN_REFUSED_MESSAGE, error.code);
+      }
+      throw error;
+    }
+
+    return response;
+  }
+
+  /** One fetch of the Carbone API with this key; network failures and timeouts become CarboneConnectionError. */
+  private async send(
+    endpoint: string,
+    init: RequestInit,
+    key: string | undefined,
+    callOptions?: CallOptions
+  ): Promise<Response> {
     const authHeader: Record<string, string> = key ? { Authorization: `Bearer ${key}` } : {};
     // The signal also covers reading the response body (binary downloads included).
     const timeout = AbortSignal.timeout(this.timeout);
@@ -509,12 +560,6 @@ export class CarboneClient {
       const reason = (err as { cause?: { code?: string } } | undefined)?.cause?.code ?? (err instanceof Error ? err.message : String(err));
       throw new CarboneConnectionError(`Could not reach the Carbone API at ${new URL(this.baseUrl).host}: ${reason}.`, err);
     }
-
-    if (!response.ok) {
-      // Non-2xx: parse the JSON error body (when there is one) and throw a typed error
-      throw await this.buildError(response);
-    }
-
     return response;
   }
 

@@ -1,13 +1,17 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
+import { isIP } from 'node:net';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, join, extname } from 'node:path';
 import { originValidation, toNodeHandler } from '@modelcontextprotocol/node';
 import { createMcpHandler, localhostAllowedOrigins, McpServer, type AuthInfo } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
+import { AuthorizationServerUnavailableError, logOAuth } from '../carbone/tokenExchange.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
 import { serverInfo, SERVER_OPTIONS } from './serverInfo.js';
+import type { OAuthConfig } from './config.js';
+import { createOAuthGate, isCarboneApiKey } from './oauth.js';
 
 export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -36,12 +40,32 @@ export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unkno
   });
 }
 
+/**
+ * The client's address: the TCP peer, or with `trustedHops` reverse proxies in front (MCP_TRUST_PROXY_HOPS), the
+ * X-Forwarded-For entry the outermost trusted one recorded. Each proxy appends the address it received from, so
+ * that entry is `trustedHops` from the end; anything left of it was written by the client and is never trusted.
+ * A port the proxy wrote ("203.0.113.7:51000", "[2001:db8::1]:443") is dropped; an entry that is no IP address
+ * gives the peer.
+ */
+export function clientAddress(req: IncomingMessage, trustedHops: number): string {
+  const peer = req.socket.remoteAddress ?? '';
+  if (trustedHops === 0) return peer;
+  const forwarded = req.headers['x-forwarded-for'];
+  const entries = (Array.isArray(forwarded) ? forwarded.join(',') : forwarded ?? '').split(',');
+  const entry = (entries[entries.length - trustedHops] ?? '').trim().replace(/^\[([^\]]+)\](?::\d+)?$|^([\d.]+):\d+$/, '$1$2');
+  return isIP(entry) ? entry : peer;
+}
+
 export function extractBearerToken(req: IncomingMessage): string | undefined {
-  const header = req.headers.authorization;
+  const header = req.headers.authorization?.trim();
   if (!header) return undefined;
-  const lower = header.toLowerCase();
-  const token = lower.startsWith('bearer ') ? header.slice(7).trim() : header.trim();
-  return token || undefined;
+  // RFC 6750: the scheme and the token are separated by spaces, as the OAuth gate reads them too.
+  const [scheme, ...rest] = header.split(/ +/);
+  const isBearer = scheme.toLowerCase() === 'bearer';
+  // "Bearer <key>", or a bare key without a scheme. Another scheme (Basic, Digest…), a Bearer without a token, and
+  // a value with other whitespace ("Bearer<TAB>key") carry no Carbone key: they are never forwarded to the Carbone API.
+  if (rest.length === 0) return isBearer || /\s/.test(scheme) ? undefined : scheme;
+  return isBearer ? rest.join(' ') : undefined;
 }
 
 /**
@@ -92,6 +116,11 @@ async function buildHealthBody(
  * GET  /health   → liveness + backend connectivity probe (no auth required)
  * POST {mcpPath} → MCP Streamable HTTP endpoint (stateless: GET/DELETE are answered 405)
  *
+ * OAuth mode (`oauth` set, Carbone's hosted server) adds the RFC 9728 metadata at
+ * /.well-known/oauth-protected-resource[/<path>], and answers an MCP request without a valid
+ * token with the 401 challenge. A Bearer shaped like a Carbone API key is still forwarded as is;
+ * any other one is introspected and exchanged, and only the exchanged token reaches tool handlers.
+ *
  * Resolves with the listening server (tests listen on port 0 and close it).
  */
 export async function startHttpServer(options: {
@@ -104,8 +133,15 @@ export async function startHttpServer(options: {
   allowPrivateNetwork: boolean;
   /** Browser Origin hostnames allowed in addition to localhost (MCP_ALLOWED_ORIGINS). */
   allowedOriginHostnames: string[];
+  /** OAuth mode; API-key mode when unset. */
+  oauth?: OAuthConfig;
 }): Promise<Server> {
   const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork, allowedOriginHostnames } = options;
+  // Built before listening, so a bad issuer stops the server at startup.
+  const oauthGate = options.oauth ? createOAuthGate(options.oauth) : undefined;
+  const trustProxyHops = options.oauth?.trustProxyHops ?? 0;
+  /** OAuth mode: how the first MCP requests were addressed is logged, to check MCP_TRUST_PROXY_HOPS on a deployment. */
+  let addressSamples = oauthGate ? 3 : 0;
 
   // ── Public static files — loaded once at startup into memory ────────────
   // All files under <cwd>/public/ are served as static assets.
@@ -177,15 +213,20 @@ export async function startHttpServer(options: {
         res.writeHead(400).end('Bad Request');
         return;
       }
-      // X-Forwarded-For is set by reverse proxies (Cloudflare, nginx…); fall back to socket address.
+      // OAuth mode: the address the failed-token limit applies to, from the TCP peer or a trusted proxy.
+      const address = clientAddress(req, trustProxyHops);
+      // Logged: that address when proxies are trusted; otherwise the first X-Forwarded-For entry (set by reverse
+      // proxies such as Cloudflare or nginx, but also by the client itself) or the socket address.
       // Sanitize to prevent log injection — keep only printable ASCII characters.
-      const clientIp = ((req.headers['x-forwarded-for'] as string | undefined)
+      const clientIp = (trustProxyHops ? address : (req.headers['x-forwarded-for'] as string | undefined)
         ?.split(',')[0].trim() ?? req.socket.remoteAddress ?? '-')
         .replace(/[^\x20-\x7E]/g, '');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Protocol-Version, Mcp-Method, Mcp-Name');
+      // Browser clients must be able to read the OAuth challenge, and how long to wait after a 429 or 503.
+      res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Mcp-Session-Id, Retry-After');
       res.on('finish', () => {
         process.stderr.write(
           `[carbone-mcp] ${req.method} ${pathname} ${res.statusCode} ${Date.now() - start}ms ${clientIp}\n`
@@ -197,6 +238,19 @@ export async function startHttpServer(options: {
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
           res.end();
+          return;
+        }
+
+        // ── OAuth Protected Resource Metadata (RFC 9728), OAuth mode only ─────
+        // Public and outside Origin validation; any Origin may read it (Access-Control-Allow-Origin: *).
+        if (oauthGate?.metadataPaths.has(pathname)) {
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'GET, HEAD, OPTIONS' });
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(req.method === 'HEAD' ? undefined : oauthGate.metadataJson);
           return;
         }
 
@@ -234,16 +288,38 @@ export async function startHttpServer(options: {
           // Origin first, for every method — the guard answers 403 itself when it returns false
           if (!validateOrigin(req, res)) return;
 
-          // Parse body first — reject oversized/invalid requests before allocating McpServer
+          if (addressSamples > 0) {
+            addressSamples--;
+            const forwarded = [req.headers['x-forwarded-for'] ?? ''].flat().join(', ').slice(0, 200);
+            logOAuth(`request from peer ${req.socket.remoteAddress ?? '-'}, X-Forwarded-For "${forwarded}", ` +
+              `MCP_TRUST_PROXY_HOPS ${trustProxyHops}: limited as ${address}`);
+          }
+
+          const token = extractBearerToken(req);
+          if (oauthGate && !(token && isCarboneApiKey(token))) {
+            // OAuth mode, and no Carbone API key: verify and exchange the token, or answer the challenge, before
+            // reading the body, so a request without a valid token never gets to upload it.
+            // Stop waiting for the exchange if the client goes away.
+            const gone = new AbortController();
+            res.once('close', () => gone.abort());
+            const auth = await oauthGate.authenticate(req.headers.authorization, gone.signal, address);
+            if (auth instanceof Response) {
+              // The body is unread: when it has not all arrived, close the connection rather than let Node drain it.
+              res.writeHead(auth.status, { ...Object.fromEntries(auth.headers), ...(!req.complete && { Connection: 'close' }) });
+              res.end(await auth.text());
+              return;
+            }
+            req.auth = auth;
+          } else if (token) {
+            // A Carbone API key (API-key mode, or an API key in OAuth mode): forwarded to the Carbone API as is
+            req.auth = { token, clientId: '', scopes: [] };
+          }
+
+          // Reject oversized/invalid bodies before allocating McpServer
           const parsedBody = req.method === 'POST' ? await parseBody(req, maxBodyBytes) : undefined;
           // An empty POST body is malformed too, and must not reach the handler: given no body it
           // would try to read the already-consumed request stream again.
           if (req.method === 'POST' && parsedBody === undefined) throw new Error('Invalid JSON body');
-
-          const token = extractBearerToken(req);
-          if (token) {
-            req.auth = { token, clientId: '', scopes: [] };
-          }
 
           await handleMcpRequest(req, res, parsedBody);
           return;
@@ -258,6 +334,16 @@ export async function startHttpServer(options: {
             // The unread rest of the body is still in flight: close the connection after answering.
             res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
             res.end(JSON.stringify({ error: 'Request body too large', maxBytes: maxBodyBytes }));
+          } else if (err instanceof AuthorizationServerUnavailableError) {
+            // OAuth mode: the token could not be checked or exchanged. 503, never 401, which would send the
+            // client to sign in again for nothing.
+            // The body may still be on its way (OAuth runs first): then close the connection after answering.
+            res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': String(err.retryAfterSeconds), ...(!req.complete && { Connection: 'close' }) });
+            res.end(JSON.stringify({
+              jsonrpc: '2.0',
+              error: { code: -32000, message: 'Service unavailable: the authorization server could not be reached. Retry later.', data: { error: 'server_error' } },
+              id: null,
+            }));
           } else if (err instanceof Error && err.message === 'Invalid JSON body') {
             // JSON-RPC parse error, as the SDK itself answers a malformed body
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -305,5 +391,8 @@ export async function startHttpServer(options: {
   process.stderr.write(`Carbone MCP Server v${version} running in HTTP mode\n`);
   process.stderr.write(`MCP endpoint : http://0.0.0.0:${port}${mcpPath}\n`);
   process.stderr.write(`Health check : http://0.0.0.0:${port}/health\n`);
+  if (options.oauth) {
+    process.stderr.write(`OAuth mode   : resource ${options.oauth.resourceUrl}, authorization server ${options.oauth.issuer}, trusted proxies ${trustProxyHops}\n`);
+  }
   return httpServer;
 }

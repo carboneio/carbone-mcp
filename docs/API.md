@@ -484,6 +484,29 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP only. `true` requires `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server: anyone reaching the port can spend it, and the server warns at startup). No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs resolve to private and internal addresses ([URL guard](#url-guard)). Off by default to block SSRF; enable it only on a trusted deployment with internal template hosts. |
 
+### Hosted server (OAuth mode)
+
+Carbone uses these variables to run mcp.carbone.io. Self-hosted and on-premise servers leave them unset: OAuth mode needs this server to be registered as a resource server at account.carbone.io, which only Carbone does.
+
+Setting `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET` and `MCP_RESOURCE_URL` turns the HTTP server into an OAuth 2.1 resource server:
+
+- MCP clients that implement MCP authorization (2025-06-18 or later) sign in with their Carbone account. A request without credentials gets `401` with a `WWW-Authenticate` challenge pointing to the protected-resource metadata, without an error code (RFC 6750 §3.1). A malformed Bearer gets `400` `invalid_request`, a token that fails verification `401` `invalid_token`, and a token without `doc_rwd` `403` `insufficient_scope`.
+- Each token is introspected (RFC 7662) and exchanged (RFC 8693) for a short-lived Carbone token, the only one sent to the Carbone API: the client's own token never reaches it.
+- A Bearer shaped like a Carbone API key is forwarded as is, as in API-key mode; a Carbone JWT issued through OAuth (to another client, or to a client that sent no `resource`) is refused with `401`. This is a deliberate exception to the MCP authorization specification, which forbids accepting a token not issued for this server: it keeps Carbone API keys working on the hosted server until sign-in replaces them.
+- A client that never sends the RFC 8707 `resource` parameter gets a token bound to nothing, which is refused with `401`.
+
+A client may get `429` or `503` with `Retry-After`: it retries after that delay.
+
+Setting only some of these variables, or `CARBONE_API_KEY` with them, stops the server at startup.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MCP_OAUTH_ISSUER` | `https://account.carbone.io` | The authorization server, as an `https` origin without a path or trailing slash, exactly as it writes its own `issuer`: tokens are introspected at `<issuer>/api/oauth/introspect` and exchanged at `<issuer>/api/oauth/token`. |
+| `MCP_OAUTH_CLIENT_ID` | none | This server's client ID, registered at the authorization server as the resource server for `MCP_RESOURCE_URL` (`client_secret_basic`). |
+| `MCP_OAUTH_CLIENT_SECRET` | none | This server's client secret; never logged. |
+| `MCP_RESOURCE_URL` | none | The URL MCP clients connect to, exactly as they enter it: the protected resource advertised at `/.well-known/oauth-protected-resource[/<path>]` (RFC 9728) and the audience every token must be bound to. An origin is written without a trailing slash (`https://mcp.carbone.io`); its path (`/` for an origin) must equal `MCP_PATH`. |
+| `MCP_TRUST_PROXY_HOPS` | `0` | The number of reverse proxies in front of the server, used to find the client's address: `0` takes the TCP peer, `n` the `X-Forwarded-For` entry the outermost of them recorded (`n` from the end); entries further left are written by the client and never trusted. Set it only when every request goes through those proxies. The first three MCP requests after startup are logged with their peer and `X-Forwarded-For`, to check the value on a deployment. |
+
 ---
 
 ## Health endpoint

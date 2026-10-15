@@ -6,7 +6,7 @@ import { readTemplateByIdResource, completeTemplateId } from '../../src/resource
  * Integration tests — require a real Carbone API key.
  * Run with: CARBONE_TEST_API_KEY=your_key npm run test:integration
  *
- * These tests use the Carbone staging environment to avoid affecting production data.
+ * They call https://api.carbone.io unless CARBONE_TEST_BASE_URL is set: use a dedicated test API key.
  */
 
 const TEST_API_KEY = process.env['CARBONE_TEST_API_KEY'];

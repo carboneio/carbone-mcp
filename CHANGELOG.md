@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.1.0] — 2026-10-15
+
+Minor release: sign-in with a Carbone account for Carbone's hosted server (opt-in, off unless configured), and a fix for `Authorization` headers that do not carry a Carbone key. Self-hosted, on-premise and stdio setups behave as in 2.0.0.
+
+### Added
+
+- **Sign-in with a Carbone account, for Carbone's hosted server.** Prepares mcp.carbone.io to let MCP clients sign in with their Carbone account instead of pasting an API key; API keys keep working. Self-hosted and on-premise servers are unaffected.
+- CORS: `Access-Control-Expose-Headers: WWW-Authenticate, Mcp-Session-Id, Retry-After`, so browser-based clients can read the sign-in challenge and how long to wait after a `429` or `503`.
+
+### Fixed
+
+- An `Authorization` header with another scheme (such as `Basic` from a reverse proxy), `Bearer` without a key, or a tab instead of a space after `Bearer`, is no longer sent to the Carbone API as if it were an API key. The request is treated as having no key: the server key is used when one is configured.
+
+---
+
 ## [2.0.0] — 2026-10-14
 
 Major release: MCP protocol 2026-07-28 (MCP TypeScript SDK v2), Carbone API v5.15.0, and security fixes. Changes since 1.6.0; **BREAKING** marks what can break a 1.6.0 user.
@@ -345,6 +360,9 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.1.0]: https://github.com/carboneio/carbone-mcp/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/carboneio/carbone-mcp/compare/v1.6.0...v2.0.0
+[1.6.0]: https://github.com/carboneio/carbone-mcp/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/carboneio/carbone-mcp/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/carboneio/carbone-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/carboneio/carbone-mcp/compare/v1.2.2...v1.3.0

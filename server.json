@@ -3,7 +3,7 @@
   "name": "io.carbone/carbone-mcp",
   "title": "Carbone MCP",
   "description": "Generate PDF, DOCX, XLSX and PPTX from templates and JSON; convert files between 36 formats",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "websiteUrl": "https://carbone.io",
   "license": "Apache-2.0",
   "icons": [{
@@ -33,7 +33,7 @@
     {
       "registryType": "npm",
       "identifier": "carbone-mcp",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

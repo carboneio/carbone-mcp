@@ -12,6 +12,10 @@ export class CarboneError extends Error {
   }
 }
 
+/** OAuth mode: the Carbone API refuses the key exchanged for a signed-in user, who has no API key to fix. */
+export const SIGN_IN_REFUSED_MESSAGE =
+  'Carbone refused the access granted by your sign-in. Sign in again from your MCP client, and contact Carbone support if it persists.';
+
 export class CarboneAuthError extends CarboneError {
   constructor(message = 'Invalid API key', code?: string) {
     super(message, 401, undefined, code);
