@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        node-version: [lts/*, current]
+        node-version: [26]
     env:
       CI: true
     steps:
