@@ -39,9 +39,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment:
-      name: staging # Environment-scoped secrets and variables are only exposed to a job that names it
-      url: https://mcp.carbone.website
+    environment: staging # Environment-scoped secrets and variables are only exposed to a job that names it
     permissions:
       contents: read
 
