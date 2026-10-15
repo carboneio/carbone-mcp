@@ -90,17 +90,16 @@ jobs:
           default-project-id: ${{ vars.SCW_PROJECT_ID }}
 
       # Changing the image on a Serverless Container triggers a rolling deployment.
-      - name: Update the staging container image
+      - name: Deploy to staging and wait until ready
         run: |
+          # action-scw exports SCW_DEFAULT_ORGANIZATION_ID="" when not given, and the CLI
+          # refuses an empty value ("default organization ID cannot be empty"): drop it.
+          [ -n "${SCW_DEFAULT_ORGANIZATION_ID:-}" ] || unset SCW_DEFAULT_ORGANIZATION_ID
+
           scw container container update "$CONTAINER_ID" \
             image="$IMAGE" region="$SCW_REGION" -o json > /dev/null
           echo "Deploying $IMAGE"
-        env:
-          CONTAINER_ID: ${{ vars.SCW_STAGING_CONTAINER_ID }}
-          IMAGE: ${{ steps.image.outputs.repo }}:${{ steps.image.outputs.tag }}
 
-      - name: Wait for the deployment
-        run: |
           for i in $(seq 1 60); do
             json=$(scw container container get "$CONTAINER_ID" region="$SCW_REGION" -o json)
             status=$(jq -r .status <<< "$json")
@@ -120,3 +119,4 @@ jobs:
           exit 1
         env:
           CONTAINER_ID: ${{ vars.SCW_STAGING_CONTAINER_ID }}
+          IMAGE: ${{ steps.image.outputs.repo }}:${{ steps.image.outputs.tag }}
