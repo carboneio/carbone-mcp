@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "carbone-mcp",
-  "version": "2.0.0",
+  "version": "2.1.1",
   "description": "Generate PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files between 36 formats, with the Carbone API. Find out which data a template needs, and manage a versioned template library.",
   "author": {
     "name": "Carbone",
