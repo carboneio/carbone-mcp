@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/server';
+import type { McpServer, ToolAnnotations } from '@modelcontextprotocol/server';
 import { callOptionsFrom, type CarboneClient } from '../carbone/client.js';
 import type { FileContext } from './output.js';
 import type { IoModes } from './inputForms.js';
@@ -120,6 +120,17 @@ export function transportToolsFor(io: IoModes): ReturnType<typeof buildTransport
   return tools;
 }
 
+/**
+ * A tool's title, repeated as annotations.title: clients read the top-level title, while Claude's connector
+ * directory reads the display name from the annotation (MCP's earlier location for it). The three hints are
+ * required, so every tool states them explicitly, as ChatGPT's plugin directory asks.
+ */
+type Hints = Omit<ToolAnnotations, 'title'> & Required<Pick<ToolAnnotations, 'readOnlyHint' | 'destructiveHint' | 'openWorldHint'>>;
+
+function titled(title: string, hints: Hints) {
+  return { title, annotations: { title, ...hints } };
+}
+
 export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext): void {
   const io: IoModes = { allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput };
   const {
@@ -131,18 +142,18 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   // badges and help models reason about which tools are read-only, repeatable, or destructive.
   // - readOnlyHint:   does not modify stored state (generation/listing/status).
   // - idempotentHint: same args produce the same effect when repeated.
-  // - destructiveHint: only meaningful when readOnlyHint is false; true for delete.
+  // - destructiveHint: only meaningful when readOnlyHint is false; true for delete, and for metadata updates,
+  //   which overwrite fields and can schedule a deletion (expireAt).
   // - openWorldHint:  calls the external Carbone API (false only for the local capabilities tool).
   // render, convert and download_template take per-transport hints (documentToolHints, see buildTransportTools).
 
   server.registerTool(
     listTemplatesToolName,
     {
-      title: 'List Templates',
+      ...titled('List Templates', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
       description: listTemplatesDescription,
       inputSchema: listTemplatesInput,
       outputSchema: listTemplatesOutput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (args, ctx) => handleListTemplates(args, client, callOptionsFrom(ctx))
   );
@@ -150,10 +161,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     convertDocumentToolName,
     {
-      title: 'Convert Document',
+      ...titled('Convert Document', documentToolHints),
       description: convertDocumentDescription,
       inputSchema: convertDocumentInput,
-      annotations: documentToolHints,
     },
     (args, ctx) => handleConvertDocument(args, client, callOptionsFrom(ctx), fileCtx)
   );
@@ -161,10 +171,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     renderDocumentToolName,
     {
-      title: 'Generate Document',
+      ...titled('Generate Document', documentToolHints),
       description: renderDocumentDescription,
       inputSchema: renderDocumentInput,
-      annotations: documentToolHints,
     },
     (args, ctx) => handleRenderDocument(args, client, callOptionsFrom(ctx), fileCtx)
   );
@@ -174,11 +183,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     inspectTemplateToolName,
     {
-      title: 'Inspect Template',
+      ...titled('Inspect Template', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
       description: inspectTemplateDescription,
       inputSchema: inspectTemplateInput,
       outputSchema: inspectTemplateOutput,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     (args, ctx) => handleInspectTemplate(args, client, callOptionsFrom(ctx), fileCtx)
   );
@@ -186,10 +194,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     listCategoriesToolName,
     {
-      title: 'List Categories',
+      ...titled('List Categories', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
       description: listCategoriesDescription,
       outputSchema: listCategoriesOutput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (ctx) => handleListCategories({} as never, client, callOptionsFrom(ctx))
   );
@@ -197,10 +204,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     listTagsToolName,
     {
-      title: 'List Tags',
+      ...titled('List Tags', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
       description: listTagsDescription,
       outputSchema: listTagsOutput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (ctx) => handleListTags({} as never, client, callOptionsFrom(ctx))
   );
@@ -208,11 +214,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     uploadTemplateToolName,
     {
-      title: 'Upload Template',
+      ...titled('Upload Template', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }),
       description: uploadTemplateDescription,
       inputSchema: uploadTemplateInput,
       outputSchema: uploadTemplateOutput,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     (args, ctx) => handleUploadTemplate(args, client, callOptionsFrom(ctx), fileCtx)
   );
@@ -220,11 +225,10 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     updateTemplateMetadataToolName,
     {
-      title: 'Update Template Metadata',
+      ...titled('Update Template Metadata', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true }),
       description: updateTemplateMetadataDescription,
       inputSchema: updateTemplateMetadataInput,
       outputSchema: updateTemplateMetadataOutput,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     (args, ctx) => handleUpdateTemplateMetadata(args, client, callOptionsFrom(ctx))
   );
@@ -232,10 +236,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     deleteTemplateToolName,
     {
-      title: 'Delete Template',
+      ...titled('Delete Template', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true }),
       description: deleteTemplateDescription,
       inputSchema: deleteTemplateInput,
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
     (args, ctx) => handleDeleteTemplate(args, client, callOptionsFrom(ctx))
   );
@@ -243,10 +246,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     downloadTemplateToolName,
     {
-      title: 'Download Template',
+      ...titled('Download Template', documentToolHints),
       description: downloadTemplateDescription,
       inputSchema: downloadTemplateInput,
-      annotations: documentToolHints,
     },
     (args, ctx) => handleDownloadTemplate(args, client, callOptionsFrom(ctx), fileCtx)
   );
@@ -254,10 +256,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     getApiStatusToolName,
     {
-      title: 'API Status',
+      ...titled('API Status', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
       description: getApiStatusDescription,
       outputSchema: getApiStatusOutput,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
     (ctx) => handleGetApiStatus(client, callOptionsFrom(ctx))
   );
@@ -265,9 +266,8 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     getCapabilitiesToolName,
     {
-      title: 'Capabilities',
+      ...titled('Capabilities', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
       description: getCapabilitiesDescription,
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
     () => handleGetCapabilities(io)
   );

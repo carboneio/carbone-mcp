@@ -1,6 +1,6 @@
 {
   "name": "carbone-mcp",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Official Carbone MCP server: automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON, and convert Office, HTML and Markdown files, from Claude, Cursor or any MCP client.",
   "type": "module",
   "main": "dist/index.js",

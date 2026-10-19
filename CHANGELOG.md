@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.1.2] — 2026-10-19
+
+### Changed
+
+- Every tool also carries its display name in its annotations, where Claude's connector directory reads it.
+- Every tool states explicitly whether it only reads, whether it can delete or overwrite data, and whether it reaches outside services, as ChatGPT's plugin directory asks.
+- `update_template_metadata` is marked as destructive: it can overwrite a template's details and schedule its deletion, so assistants ask before running it.
+
+---
+
 ## [2.1.1] — 2026-10-15
 
 Patch release: documentation and registry entry for sign-in on mcp.carbone.io. No code changes; every setup behaves as in 2.1.0.

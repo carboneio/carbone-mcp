@@ -64,7 +64,18 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(convert?.annotations?.readOnlyHint).toBe(false);
 
     expect(tools.find((t) => t.name === 'delete_template')?.annotations?.destructiveHint).toBe(true);
+    // Overwrites fields and can schedule a deletion (expireAt): clients must ask before running it.
+    expect(tools.find((t) => t.name === 'update_template_metadata')?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === 'list_templates')?.outputSchema).toBeTruthy();
+    // Claude's connector directory reads the display name from annotations.title.
+    for (const tool of tools) {
+      expect(tool.title, tool.name).toBeTruthy();
+      expect(tool.annotations?.title, tool.name).toBe(tool.title);
+      // ChatGPT's plugin directory asks for these three hints as explicit booleans on every tool.
+      for (const hint of ['readOnlyHint', 'destructiveHint', 'openWorldHint'] as const) {
+        expect(typeof tool.annotations?.[hint], `${tool.name}.${hint}`).toBe('boolean');
+      }
+    }
   });
 
   test('inspect_template: read-only annotations, templateId XOR template input, and its outputSchema', async () => {
@@ -72,7 +83,7 @@ describe('MCP registration surface (in-process, no API key)', () => {
     const { tools } = await client.listTools();
     const inspect = tools.find((t) => t.name === 'inspect_template')!;
     expect(inspect.title).toBe('Inspect Template');
-    expect(inspect.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
+    expect(inspect.annotations).toEqual({ title: 'Inspect Template', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
     expect(inspect.description).toMatch(/before render_document/);
     expect(inspect.description).toMatch(/\{t\(\)\} translation tags are not listed/);
 
@@ -278,7 +289,8 @@ describe('tool annotations follow the transport', () => {
     const client = await connect(new CarboneClient({ apiKey: 'unused' }), ctx);
     const { tools } = await client.listTools();
     for (const name of DOCUMENT_TOOLS) {
-      expect(tools.find((t) => t.name === name)?.annotations, name).toEqual(expected);
+      const tool = tools.find((t) => t.name === name);
+      expect(tool?.annotations, name).toEqual({ title: tool?.title, ...expected });
     }
     await client.close();
   });
