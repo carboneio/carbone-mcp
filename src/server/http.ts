@@ -284,9 +284,9 @@ export async function startHttpServer(options: {
 
         // ── Health check ──────────────────────────────────────────────────────
         if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/health') {
-          refreshHealthInBackground();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(req.method === 'HEAD' ? undefined : JSON.stringify(healthBody));
+          refreshHealthInBackground(); // after the response, so starting a check never adds to it
           return;
         }
 
