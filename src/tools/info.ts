@@ -120,9 +120,9 @@ Full conversion matrix: https://carbone.io/documentation/developer/http-api/gene
 ## 2. Template-Based Generation
 
 > **Authoring from scratch?** LLMs can write HTML documents or templates directly:
-> - **HTML or Markdown with Carbone tags** → use as a template with \`render_document\`. Strongly recommended: load \`carbone.skill\` (see Documentation) as the reference for Universal Carbone Templating syntax and validate all tag structures before rendering.
+> - **HTML or Markdown with Carbone tags** → use as a template with \`render_document\`. The Carbone Skill (see Documentation) is a reference for the Universal Carbone Templating syntax; validate all tag structures before rendering.
 > - **Plain HTML or Markdown (no Carbone tags)** → static document, use \`convert_document\` to produce PDF, DOCX, etc.
-> - **DOCX / XLSX / PPTX editing** → if the LLM supports editing Office files, Carbone tags can be injected directly into existing DOCX, XLSX, or PPTX files to create or update templates. The same \`carbone.skill\` syntax applies.
+> - **DOCX / XLSX / PPTX editing** → if the LLM supports editing Office files, Carbone tags can be injected directly into existing DOCX, XLSX, or PPTX files to create or update templates. The same Carbone tag syntax applies.
 
 Two modes — choose based on whether you need to reuse the template:
 
@@ -152,7 +152,7 @@ Two modes — choose based on whether you need to reuse the template:
 - \`{d.status:ifEQ(active):show(Yes):elseShow(No)}\` — conditional (inline value)
 - \`{d.toBuy:ifEQ(true):showBegin}\` … \`{d.toBuy:showEnd}\` — conditional block
 
-> For the full syntax reference — all formatters, conditions, loops, and translations — load \`carbone.skill\` (see Documentation).
+> The full syntax reference (all formatters, conditions, loops and translations) is in the Carbone Skill and the documentation below.
 
 **Fail fast and feature level:** \`failOn: ["IMAGE_URL_ERROR"]\` (v5.15.0+) stops the render when an image cannot be downloaded from its URL, instead of showing a broken-image placeholder. \`preReleaseFeatureIn\` (integer, e.g. 5000000) sets the pre-release feature level for one render.
 
@@ -193,7 +193,7 @@ Valid outputs depend on the input format: see the conversion matrix above. \`doc
 ## Documentation
 
 All Carbone docs are LLM-friendly: replace \`.html\` with \`.md\` on any documentation URL for the Markdown
-version, or load the whole corpus at once via the llms.txt files below.
+version; the whole corpus is also in the llms.txt files below.
 - llms.txt (doc index):  https://carbone.io/llms.txt
 - llms-full.txt (full):  https://carbone.io/llms-full.txt
 - API reference:         https://carbone.io/documentation/developer/http-api/introduction.md
@@ -204,9 +204,9 @@ version, or load the whole corpus at once via the llms.txt files below.
 - MCP server docs:       https://carbone.io/documentation/developer/ai/mcp.md
 - Changelog:             https://carbone.io/changelog.md
 
-**Carbone Skill (AI deep knowledge):**
-For deep knowledge of Carbone's templating syntax, formatters, and best practices, load the Carbone Skill.
-Compatible with any AI assistant that supports the Agent Skills standard (agentskills.io):
+**Carbone Skill:**
+A reference of Carbone's templating syntax, formatters and template design guidance for AI assistants,
+in the Agent Skills format (agentskills.io):
 - Skill file (ZIP):     https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill
 - Skill documentation:  https://carbone.io/documentation/developer/ai/skills.md
 - GitHub repository:    https://github.com/carboneio/carbone-skill

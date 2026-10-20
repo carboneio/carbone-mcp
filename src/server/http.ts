@@ -1,7 +1,5 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { isIP } from 'node:net';
-import { readFile, readdir } from 'node:fs/promises';
-import { resolve, join, extname } from 'node:path';
 import { originValidation, toNodeHandler } from '@modelcontextprotocol/node';
 import { createMcpHandler, localhostAllowedOrigins, McpServer, type AuthInfo } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
@@ -137,6 +135,8 @@ export async function startHttpServer(options: {
   allowPrivateNetwork: boolean;
   /** Browser Origin hostnames allowed in addition to localhost (MCP_ALLOWED_ORIGINS). */
   allowedOriginHostnames: string[];
+  /** OpenAI's domain-verification token (MCP_OPENAI_APPS_CHALLENGE), served at /.well-known/openai-apps-challenge. */
+  openAiAppsChallenge?: string;
   /** OAuth mode; API-key mode when unset. */
   oauth?: OAuthConfig;
 }): Promise<Server> {
@@ -145,33 +145,6 @@ export async function startHttpServer(options: {
   const oauthGate = options.oauth ? createOAuthGate(options.oauth) : undefined;
   /** OAuth mode: how the first MCP requests were addressed is logged, to check the client address on a new platform. */
   let addressSamples = oauthGate ? 3 : 0;
-
-  // ── Public static files — loaded once at startup into memory ────────────
-  // All files under <cwd>/public/ are served as static assets.
-  // Loading at startup (not per-request) prevents path traversal attacks
-  // and avoids disk I/O on each request.
-  const STATIC_MIME: Record<string, string> = {
-    '.json': 'application/json',
-    '.txt':  'text/plain',
-    '.xml':  'application/xml',
-    '.html': 'text/html',
-    '.svg':  'image/svg+xml',
-    '.png':  'image/png',
-  };
-  const staticFiles = new Map<string, { content: Buffer; mime: string }>();
-  try {
-    const publicDir = resolve(process.cwd(), 'public');
-    const entries = await readdir(publicDir, { recursive: true });
-    await Promise.all(
-      entries.map(async (entry) => {
-        const filePath = join(publicDir, entry);
-        const content = await readFile(filePath);
-        const mime = STATIC_MIME[extname(entry)] ?? 'application/octet-stream';
-        // Normalize path separators to forward slashes (Windows compat)
-        staticFiles.set('/' + entry.toString().replace(/\\/g, '/'), { content, mime });
-      })
-    );
-  } catch { /* public directory is optional */ }
 
   // ── Health check — answered at once from the last known backend status ───
   // A request starts a background check 30 s after the previous one ended, one at a time, so a slow or
@@ -274,11 +247,11 @@ export async function startHttpServer(options: {
           return;
         }
 
-        // ── Public static files ───────────────────────────────────────────────
-        if ((req.method === 'GET' || req.method === 'HEAD') && staticFiles.has(pathname)) {
-          const file = staticFiles.get(pathname)!;
-          res.writeHead(200, { 'Content-Type': file.mime });
-          res.end(req.method === 'HEAD' ? undefined : file.content);
+        // ── OpenAI domain verification (MCP_OPENAI_APPS_CHALLENGE) ────────────
+        if (options.openAiAppsChallenge && (req.method === 'GET' || req.method === 'HEAD')
+          && pathname === '/.well-known/openai-apps-challenge') {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end(req.method === 'HEAD' ? undefined : options.openAiAppsChallenge);
           return;
         }
 

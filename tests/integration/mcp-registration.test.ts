@@ -78,6 +78,15 @@ describe('MCP registration surface (in-process, no API key)', () => {
     }
   });
 
+  test('openWorldHint is true only for the tools that reach beyond the Carbone account', async () => {
+    const { tools } = await client.listTools();
+    expect(Object.fromEntries(tools.map((t) => [t.name, t.annotations?.openWorldHint]))).toEqual({
+      render_document: true, convert_document: true, inspect_template: true, upload_template: true,
+      list_templates: false, list_categories: false, list_tags: false, update_template_metadata: false,
+      delete_template: false, download_template: false, get_api_status: false, get_capabilities: false,
+    });
+  });
+
   test('inspect_template: read-only annotations, templateId XOR template input, and its outputSchema', async () => {
     type Schema = { properties?: Record<string, { type?: string }>; required?: string[] };
     const { tools } = await client.listTools();
@@ -290,7 +299,9 @@ describe('tool annotations follow the transport', () => {
     const { tools } = await client.listTools();
     for (const name of DOCUMENT_TOOLS) {
       const tool = tools.find((t) => t.name === name);
-      expect(tool?.annotations, name).toEqual({ title: tool?.title, ...expected });
+      // download_template only reaches the user's Carbone account, unlike render and convert, which fetch URLs.
+      const openWorldHint = name !== 'download_template';
+      expect(tool?.annotations, name).toEqual({ title: tool?.title, ...expected, openWorldHint });
     }
     await client.close();
   });

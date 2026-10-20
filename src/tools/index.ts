@@ -144,13 +144,15 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   // - idempotentHint: same args produce the same effect when repeated.
   // - destructiveHint: only meaningful when readOnlyHint is false; true for delete, and for metadata updates,
   //   which overwrite fields and can schedule a deletion (expireAt).
-  // - openWorldHint:  calls the external Carbone API (false only for the local capabilities tool).
+  // - openWorldHint:  true for tools that reach beyond the user's Carbone account: render, convert, inspect and
+  //   upload fetch user-supplied URLs, and render also downloads images listed in the data and can post the
+  //   result to a webhookUrl. False for tools limited to the account, and for the local capabilities tool.
   // render, convert and download_template take per-transport hints (documentToolHints, see buildTransportTools).
 
   server.registerTool(
     listTemplatesToolName,
     {
-      ...titled('List Templates', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
+      ...titled('List Templates', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
       description: listTemplatesDescription,
       inputSchema: listTemplatesInput,
       outputSchema: listTemplatesOutput,
@@ -194,7 +196,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     listCategoriesToolName,
     {
-      ...titled('List Categories', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
+      ...titled('List Categories', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
       description: listCategoriesDescription,
       outputSchema: listCategoriesOutput,
     },
@@ -204,7 +206,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     listTagsToolName,
     {
-      ...titled('List Tags', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
+      ...titled('List Tags', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
       description: listTagsDescription,
       outputSchema: listTagsOutput,
     },
@@ -225,7 +227,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     updateTemplateMetadataToolName,
     {
-      ...titled('Update Template Metadata', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true }),
+      ...titled('Update Template Metadata', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
       description: updateTemplateMetadataDescription,
       inputSchema: updateTemplateMetadataInput,
       outputSchema: updateTemplateMetadataOutput,
@@ -236,7 +238,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     deleteTemplateToolName,
     {
-      ...titled('Delete Template', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true }),
+      ...titled('Delete Template', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
       description: deleteTemplateDescription,
       inputSchema: deleteTemplateInput,
     },
@@ -246,7 +248,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     downloadTemplateToolName,
     {
-      ...titled('Download Template', documentToolHints),
+      ...titled('Download Template', { ...documentToolHints, openWorldHint: false }),
       description: downloadTemplateDescription,
       inputSchema: downloadTemplateInput,
     },
@@ -256,7 +258,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   server.registerTool(
     getApiStatusToolName,
     {
-      ...titled('API Status', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
+      ...titled('API Status', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
       description: getApiStatusDescription,
       outputSchema: getApiStatusOutput,
     },

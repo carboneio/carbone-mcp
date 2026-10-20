@@ -303,6 +303,27 @@ describe('loadConfig', () => {
       );
     });
   });
+
+  // ── MCP_OPENAI_APPS_CHALLENGE ────────────────────────────────────────────
+  describe('MCP_OPENAI_APPS_CHALLENGE', () => {
+    test.each([undefined, '', '   '])('is unset when %j', (value) => {
+      stubHttp();
+      vi.stubEnv('MCP_OPENAI_APPS_CHALLENGE', value);
+      expect(loadConfig().openAiAppsChallenge).toBeUndefined();
+    });
+
+    test('keeps the token, trimmed', () => {
+      stubHttp();
+      vi.stubEnv('MCP_OPENAI_APPS_CHALLENGE', '  tok-123_ABC\n');
+      expect(loadConfig().openAiAppsChallenge).toBe('tok-123_ABC');
+    });
+
+    test('rejects a value with spaces inside', () => {
+      stubHttp();
+      vi.stubEnv('MCP_OPENAI_APPS_CHALLENGE', 'tok 123');
+      expect(() => loadConfig()).toThrow('Invalid MCP_OPENAI_APPS_CHALLENGE value');
+    });
+  });
 });
 
 // ─── OAuth mode (MCP_OAUTH_* and MCP_RESOURCE_URL) ──────────────────────────

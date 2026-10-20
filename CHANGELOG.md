@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.1.3] — 2026-10-20
+
+### Added
+
+- `MCP_OPENAI_APPS_CHALLENGE`: OpenAI's domain-verification token, served as plain text at `/.well-known/openai-apps-challenge`, to submit the server to the ChatGPT plugin directory.
+
+### Changed
+
+- Only `render_document`, `convert_document`, `inspect_template` and `upload_template` are now marked as reaching outside sources: they download files from a URL you give, and `render_document` can also download images listed in the data or send the result to a webhook. The other tools only work within your Carbone account.
+- `get_capabilities` and the instructions the server sends at connection present the Carbone Skill and the documentation as references, instead of asking the assistant to load them.
+- The PNG version of the Carbone icon that MCP clients receive at connection is smaller (128×128, 4 KB instead of 14 KB). The SVG version is unchanged.
+
+### Security
+
+- **HTTP mode no longer serves a `public/` folder from its working directory.** A server started from a folder that contains its own `public/` (a web project, for example) exposed every file in it, without notice. The Docker image and the npm package never included one.
+
+---
+
 ## [2.1.2] — 2026-10-20
 
 ### Changed

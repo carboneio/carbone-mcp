@@ -483,6 +483,7 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `MCP_ALLOWED_ORIGINS` | none | HTTP only. Browser `Origin` hostnames allowed in addition to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request with any other `Origin` gets `403`; requests without an `Origin` are unaffected. Invalid entries stop the server at startup. |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP only. `true` requires `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server: anyone reaching the port can spend it, and the server warns at startup). No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs resolve to private and internal addresses ([URL guard](#url-guard)). Off by default to block SSRF; enable it only on a trusted deployment with internal template hosts. |
+| `MCP_OPENAI_APPS_CHALLENGE` | none | HTTP only. The domain-verification token OpenAI gives when you submit the server to the ChatGPT plugin directory. When set, the server returns it as plain text at `/.well-known/openai-apps-challenge`. |
 
 ### Hosted server (OAuth mode)
 

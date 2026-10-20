@@ -14,6 +14,8 @@ export interface ServerConfig {
   requireClientAuth: boolean;
   allowPrivateNetwork: boolean;
   allowedOriginHostnames: string[];
+  /** HTTP only: OpenAI's domain-verification token, served at /.well-known/openai-apps-challenge (MCP_OPENAI_APPS_CHALLENGE). */
+  openAiAppsChallenge?: string;
   /** HTTP OAuth mode (Carbone's hosted server), when every MCP_OAUTH_* variable is set; API-key mode otherwise. */
   oauth?: OAuthConfig;
 }
@@ -181,6 +183,11 @@ export function loadConfig(): ServerConfig {
 
   const oauth = loadOAuthConfig(transport, mcpPath, apiKey);
 
+  const openAiAppsChallenge = process.env['MCP_OPENAI_APPS_CHALLENGE']?.trim() || undefined;
+  if (openAiAppsChallenge && /\s/.test(openAiAppsChallenge)) {
+    throw new Error('Invalid MCP_OPENAI_APPS_CHALLENGE value. Paste the token exactly as OpenAI shows it, without spaces.');
+  }
+
   return {
     carboneApiKey: apiKey,
     carboneBaseUrl: baseUrl,
@@ -201,6 +208,7 @@ export function loadConfig(): ServerConfig {
     allowPrivateNetwork: parseBool(process.env['CARBONE_ALLOW_PRIVATE_NETWORK'], false, 'CARBONE_ALLOW_PRIVATE_NETWORK'),
     // HTTP only: browser Origins allowed in addition to localhost (DNS-rebinding protection).
     allowedOriginHostnames: parseOriginHostnames(process.env['MCP_ALLOWED_ORIGINS'], 'MCP_ALLOWED_ORIGINS'),
+    ...(openAiAppsChallenge && { openAiAppsChallenge }),
     ...(oauth && { oauth }),
   };
 }

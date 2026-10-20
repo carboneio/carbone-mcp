@@ -72,6 +72,8 @@ describe('handleGetCapabilities', () => {
     expect(text).toContain('carbone.io');
     expect(text).toContain('carbone.skill');
     expect(text).toContain('developer/ai/mcp.md');
+    // References only: the text never asks the assistant to load outside content.
+    expect(text).not.toMatch(/\bload(s|ed|ing)?\b/i);
     // Docs are referenced as Markdown (.md), not .html, to cut fetch token cost.
     expect(text).toContain('llms.txt');
     expect(text).not.toMatch(/carbone\.io\/[^\s)]+\.html/);

@@ -14,7 +14,7 @@ export function serverInfo(version: string) {
     websiteUrl: 'https://carbone.io',
     icons: [
       { src: CARBONE_ICON_SVG, mimeType: 'image/svg+xml', sizes: ['any'] },
-      { src: CARBONE_ICON_PNG, mimeType: 'image/png', sizes: ['250x250'] },
+      { src: CARBONE_ICON_PNG, mimeType: 'image/png', sizes: ['128x128'] },
     ],
   };
 }
@@ -29,16 +29,16 @@ export const SERVER_INSTRUCTIONS =
   'templateId for a stored template, or an inline template for a one-shot render.\n' +
   '- Don\'t know which data a template expects? Call inspect_template first: it lists the template\'s tags and ' +
   'returns a sample JSON dataset matching its structure.\n' +
-  '- Writing, editing, or validating a Carbone template? Load the Carbone Skill first — Carbone tags are ' +
-  'a unique language (NOT Mustache/Handlebars/Jinja), so never guess syntax; the Skill is the source of ' +
-  'truth for tags, formatters, loops, and conditions: https://carbone.io/documentation/developer/ai/skills.md ' +
-  '(get_capabilities links the loadable .skill file).\n' +
+  '- Writing, editing, or validating a Carbone template? Carbone tags are a unique language (NOT ' +
+  'Mustache/Handlebars/Jinja), so never guess syntax. The Carbone Skill is the reference for tags, formatters, ' +
+  'loops, and conditions: https://carbone.io/documentation/developer/ai/skills.md (get_capabilities lists its ' +
+  'download link).\n' +
   '- Manage stored templates with upload_template, list_templates, update_template_metadata, ' +
   'download_template, and delete_template.\n' +
   '- File inputs accept an HTTPS URL or a base64 string, and a local path in stdio (local) mode only, where ' +
   'outputPath also saves large outputs to disk instead of returning them inline.\n' +
-  '- Docs are LLM-friendly: replace .html with .md on any carbone.io doc URL for Markdown, or load ' +
-  'https://carbone.io/llms.txt (index) / https://carbone.io/llms-full.txt (full corpus).';
+  '- Docs are LLM-friendly: replace .html with .md on any carbone.io doc URL for Markdown. The index is ' +
+  'https://carbone.io/llms.txt and the full corpus https://carbone.io/llms-full.txt.';
 
 /**
  * Options for every McpServer instance, on both transports and both protocol eras. The tool and
