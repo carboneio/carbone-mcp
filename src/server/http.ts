@@ -173,12 +173,30 @@ export async function startHttpServer(options: {
     );
   } catch { /* public directory is optional */ }
 
-  // ── Health check cache — refreshed at most once every 30 s ───────────────
-  // Storing the promise (not the result) prevents concurrent requests from
-  // each triggering a backend call while the first one is still in-flight.
-  const HEALTH_CACHE_TTL_MS = 30_000;
-  let healthCachePromise: Promise<Record<string, unknown>> | undefined;
+  // ── Health check — answered at once from the last known backend status ───
+  // A request starts a background check 30 s after the previous one ended, one at a time, so a slow or
+  // unreachable Carbone API never delays /health. Until the first check completes: "checking".
+  const HEALTH_REFRESH_MS = 30_000;
+  let healthBody: Record<string, unknown> = { mcp: { version }, carbone: { status: 'checking' } };
+  let nextHealthCheck = 0;
   let lastHealthStatus: string | undefined;
+
+  const refreshHealthInBackground = (): void => {
+    if (Date.now() < nextHealthCheck) return;
+    nextHealthCheck = Infinity; // one check at a time
+    buildHealthBody(client, version)
+      .then((body) => {
+        healthBody = body;
+        const carbone = body.carbone as Record<string, unknown>;
+        const status = carbone.error ? `${carbone.error}: ${carbone.message}` : `ok (v${carbone.version})`;
+        if (status !== lastHealthStatus) {
+          lastHealthStatus = status;
+          process.stderr.write(`[carbone-mcp] backend status changed: ${status}\n`);
+        }
+      })
+      .catch(() => { /* buildHealthBody never rejects — errors are in the response body */ })
+      .finally(() => { nextHealthCheck = Date.now() + HEALTH_REFRESH_MS; });
+  };
 
   // ── MCP handler — built once, serves both protocol eras ──────────────────
   // The factory is called for every request: an McpServer serves one exchange at a time.
@@ -266,22 +284,9 @@ export async function startHttpServer(options: {
 
         // ── Health check ──────────────────────────────────────────────────────
         if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/health') {
-          if (!healthCachePromise) {
-            healthCachePromise = buildHealthBody(client, version);
-            healthCachePromise.then(body => {
-              const carbone = body.carbone as Record<string, unknown>;
-              const status = carbone.error
-                ? `${carbone.error}: ${carbone.message}`
-                : `ok (v${carbone.version})`;
-              if (status !== lastHealthStatus) {
-                lastHealthStatus = status;
-                process.stderr.write(`[carbone-mcp] backend status changed: ${status}\n`);
-              }
-            }).catch(() => { /* buildHealthBody never rejects — errors are in the response body */ });
-            setTimeout(() => { healthCachePromise = undefined; }, HEALTH_CACHE_TTL_MS).unref();
-          }
+          refreshHealthInBackground();
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(req.method === 'HEAD' ? undefined : JSON.stringify(await healthCachePromise));
+          res.end(req.method === 'HEAD' ? undefined : JSON.stringify(healthBody));
           return;
         }
 

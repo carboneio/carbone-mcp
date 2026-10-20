@@ -531,8 +531,7 @@ The `carbone` field reflects backend connectivity:
 | `{ "version": "..." }` | Reachable and authenticated |
 | `{ "error": "unauthorized", "message": "..." }` | Reachable but no/invalid API key |
 | `{ "error": "unreachable", "message": "..." }` | Network error, timeout, or unexpected response |
-
-The response is cached for 30 seconds to avoid hammering the backend. Backend status changes are logged to stderr.
+| `{ "status": "checking" }` | Right after start, until the first check completes |
 
 ---
 

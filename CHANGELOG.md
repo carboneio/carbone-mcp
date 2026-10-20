@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Every tool also carries its display name in its annotations, where Claude's connector directory reads it.
 - Every tool states explicitly whether it only reads, whether it can delete or overwrite data, and whether it reaches outside services, as ChatGPT's plugin directory asks.
 - `update_template_metadata` is marked as destructive: it can overwrite a template's details and schedule its deletion, so assistants ask before running it.
+- `/health` answers at once with the last known Carbone API status, checked in the background, so a slow Carbone API no longer delays it. Right after start, the status shows as `checking`.
 
 ---
 
