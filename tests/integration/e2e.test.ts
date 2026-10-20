@@ -53,7 +53,8 @@ function binary(
   return r;
 }
 
-describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', () => {
+// Real network calls: Vitest's default 5 s is too short for the first request (DNS, TLS) or a slow API moment.
+describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', { timeout: 30_000 }, () => {
   const client = new CarboneClient({
     apiKey: TEST_API_KEY!,
     baseUrl: BASE_URL,
