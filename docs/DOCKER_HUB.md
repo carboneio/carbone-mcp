@@ -32,7 +32,7 @@ docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 -e CARBONE_API_KEY=your_
 
 ## What it does
 
-- Converts DOCX, XLSX, PPTX, HTML, Markdown and PDF files to PDF, images, CSV and other formats (36 output formats)
+- Converts DOCX, XLSX, PPTX, HTML, Markdown and PDF files to PDF, images, CSV and other formats (100+ formats)
 - Fills Word, Excel, PowerPoint, LibreOffice, HTML and Markdown templates with JSON data, and tells you which data a template expects
 - Adds passwords, watermarks and PDF/A to PDFs, with a choice of converter: LibreOffice, OnlyOffice, Chromium or Carbone ICE
 - Generates up to 100 documents per request, delivered to your webhook, with translations, time zones and currency conversion

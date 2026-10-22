@@ -4,7 +4,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.carbone%2Fcarbone--mcp-blue?logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files between 36 formats, from Claude, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
+Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files across 100+ formats, from Claude, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
 
 - **Convert files:** DOCX, XLSX, PPTX, HTML, Markdown or PDF to PDF, images, CSV, ODT and [the other output formats](docs/API.md#supported-output-formats).
 - **Fill templates with JSON:** design them in Word, Excel, PowerPoint, LibreOffice, HTML or Markdown with `{d.field}` tags, or fill an existing PDF form.

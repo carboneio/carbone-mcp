@@ -52,7 +52,13 @@
     "pdf-forms",
     "batch-generation",
     "json-to-pdf",
-    "md-to-pdf"
+    "md-to-pdf",
+    "chatgpt",
+    "openai",
+    "docx-template",
+    "mail-merge",
+    "xlsx",
+    "pptx"
   ],
   "author": "carboneio",
   "license": "Apache-2.0",
