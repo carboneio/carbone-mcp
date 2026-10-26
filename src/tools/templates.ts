@@ -7,6 +7,18 @@ import { formatError } from '../utils/errors.js';
 import { INPUT_FORMATS_DESCRIPTION } from '../validation/formats.js';
 import { type IoModes, STDIO_IO, inputForms, outputPathDescription } from './inputForms.js';
 
+// The Carbone API's rule: non-empty strings whose list, without duplicates, is at most 100 characters as JSON.
+// The caps keep the work bounded: 100 tags, checked before the items (one error rather than one per invalid
+// item, which can exhaust memory), and 96 characters per tag (the API's longest); the list is serialized only
+// once every tag has passed.
+const tagsSchema = z
+  .array(z.string().min(1).max(96))
+  .max(100)
+  .refine((tags) => JSON.stringify([...new Set(tags)]).length <= 100, {
+    message: 'The tag list is limited to 100 characters (about 8 tags of 9 characters).',
+    when: ({ issues }) => issues.length === 0,
+  });
+
 // ─── list_templates ──────────────────────────────────────────────────────────
 
 export const listTemplatesToolName = 'list_templates';
@@ -178,8 +190,7 @@ export function uploadTemplateSchemaFor(io: IoModes) {
       .max(200)
       .optional()
       .describe('Free-text comment to describe the template version or its purpose, max 200 characters.'),
-    tags: z
-      .array(z.string())
+    tags: tagsSchema
       .optional()
       .describe(
         'Labels shown by list_tags and on each list_templates result (e.g. ["sales", "billing", "v2"]). ' +
@@ -348,8 +359,7 @@ export const updateTemplateMetadataSchema = {
   name: z.string().max(200).optional().describe('New display name, max 200 characters.'),
   comment: z.string().max(200).optional().describe('New free-text comment, max 200 characters.'),
   category: z.string().max(200).optional().describe('New category, max 200 characters.'),
-  tags: z
-    .array(z.string())
+  tags: tagsSchema
     .optional()
     .describe(
       'New list of tags, replacing the existing ones. Duplicates are removed and the list is sorted; ' +

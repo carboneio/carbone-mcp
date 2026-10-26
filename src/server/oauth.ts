@@ -55,31 +55,17 @@ const UNSEEN_INTROSPECTIONS_PER_MINUTE = 1000;
 const FAILED_INTROSPECTIONS_PER_MINUTE = 60;
 
 /**
- * Routing by token shape only, never by client identity, User-Agent, Origin or client_id: a Bearer shaped like a
- * Carbone API key is forwarded to the Carbone API as is (no introspection, no exchange), so API keys keep working
- * in OAuth mode; anything else takes the OAuth path. A Carbone API key is a compact JWS, optionally prefixed
- * "test_": exactly three non-empty base64url segments, a JSON-object header with an "alg", and a JSON-object
- * payload whose "aud" is "carbone". It is decoded, never verified (the Carbone API does that), and malformed
- * input is simply not an API key. A JWT the authorization server minted through OAuth (its "data.origin" is
- * "oauth2") is no API key: in OAuth mode it is refused, so this path only ever serves a user's own key.
+ * Whether a token is a Carbone API JWT: a compact JWS, optionally prefixed "test_", with exactly three non-empty
+ * base64url segments, a JSON-object header with an "alg", and a JSON-object payload whose "aud" is "carbone".
+ * It covers a user's API key and a JWT the authorization server minted through OAuth. Neither was issued for this
+ * server, so OAuth mode refuses both without asking the authorization server. It is decoded, never verified.
+ * Exported for tests.
  */
-export function isCarboneApiKey(token: string): boolean {
-  const payload = carboneJwtPayload(token);
-  return payload !== undefined && !isMintedThroughOAuth(payload);
-}
-
-/** The payload of a token shaped like a Carbone API JWT, or undefined. */
-function carboneJwtPayload(token: string): Record<string, unknown> | undefined {
+export function isCarboneJwt(token: string): boolean {
   const segments = token.replace(/^test_/, '').split('.');
-  if (segments.length !== 3 || !segments.every((segment) => /^[A-Za-z0-9_-]+$/.test(segment))) return undefined;
-  if (typeof decodeJsonSegment(segments[0])?.['alg'] !== 'string') return undefined;
-  const payload = decodeJsonSegment(segments[1]);
-  return payload?.['aud'] === 'carbone' ? payload : undefined;
-}
-
-function isMintedThroughOAuth(payload: Record<string, unknown>): boolean {
-  const data = payload['data'];
-  return data !== null && typeof data === 'object' && (data as Record<string, unknown>)['origin'] === 'oauth2';
+  if (segments.length !== 3 || !segments.every((segment) => /^[A-Za-z0-9_-]+$/.test(segment))) return false;
+  if (typeof decodeJsonSegment(segments[0])?.['alg'] !== 'string') return false;
+  return decodeJsonSegment(segments[1])?.['aud'] === 'carbone';
 }
 
 function decodeJsonSegment(segment: string): Record<string, unknown> | undefined {
@@ -402,11 +388,10 @@ export function createOAuthGate(
       if (token === undefined) {
         return challenge(400, { code: 'invalid_request', description: "The Authorization header must be 'Bearer <token>'" });
       }
-      // A Carbone API JWT minted through OAuth (for another client, or without an RFC 8707 resource) is not a token
-      // for this server: refused without asking the authorization server. A user's own API key never gets here.
-      const jwtPayload = carboneJwtPayload(token);
-      if (jwtPayload && isMintedThroughOAuth(jwtPayload)) {
-        return bearerAuthChallengeResponse(new OAuthError(OAuthErrorCode.InvalidToken, 'The token was not issued for this server'), bearer);
+      // A Carbone API JWT (an API key, or one minted through OAuth for another client or without an RFC 8707
+      // resource) is not a token for this server: refused without asking the authorization server.
+      if (isCarboneJwt(token)) {
+        return bearerAuthChallengeResponse(new OAuthError(OAuthErrorCode.InvalidToken, 'The token was not issued for this server: sign in, or use an API key with a self-hosted server'), bearer);
       }
       try {
         const authInfo = await verifyBearerToken(`Bearer ${token}`, { ...bearer, verifier: { verifyAccessToken: (t) => verifier.verify(t, clientAddress) } });

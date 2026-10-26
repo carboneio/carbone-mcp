@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.1.4] — 2026-10-26
+
+### Security
+
+- A tool call with a large invalid list or object can no longer exhaust the server's memory: only its first invalid item is reported.
+- OAuth mode (Carbone's hosted server) refuses Carbone API keys, as the MCP specification requires: sign in, or use an API key with the local package or a self-hosted server.
+
+### Changed
+
+- `tags` is checked against the Carbone API's limit before anything is sent: non-empty tags, 100 characters in all.
+- MCP SDK 2.4.0 and Zod 4.6.7.
+- The Carbone Skill links point to its new repository, [carbone-agent-plugin](https://github.com/carboneio/carbone-agent-plugin).
+
+### Removed
+
+- The Claude Code plugin manifest: use [carbone-agent-plugin](https://github.com/carboneio/carbone-agent-plugin) instead.
+
+---
+
 ## [2.1.3] — 2026-10-20
 
 ### Added
@@ -401,6 +420,10 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.1.4]: https://github.com/carboneio/carbone-mcp/compare/v2.1.3...v2.1.4
+[2.1.3]: https://github.com/carboneio/carbone-mcp/compare/v2.1.2...v2.1.3
+[2.1.2]: https://github.com/carboneio/carbone-mcp/compare/v2.1.1...v2.1.2
+[2.1.1]: https://github.com/carboneio/carbone-mcp/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/carboneio/carbone-mcp/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/carboneio/carbone-mcp/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/carboneio/carbone-mcp/compare/v1.5.0...v1.6.0

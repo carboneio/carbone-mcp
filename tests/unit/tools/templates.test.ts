@@ -19,10 +19,41 @@ import {
   handleUpdateTemplateMetadata,
   handleDeleteTemplate,
   handleDownloadTemplate,
+  uploadTemplateSchema,
 } from '../../../src/tools/templates.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
 import { CarboneAuthError, CarboneNotFoundError, CarboneError } from '../../../src/carbone/errors.js';
+
+// ─── tags (upload_template, update_template_metadata) ─────────────────────────
+
+describe('tags follow the Carbone API limit', () => {
+  const valid = (tags: unknown) => uploadTemplateSchema.tags.safeParse(tags).success;
+  const distinct = (n: number, length: number) => Array.from({ length: n }, (_, i) => String.fromCharCode(97 + i).padEnd(length, 'x'));
+
+  // Boundaries measured against api.carbone.io: the list without duplicates is at most 100 characters as JSON.
+  test('accepts what the API accepts', () => {
+    expect(valid(['a'.repeat(96)])).toBe(true);           // ["…"] = 100 characters
+    expect(valid(distinct(8, 9))).toBe(true);
+    expect(valid(distinct(24, 1))).toBe(true);
+    expect(valid(Array(20).fill('abcdefghi'))).toBe(true); // duplicates are not counted
+  });
+
+  test('refuses what the API refuses', () => {
+    expect(valid(['a'.repeat(97)])).toBe(false);
+    expect(valid(distinct(9, 9))).toBe(false);
+    expect(valid(distinct(25, 1))).toBe(false);
+    expect(valid([''])).toBe(false);
+    expect(valid(Array(101).fill('a'))).toBe(false);
+  });
+
+  test('refuses a long tag on its length, without serializing the list', () => {
+    const stringify = vi.spyOn(JSON, 'stringify');
+    expect(valid(['x'.repeat(1_000_000)])).toBe(false);
+    expect(stringify).not.toHaveBeenCalled();
+    stringify.mockRestore();
+  });
+});
 
 // ─── handleListTemplates ─────────────────────────────────────────────────────
 

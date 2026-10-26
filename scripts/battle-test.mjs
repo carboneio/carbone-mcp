@@ -18,19 +18,21 @@ import { Client } from '@modelcontextprotocol/client';
 //   CARBONE_API_KEY=$CARBONE_TEST_API_KEY MCP_TARGET=http node scripts/battle-test.mjs
 //
 //   # the DEPLOYED production MCP server (https://mcp.carbone.io) — tests what users actually hit,
-//   # so it only covers a change once that change has been deployed there:
-//   CARBONE_API_KEY=$CARBONE_TEST_API_KEY MCP_TARGET=prod node scripts/battle-test.mjs
+//   # so it only covers a change once that change has been deployed there. It accepts sign-in only (no API
+//   # key): pass an OAuth access token issued to a signed-in MCP client:
+//   MCP_ACCESS_TOKEN=<access token> MCP_TARGET=prod node scripts/battle-test.mjs
 
 const PROD_MCP_URL = 'https://mcp.carbone.io';
 const PROD_API_URL = 'https://api.carbone.io';
 
 const TARGET = process.env.MCP_TARGET ?? 'stdio';
-const KEY = process.env.CARBONE_API_KEY ?? process.env.CARBONE_TEST_API_KEY;
+// The prod server is OAuth-only, so it takes an access token; every other target a Carbone API key.
+const KEY = TARGET === 'prod' ? process.env.MCP_ACCESS_TOKEN : process.env.CARBONE_API_KEY ?? process.env.CARBONE_TEST_API_KEY;
 if (!['stdio', 'http', 'prod'].includes(TARGET)) {
   console.error(`Invalid MCP_TARGET "${TARGET}". Use "stdio", "http", or "prod".`); process.exit(2);
 }
 const IS_STDIO = TARGET === 'stdio';
-if (!KEY) { console.error('Set CARBONE_API_KEY (or CARBONE_TEST_API_KEY).'); process.exit(2); }
+if (!KEY) { console.error(TARGET === 'prod' ? 'Set MCP_ACCESS_TOKEN.' : 'Set CARBONE_API_KEY (or CARBONE_TEST_API_KEY).'); process.exit(2); }
 
 // Two independent axes, both worth printing so a run is never ambiguous about what it hit:
 //   MCP_URL  — which MCP server is under test (stdio spawns the local build instead).

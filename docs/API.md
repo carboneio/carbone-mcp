@@ -493,7 +493,7 @@ Setting `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET` and `MCP_RESOURCE_URL` 
 
 - MCP clients that implement MCP authorization (2025-06-18 or later) sign in with their Carbone account. A request without credentials gets `401` with a `WWW-Authenticate` challenge pointing to the protected-resource metadata, without an error code (RFC 6750 §3.1). A malformed Bearer gets `400` `invalid_request`, a token that fails verification `401` `invalid_token`, and a token without `doc_rwd` `403` `insufficient_scope`.
 - Each token is introspected (RFC 7662) and exchanged (RFC 8693) for a short-lived Carbone token, the only one sent to the Carbone API: the client's own token never reaches it.
-- A Bearer shaped like a Carbone API key is forwarded as is, as in API-key mode; a Carbone JWT issued through OAuth (to another client, or to a client that sent no `resource`) is refused with `401`. This is a deliberate exception to the MCP authorization specification, which forbids accepting a token not issued for this server: it keeps Carbone API keys working on the hosted server until sign-in replaces them.
+- A Carbone API key, or a Carbone JWT issued through OAuth to another client or to a client that sent no `resource`, is refused with `401` without asking the authorization server: it was not issued for this server (MCP authorization specification). API keys work with the local package and self-hosted servers.
 - A client that never sends the RFC 8707 `resource` parameter gets a token bound to nothing, which is refused with `401`.
 
 A client may get `429` or `503` with `Retry-After`: it retries after that delay.

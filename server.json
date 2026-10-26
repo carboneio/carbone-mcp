@@ -3,7 +3,7 @@
   "name": "io.carbone/carbone-mcp",
   "title": "Carbone MCP",
   "description": "Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "websiteUrl": "https://carbone.io",
   "license": "Apache-2.0",
   "icons": [{
@@ -24,7 +24,7 @@
     {
       "registryType": "npm",
       "identifier": "carbone-mcp",
-      "version": "2.1.3",
+      "version": "2.1.4",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

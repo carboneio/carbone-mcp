@@ -10,7 +10,7 @@ import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
 import { serverInfo, SERVER_OPTIONS } from './serverInfo.js';
 import type { OAuthConfig } from './config.js';
-import { createOAuthGate, isCarboneApiKey } from './oauth.js';
+import { createOAuthGate } from './oauth.js';
 
 export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -120,8 +120,8 @@ async function buildHealthBody(
  *
  * OAuth mode (`oauth` set, Carbone's hosted server) adds the RFC 9728 metadata at
  * /.well-known/oauth-protected-resource[/<path>], and answers an MCP request without a valid
- * token with the 401 challenge. A Bearer shaped like a Carbone API key is still forwarded as is;
- * any other one is introspected and exchanged, and only the exchanged token reaches tool handlers.
+ * token with the 401 challenge. Every token is introspected and exchanged, and only the exchanged token
+ * reaches tool handlers: a Carbone API key is refused, as it was not issued for this server.
  *
  * Resolves with the listening server (tests listen on port 0 and close it).
  */
@@ -275,9 +275,9 @@ export async function startHttpServer(options: {
           }
 
           const token = extractBearerToken(req);
-          if (oauthGate && !(token && isCarboneApiKey(token))) {
-            // OAuth mode, and no Carbone API key: verify and exchange the token, or answer the challenge, before
-            // reading the body, so a request without a valid token never gets to upload it.
+          if (oauthGate) {
+            // OAuth mode: verify and exchange the token, or answer the challenge, before reading the body, so a
+            // request without a valid token never gets to upload it.
             // Stop waiting for the exchange if the client goes away.
             const gone = new AbortController();
             res.once('close', () => gone.abort());
@@ -290,7 +290,7 @@ export async function startHttpServer(options: {
             }
             req.auth = auth;
           } else if (token) {
-            // A Carbone API key (API-key mode, or an API key in OAuth mode): forwarded to the Carbone API as is
+            // API-key mode: the Carbone API key is forwarded to the Carbone API as is
             req.auth = { token, clientId: '', scopes: [] };
           }
 

@@ -6,7 +6,7 @@ import {
   TooManyFailedAttemptsError,
   addressKey,
   createOAuthGate,
-  isCarboneApiKey,
+  isCarboneJwt,
   protectedResourceMetadata,
 } from '../../../src/server/oauth.js';
 import { AuthorizationServerUnavailableError } from '../../../src/carbone/tokenExchange.js';
@@ -31,10 +31,14 @@ const apiKey = () => jwt({ iss: '123456789012', aud: 'carbone', exp: NOW_S + 360
 
 // ── (b) D1 discriminator ──────────────────────────────────────────────────────
 
-describe('isCarboneApiKey: routing by token shape', () => {
-  test('a real-shaped Carbone API key takes the API-key path, with or without the test_ prefix', () => {
-    expect(isCarboneApiKey(apiKey())).toBe(true);
-    expect(isCarboneApiKey(`test_${apiKey()}`)).toBe(true);
+describe('isCarboneJwt: the Carbone tokens OAuth mode refuses without asking', () => {
+  test.each([
+    ['a real-shaped Carbone API key', apiKey()],
+    ['a test API key', `test_${apiKey()}`],
+    ['a Carbone JWT minted through OAuth', jwt({ iss: '1', aud: 'carbone', data: { clientID: 'c', origin: 'oauth2', type: 'prod' } })],
+    ['a test Carbone JWT minted through OAuth', `test_${jwt({ iss: '1', aud: 'carbone', data: { origin: 'oauth2', type: 'test' } })}`],
+  ])('%s is a Carbone JWT', (_, token) => {
+    expect(isCarboneJwt(token)).toBe(true);
   });
 
   test.each([
@@ -55,16 +59,14 @@ describe('isCarboneApiKey: routing by token shape', () => {
     ['a payload that is JSON null', `${b64url({ alg: 'ES512' })}.${b64url('null')}.sig`],
     ['an empty string', ''],
     ['the test_ prefix alone', 'test_'],
-    ['a Carbone JWT minted through OAuth', jwt({ iss: '1', aud: 'carbone', data: { clientID: 'c', origin: 'oauth2', type: 'prod' } })],
-    ['a test Carbone JWT minted through OAuth', `test_${jwt({ iss: '1', aud: 'carbone', data: { origin: 'oauth2', type: 'test' } })}`],
-  ])('%s takes the OAuth path', (_, token) => {
-    expect(isCarboneApiKey(token)).toBe(false);
+  ])('%s is not: it is introspected', (_, token) => {
+    expect(isCarboneJwt(token)).toBe(false);
   });
 
   test('random input never throws', () => {
     for (let i = 0; i < 200; i++) {
       const parts = Array.from({ length: 1 + (i % 4) }, () => randomBytes(i % 40).toString(i % 2 ? 'base64' : 'base64url'));
-      expect(() => isCarboneApiKey(parts.join('.'))).not.toThrow();
+      expect(() => isCarboneJwt(parts.join('.'))).not.toThrow();
     }
   });
 });
@@ -661,13 +663,13 @@ describe('createOAuthGate().authenticate', () => {
     expect(as.exchanges()).toBe(3);
   });
 
-  test('a Carbone JWT minted through OAuth is refused with 401, without a request; an API key never reaches the gate', async () => {
+  test('a Carbone API key or a Carbone JWT minted through OAuth is refused with 401, without a request', async () => {
     const as = authorizationServer();
     const minted = jwt({ iss: '1', aud: 'carbone', exp: NOW_S + 3600, data: { clientID: 'another-client', origin: 'oauth2', type: 'prod' } });
-    await expectChallenge(await gateWith(as).authenticate(`Bearer ${minted}`));
-    await expectChallenge(await gateWith(as).authenticate(`Bearer test_${minted}`));
+    for (const token of [apiKey(), `test_${apiKey()}`, minted, `test_${minted}`]) {
+      await expectChallenge(await gateWith(as).authenticate(`Bearer ${token}`));
+    }
     expect(as.requests).toHaveLength(0);
-    expect(isCarboneApiKey(apiKey())).toBe(true);
   });
 
   test.each([

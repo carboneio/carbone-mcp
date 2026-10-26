@@ -207,9 +207,9 @@ version; the whole corpus is also in the llms.txt files below.
 **Carbone Skill:**
 A reference of Carbone's templating syntax, formatters and template design guidance for AI assistants,
 in the Agent Skills format (agentskills.io):
-- Skill file (ZIP):     https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill
+- Skill file (ZIP):     https://github.com/carboneio/carbone-agent-plugin/releases/latest/download/carbone.skill
 - Skill documentation:  https://carbone.io/documentation/developer/ai/skills.md
-- GitHub repository:    https://github.com/carboneio/carbone-skill
+- GitHub repository:    https://github.com/carboneio/carbone-agent-plugin
 `;
 
 export function handleGetCapabilities(io: IoModes) {

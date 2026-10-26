@@ -144,7 +144,7 @@ describe('MCP registration surface (in-process, no API key)', () => {
   });
 
   test('upload_template / update_template_metadata advertise the OpenAPI-synced schemas', async () => {
-    type Prop = { maxItems?: number; maxLength?: number; minimum?: number; items?: { additionalProperties?: unknown; required?: string[] } };
+    type Prop = { maxItems?: number; maxLength?: number; minLength?: number; minimum?: number; items?: { additionalProperties?: unknown; required?: string[] } };
     type Schema = { properties?: Record<string, Prop>; required?: string[] };
     const { tools } = await client.listTools();
     const upload = tools.find((t) => t.name === 'upload_template')!;
@@ -159,6 +159,7 @@ describe('MCP registration surface (in-process, no API key)', () => {
       for (const field of ['name', 'comment', 'category']) expect(p.properties?.[field]?.maxLength, field).toBe(200);
       expect(p.properties?.['expireAt']?.minimum).toBe(0);
     }
+    for (const p of [up, upd]) expect(p.properties?.['tags']).toMatchObject({ maxItems: 100, items: { minLength: 1, maxLength: 96 } });
     expect(upd.properties).toHaveProperty('moveToTemplateId');
     // The API body field `id` is documented as moveToTemplateId; `id` stays only as the deprecated 1.6.0 alias.
     expect((upd.properties?.['id'] as { description?: string } | undefined)?.description).toMatch(/^DEPRECATED: the 1\.6\.0 name of moveToTemplateId/);
@@ -178,6 +179,39 @@ describe('MCP registration surface (in-process, no API key)', () => {
 
     const { resourceTemplates } = await client.listResourceTemplates();
     expect(resourceTemplates.some((r) => r.uriTemplate === 'carbone://templates/{id}')).toBe(true);
+  });
+
+  test('an oversized tags list is rejected with one error, before its items are checked', async () => {
+    // One error per invalid item would build about 700 MB for this 2 MB list.
+    const tags = new Array(1_000_000).fill(0);
+    for (const call of [
+      { name: 'upload_template', arguments: { template: 'aGVsbG8=', tags } },
+      { name: 'update_template_metadata', arguments: { templateId: 'tpl1', tags } },
+    ]) {
+      const r = await client.callTool(call);
+      expect(r.isError, call.name).toBe(true);
+      const text = (r.content[0] as { type: 'text'; text: string }).text;
+      expect(text, call.name).toContain('tags');
+      expect(text.length, call.name).toBeLessThan(500);
+    }
+  });
+
+  test('render_document reports one error for an oversized invalid list or object, and names the first bad item', async () => {
+    // One error per invalid item would build hundreds of MB for these few-MB values.
+    const many = <T>(value: T) => Object.fromEntries(Array.from({ length: 200_000 }, (_, i) => [`k${i}`, value]));
+    const cases: Array<[string, unknown, string]> = [
+      ['currencyRates', many('1'), 'currencyRates'],
+      ['webhookHeaders', many(1), 'webhookHeaders.k0'],
+      ['translations', { fr: many(1) }, 'translations'],
+      ['failOn', new Array(200_000).fill('NOPE'), 'failOn.0'],
+    ];
+    for (const [field, value, where] of cases) {
+      const r = await client.callTool({ name: 'render_document', arguments: { template: 'aGVsbG8=', [field]: value } });
+      expect(r.isError, field).toBe(true);
+      const text = (r.content[0] as { type: 'text'; text: string }).text;
+      expect(text, field).toContain(where);
+      expect(text.length, field).toBeLessThan(500);
+    }
   });
 
   test('get_capabilities returns the overview without any API call', async () => {

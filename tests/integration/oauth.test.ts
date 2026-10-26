@@ -259,14 +259,10 @@ describe('OAuth mode (origin-only resource, MCP_PATH "/")', () => {
       expect(as.exchanged.filter((t) => t === token)).toHaveLength(1);
     });
 
-    test('a Bearer Carbone API key reaches the Carbone API as is, with no introspection and no exchange', async () => {
-      const key = apiKey();
-      secretsSeen.add(key);
-      const [introspections, exchanges] = [as.introspected.length, as.exchanged.length];
-      const result = await listTags(url, key, mode);
-      expect(result.isError).toBeFalsy();
-      expect(carboneCalls.at(-1)).toEqual({ url: '/templates/tags', auth: `Bearer ${key}` });
-      expect([as.introspected.length, as.exchanged.length]).toEqual([introspections, exchanges]);
+    test('a Bearer Carbone API key is refused with HTTP 401, and nothing reaches the AS or Carbone', async () => {
+      const [introspections, calls] = [as.introspected.length, carboneCalls.length];
+      await expect(connect(url, apiKey(), mode)).rejects.toMatchObject({ data: { status: 401 } });
+      expect([as.introspected.length, carboneCalls.length]).toEqual([introspections, calls]);
     });
 
     test('no Bearer: the client is refused with HTTP 401, and nothing reaches the AS or Carbone', async () => {
@@ -351,18 +347,12 @@ describe('OAuth mode (origin-only resource, MCP_PATH "/")', () => {
     expect(carboneCalls.at(-1)!.auth).toBe(`Bearer ${testJwt}`);
   });
 
-  test('an invalid API key stays a tool-level auth error, not an HTTP 401 challenge', async () => {
-    const key = apiKey();
-    secretsSeen.add(key);
-    refusedKey = (k) => k === key;
-    try {
-      const result = await listTags(url, key);
-      expect(result.isError).toBe(true);
-      expect((result.content as { text: string }[])[0].text).toMatch(/^Authentication failed/);
-    } finally {
-      refusedKey = () => false;
-    }
-    expect(as.introspected).not.toContain(key);
+  test('a Carbone API key, even forged and unsigned, gets the 401 challenge before its body is read', async () => {
+    const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const forged = `${b64url({ alg: 'none' })}.${b64url({ aud: 'carbone' })}.x`;
+    const [introspections, calls] = [as.introspected.length, carboneCalls.length];
+    for (const key of [apiKey(), `test_${apiKey()}`, forged]) await expectChallenge(await rawToolsCall(url, { Authorization: `Bearer ${key}` }));
+    expect([as.introspected.length, carboneCalls.length]).toEqual([introspections, calls]);
   });
 
   test('spec test 1: the PRM answers GET/HEAD/OPTIONS, open to any Origin', async () => {

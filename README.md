@@ -299,7 +299,7 @@ Items:
 {d.items[i+1]}
 ```
 
-`{d.items[i]}` … `{d.items[i+1]}` repeats a line for each item. Start with [the basics](https://carbone.io/documentation/design/substitutions/the-basics.html), or give your AI assistant the [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html), a template syntax reference for AI tools ([download .skill](https://github.com/carboneio/carbone-skill/releases/latest/download/carbone.skill) · [GitHub](https://github.com/carboneio/carbone-skill)).
+`{d.items[i]}` … `{d.items[i+1]}` repeats a line for each item. Start with [the basics](https://carbone.io/documentation/design/substitutions/the-basics.html), or give your AI assistant the [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html), a template syntax reference for AI tools ([download .skill](https://github.com/carboneio/carbone-agent-plugin/releases/latest/download/carbone.skill) · [GitHub](https://github.com/carboneio/carbone-agent-plugin)).
 
 ## Contributing
 

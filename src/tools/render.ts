@@ -27,6 +27,32 @@ export function renderDocumentDescriptionFor(io: IoModes): string {
     'Batch generation (batchSplitBy) is always delivered this way.';
 }
 
+/**
+ * The given list or object schema, with its items checked in one pass that stops at the first invalid one: zod
+ * reports every invalid item, so a small request could build gigabytes of errors. Adds no size limit, keeps the
+ * advertised JSON Schema, and reports the first invalid item as zod would.
+ */
+function checkedOnce<T extends z.ZodArray | z.ZodRecord>(schema: T): z.ZodType<z.output<T>, z.input<T>> {
+  const isArray = schema instanceof z.ZodArray;
+  const item = isArray ? schema.element : schema.valueType;
+  const container: z.ZodType<object> = isArray ? z.array(z.unknown()) : z.record(z.string(), z.unknown());
+  const { $schema, ...advertised } = z.toJSONSchema(schema);
+  return container
+    .check((ctx) => {
+      const input = ctx.value as Record<PropertyKey, unknown>;
+      // keys() for an array: for...in would allocate a string per index
+      for (const key of Array.isArray(input) ? input.keys() : Object.keys(input)) {
+        const value = input[key];
+        if (z.validate(item, value)) continue;
+        for (const issue of z.safeParse(item, value).error!.issues) {
+          ctx.issues.push({ ...issue, input: value, path: [key, ...issue.path] });
+        }
+        return;
+      }
+    })
+    .meta(advertised) as unknown as z.ZodType<z.output<T>, z.input<T>>;
+}
+
 /** Default (stdio) wording. */
 export const renderDocumentDescription = renderDocumentDescriptionFor(STDIO_IO);
 
@@ -157,7 +183,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
       ),
 
     translations: z
-      .union([z.record(z.string(), z.record(z.string(), z.string())), z.string()])
+      .union([checkedOnce(z.record(z.string(), checkedOnce(z.record(z.string(), z.string())))), z.string()])
       .optional()
       .describe(
         'Translation map for multilingual documents. Requires "lang" to be set to select the active locale. ' +
@@ -190,7 +216,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
       ),
 
     currencyRates: z
-      .union([z.record(z.string(), z.number()), z.string()])
+      .union([checkedOnce(z.record(z.string(), z.number())), z.string()])
       .optional()
       .describe(
         'Exchange rate table used by :formatC for currency conversion. ' +
@@ -262,8 +288,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Example: 5000000. Docs: https://carbone.io/documentation/design/overview/version-lifecycle.html#pre-release-features'
       ),
 
-    failOn: z
-      .array(z.enum(['IMAGE_URL_ERROR']))
+    failOn: checkedOnce(z.array(z.enum(['IMAGE_URL_ERROR'])))
       .optional()
       .describe(
         'Conditions that stop the render and return an error (Carbone v5.15.0+). ' +
@@ -287,8 +312,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
         'Example: "https://your-server.com/carbone-webhook".'
       ),
 
-    webhookHeaders: z
-      .record(z.string(), z.string())
+    webhookHeaders: checkedOnce(z.record(z.string(), z.string()))
       .optional()
       .describe(
         'Custom headers Carbone will include when POSTing to your webhookUrl. ' +
