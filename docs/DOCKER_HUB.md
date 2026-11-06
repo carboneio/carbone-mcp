@@ -1,6 +1,6 @@
 # Carbone MCP Server
 
-Run the official Carbone MCP server yourself: a Streamable HTTP endpoint that lets AI assistants automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON through the Carbone API.
+Run the official Carbone MCP server yourself: a Streamable HTTP endpoint that lets AI assistants automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON, and convert files across 100+ formats, through the Carbone API.
 
 > **Upgrading from 1.x?** Every 1.x HTTP deployment should upgrade now (security fixes): read the [upgrade notes](https://github.com/carboneio/carbone-mcp/blob/master/CHANGELOG.md#upgrading-from-1x).
 
@@ -13,7 +13,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "2.0.0" },
+  "mcp": { "version": "2.2.0" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -35,7 +35,7 @@ docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 -e CARBONE_API_KEY=your_
 - Converts DOCX, XLSX, PPTX, HTML, Markdown and PDF files to PDF, images, CSV and other formats (100+ formats)
 - Fills Word, Excel, PowerPoint, LibreOffice, HTML and Markdown templates with JSON data, and tells you which data a template expects
 - Adds passwords, watermarks and PDF/A to PDFs, with a choice of converter: LibreOffice, OnlyOffice, Chromium or Carbone ICE
-- Generates up to 100 documents per request, delivered to your webhook, with translations, time zones and currency conversion
+- Generates up to 100 documents per request, collected by the assistant (async renders) or delivered to your webhook, with translations, time zones and currency conversion
 - Manages a template library: upload, version, categorize, deploy and download templates
 
 ## Docker Compose
@@ -70,6 +70,10 @@ Add any variable below under `environment:`. Leave `CARBONE_API_KEY` out so that
 | `MCP_ALLOWED_ORIGINS` | none | Browser `Origin` hostnames allowed in addition to `localhost`, `127.0.0.1` and `[::1]`: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme. A request with any other `Origin` gets HTTP 403; requests without one are unaffected. Invalid entries stop the container at startup. |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | Require `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server: anyone reaching the port can spend it). Set `true` to require per-client keys. No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | Allow user-supplied URLs to resolve to private and internal addresses. Off by default to block SSRF. |
+| `MCP_TICKET_SECRET` | none | Turns on upload URLs for large templates, and async renders with a job store (below): at least 32 random bytes, base64 (`openssl rand -base64 32`), the same on every instance. |
+| `MCP_PUBLIC_URL` | none | With `MCP_TICKET_SECRET`: the public `https` origin of this server (e.g. `https://mcp.example.com`), where upload URLs and Carbone's webhook point. |
+| `MCP_S3_ENDPOINT`, `MCP_S3_REGION`, `MCP_S3_BUCKET`, `MCP_S3_ACCESS_KEY_ID`, `MCP_S3_SECRET_ACCESS_KEY` | none | Async renders: an S3-compatible bucket shared by every instance. Set all five, or none. The key needs to read, write and list the bucket. |
+| `MCP_JOBS_DIR` | none | Async renders, instead of `MCP_S3_*`: an existing, writable directory every instance shares (one container, or a volume they all mount). |
 
 ## Connect your MCP client (HTTP)
 
@@ -111,7 +115,26 @@ claude mcp add --transport http carbone http://localhost:3000 --header "Authoriz
 }
 ```
 
-Over HTTP, file inputs must be URLs or base64: the server cannot read the client's local files. A generated PDF or Office file comes back as a download attachment; ask for `returnLink` to get Carbone's one-time download URL instead ([output and file delivery](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md#output--file-delivery)).
+Over HTTP, file inputs must be URLs or base64: the server cannot read the client's local files. A generated PDF or Office file comes back as a one-time download link (valid 1 hour); ask for `asAttachment` to get the file itself ([output and file delivery](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md#output--file-delivery)).
+
+## Upload URLs and async renders
+
+Both are off by default. With `MCP_TICKET_SECRET` and `MCP_PUBLIC_URL`, `upload_template` can return an upload URL, so an assistant that runs commands sends a large template with `curl` instead of base64. Add a job store and `render_document` accepts `async: true` for batches and renders over a minute: this server becomes Carbone's webhook, and `get_render_result` returns the download link.
+
+Both hand out URLs on `MCP_PUBLIC_URL`, and Carbone calls the webhook there from the internet: run the server behind a TLS reverse proxy that serves that address and forwards to port 3000. Without it, upload URLs fail and async renders stay "still rendering".
+
+```bash
+# Once: keep this value, every restart and every instance needs the same one.
+export MCP_TICKET_SECRET="$(openssl rand -base64 32)"
+
+docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 \
+  -e MCP_TICKET_SECRET \
+  -e MCP_PUBLIC_URL=https://mcp.example.com \
+  -e MCP_JOBS_DIR=/data/jobs -v carbone-jobs:/data/jobs \
+  carbone/carbone-mcp
+```
+
+Here the reverse proxy on the same machine forwards `https://mcp.example.com` to `127.0.0.1:3000`. With several instances, give them the same secret, and an S3-compatible bucket (`MCP_S3_*`) or a volume they all mount. Details: [upload URLs](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md#upload-urls) and [async renders](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md#async-renders).
 
 ## Claude Desktop (stdio)
 
@@ -145,7 +168,7 @@ docker run -d -p 127.0.0.1:3000:3000 -e CARBONE_BASE_URL=https://your-carbone-se
 
 ## Tools
 
-The server exposes 12 tools to convert and render documents, inspect templates and manage a template library: see the [API reference](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md).
+The server exposes 12 tools (13 with async renders) to convert and render documents, inspect templates and manage a template library: see the [API reference](https://github.com/carboneio/carbone-mcp/blob/master/docs/API.md).
 
 ## Security and troubleshooting
 
@@ -162,8 +185,8 @@ More in the [Security section of the README](https://github.com/carboneio/carbon
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `2.0.0` | Specific version |
-| `2.0` | Latest patch of 2.0 |
+| `2.2.0` | Specific version |
+| `2.2` | Latest patch of 2.2 |
 | `2` | Latest minor of v2 |
 
 Supported platforms: `linux/amd64`, `linux/arm64`

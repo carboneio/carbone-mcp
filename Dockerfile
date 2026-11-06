@@ -20,6 +20,9 @@ RUN npm ci --omit=dev
 
 COPY --chown=node:node --from=builder /app/dist ./dist
 
+# Where MCP_JOBS_DIR can point: a volume mounted here starts owned by node, so the server can write to it.
+RUN mkdir -p /data/jobs && chown node:node /data/jobs
+
 LABEL io.modelcontextprotocol.server.name="io.carbone/carbone-mcp"
 
 ENV NODE_ENV=production
