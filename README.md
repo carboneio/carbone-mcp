@@ -4,7 +4,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.carbone%2Fcarbone--mcp-blue?logo=modelcontextprotocol)](https://registry.modelcontextprotocol.io/?q=io.carbone%2Fcarbone-mcp)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files across 100+ formats, from Claude, ChatGPT, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
+Automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON data, and convert files with 100+ conversions, from Claude, ChatGPT, Cursor, VS Code or any MCP client. The official server for the [Carbone](https://carbone.io) document generation API.
 
 [![Add to Claude](https://img.shields.io/badge/Add%20to-Claude-D97757)](https://claude.ai/directory/carbone)
 [![Add to ChatGPT](https://img.shields.io/badge/Add%20to-ChatGPT-10A37F)](https://chatgpt.com/plugins/plugin_asdk_app_6ad79c4295308191a2b0eb7e68535c44)

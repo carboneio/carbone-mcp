@@ -1,6 +1,6 @@
 # Carbone MCP Server
 
-Run the official Carbone MCP server yourself: a Streamable HTTP endpoint that lets AI assistants automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON, and convert files across 100+ formats, through the Carbone API.
+Run the official Carbone MCP server yourself: a Streamable HTTP endpoint that lets AI assistants automate production-ready PDF, Word, Excel and PowerPoint documents from templates and JSON, and convert files with 100+ conversions, through the Carbone API.
 
 > **Upgrading from 1.x?** Every 1.x HTTP deployment should upgrade now (security fixes): read the [upgrade notes](https://github.com/carboneio/carbone-mcp/blob/master/CHANGELOG.md#upgrading-from-1x).
 
@@ -32,7 +32,7 @@ docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 -e CARBONE_API_KEY=your_
 
 ## What it does
 
-- Converts DOCX, XLSX, PPTX, HTML, Markdown and PDF files to PDF, images, CSV and other formats (100+ formats)
+- Converts DOCX, XLSX, PPTX, HTML, Markdown and PDF files to PDF, images, CSV and other formats (100+ conversions)
 - Fills Word, Excel, PowerPoint, LibreOffice, HTML and Markdown templates with JSON data, and tells you which data a template expects
 - Adds passwords, watermarks and PDF/A to PDFs, with a choice of converter: LibreOffice, OnlyOffice, Chromium or Carbone ICE
 - Generates up to 100 documents per request, collected by the assistant (async renders) or delivered to your webhook, with translations, time zones and currency conversion
