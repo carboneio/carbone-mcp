@@ -182,11 +182,13 @@ describe.skipIf(!TEST_API_KEY)('Integration — Carbone API', { timeout: 30_000 
     expect(renderId.length).toBeGreaterThan(0);
 
     const url = client.renderUrl(renderId);
-    expect(url).toBe(`${BASE_URL}/render/${renderId}`);
+    // ?download=true: the file downloads as an attachment, named after reportName (report.pdf without one).
+    expect(url).toBe(`${BASE_URL}/render/${encodeURIComponent(renderId)}?download=true`);
 
     // The link is public (no auth) and one-time: the first GET returns the PDF.
     const first = await fetch(url);
     expect(first.status).toBe(200);
+    expect(first.headers.get('content-disposition')).toMatch(/^attachment; filename="report\.pdf"/);
     const bytes = Buffer.from(await first.arrayBuffer());
     expect(bytes.subarray(0, 4).toString()).toBe('%PDF');
 
