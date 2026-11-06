@@ -626,6 +626,24 @@ describe('createOAuthGate().authenticate', () => {
     expect([as.introspections(), as.exchanges()]).toEqual([1, 1]);
   });
 
+  test('upload URLs: the caller token is only reachable through extra.uploadSubject(), and exchanged on demand', async () => {
+    const as = authorizationServer({ tokens: { opaque: active() } });
+    const gate = gateWith(as);
+    const auth = await gate.authenticate('Bearer opaque') as AuthInfo;
+    expect(JSON.stringify(auth)).not.toContain('opaque');
+    expect((auth.extra!['uploadSubject'] as () => string)()).toBe('opaque');
+    // Cached by the exchange: the file arriving within the JWT lifetime costs no request.
+    expect(await gate.exchangeForUpload('opaque')).toBe('exchanged-jwt-1');
+    expect(as.exchanges()).toBe(1);
+  });
+
+  test('upload URLs: a caller token revoked or refused since the URL was issued is a sign-in error, not a server error', async () => {
+    const as = authorizationServer({ exchange: () => Response.json({ error: 'invalid_grant' }, { status: 400 }) });
+    await expect(gateWith(as).exchangeForUpload('revoked')).rejects.toThrow(CarboneAuthError);
+    const down = authorizationServer({ tokens: { opaque: active() }, exchange: () => new Response('', { status: 503 }) });
+    await expect(gateWith(down).exchangeForUpload('opaque')).rejects.toThrow(AuthorizationServerUnavailableError);
+  });
+
   test('a token revoked between its introspection and its exchange: 401, then refused for 10 s without a request', async () => {
     const tokens: Record<string, Introspected> = { opaque: active() };
     const as = authorizationServer({

@@ -16,26 +16,29 @@ export interface IoModes {
   allowLocalPath: boolean;
   /** Generated documents may be WRITTEN to a local path (stdio only). */
   allowFileOutput: boolean;
+  /** upload_template may issue an upload URL (HTTP with MCP_TICKET_SECRET). */
+  allowUploadUrl?: boolean;
+  /** render_document may run async with this server's own webhook (HTTP with MCP_TICKET_SECRET and an object store). */
+  allowAsync?: boolean;
 }
 
 /** Wording used for the exported default schemas and anywhere a transport is not yet known. */
 export const STDIO_IO: IoModes = { allowLocalPath: true, allowFileOutput: true };
 
-/** The numbered "input forms are accepted" list for a file/template parameter. */
+/**
+ * `{ [key]: schema }` when `offered`, `{}` otherwise: a parameter only some transports have. Typed as always present,
+ * so the inferred tool arguments keep its type; a call where it is not offered simply never carries it.
+ */
+export function fieldIf<K extends string, S>(offered: boolean, key: K, schema: S): Record<K, S> {
+  return (offered ? { [key]: schema } : {}) as Record<K, S>;
+}
+
+/** The accepted forms of a file/template parameter. */
 export function inputForms(io: IoModes): string {
   return io.allowLocalPath
-    ? 'Three input forms are accepted: ' +
-      '(1) Local file path — absolute, e.g. "/Users/me/report.docx" (or "C:\\Users\\me\\report.docx" on Windows), ' +
-      'or under the home directory, e.g. "~/report.docx". A relative path must start with "./" or "../" and resolves ' +
-      'against the server process\'s working directory, which is rarely yours: prefer an absolute path. ' +
-      'A bare file name such as "report.docx" is NOT a path: it would be sent as base64 content. ' +
-      '(2) HTTPS URL — the file is downloaded automatically, e.g. "https://example.com/file.pptx". ' +
-      '(3) Base64-encoded string — the raw file content encoded as base64. '
-    : 'Two input forms are accepted: ' +
-      '(1) HTTPS URL — the file is downloaded automatically, e.g. "https://example.com/file.pptx". ' +
-      '(2) Base64-encoded string — the raw file content encoded as base64. ' +
-      'Local file paths are NOT accepted — this server is reached over HTTP, so a path would resolve on the ' +
-      'server\'s disk rather than yours and is rejected. Upload the bytes as base64, or host the file at a URL. ';
+    ? 'An absolute local path ("/Users/me/report.docx", "~/report.docx"; a bare name like "report.docx" is read as ' +
+      'base64), an HTTPS URL, or the file as base64. '
+    : 'An HTTPS URL or the file as base64 (local paths are refused over HTTP). ';
 }
 
 /** A valid file value for examples: an absolute local path in stdio, an HTTPS URL over HTTP. */
@@ -45,34 +48,40 @@ export function exampleFile(name: string, io: IoModes): string {
 
 /** Short form of the same idea, for prose that lists the accepted forms inline. */
 export function inputFormsShort(io: IoModes): string {
-  return io.allowLocalPath
-    ? 'a local file path, an HTTPS URL, or a base64-encoded string'
-    : 'an HTTPS URL or a base64-encoded string (local file paths are not accepted over HTTP)';
+  return io.allowLocalPath ? 'local path, HTTPS URL or base64' : 'HTTPS URL or base64';
 }
 
-/** The "may be passed by reference as a string" sentence shared by the JSON params. */
+/** The "or a reference to a JSON file" forms shared by the JSON params. */
 export function jsonRefForms(io: IoModes): string {
-  return io.allowLocalPath
-    ? 'a local file path (e.g. "/data/invoices.json"), an HTTPS URL, or a base64-encoded JSON string'
-    : 'an HTTPS URL or a base64-encoded JSON string (local file paths are not accepted over HTTP)';
+  return io.allowLocalPath ? 'local path, HTTPS URL or base64' : 'HTTPS URL or base64';
+}
+
+/** What a document tool returns by default, and what to do with a link. */
+export function defaultDelivery(io: IoModes): string {
+  return io.allowFileOutput
+    ? 'Returns text and images (png, jpg, gif, webp) inline; other formats are saved to a temp file whose path is returned.'
+    : 'Returns text and images (png, jpg, gif, webp) inline; other formats as a one-time download link: give it to ' +
+      'the user as is, never open it yourself (the first download consumes it).';
+}
+
+/** `asAttachment` description: the default delivery it overrides differs per transport. */
+export function asAttachmentDescription(io: IoModes): string {
+  return 'If true, return the file itself as a base64 attachment, for any format, instead of the default ' +
+    (io.allowFileOutput ? '(temp file or inline).' : '(link or inline). Some clients, such as claude.ai, cannot open it.');
+}
+
+/** `returnLink` description; `extra` adds a tool-specific sentence. */
+export function returnLinkDescription(io: IoModes, extra = ''): string {
+  return (io.allowFileOutput
+    ? 'If true, return a one-time download link instead of the file, for the user to open (never fetch it yourself). '
+    : 'If false, return the file itself (as asAttachment). True by default for formats not returned inline. ') +
+    `Exclusive with ${io.allowFileOutput ? 'outputPath and ' : ''}asAttachment.` + extra;
 }
 
 /**
- * `outputPath` description. The parameter stays in the schema on HTTP so a caller that sends it still
- * gets the explanatory runtime error, but the description tells the model not to reach for it.
- * `returnLink` is named as an alternative only for the tools that have that parameter (render_document,
- * convert_document; not download_template).
+ * `outputPath` description, stdio only: over HTTP the parameter is accepted (a caller that sends it gets the
+ * explanatory runtime error) but not listed (see withHiddenFields in index.ts).
  */
-export function outputPathDescription(noun: string, io: IoModes, opts: { returnLink: boolean }): string {
-  if (!io.allowFileOutput) {
-    return `NOT AVAILABLE on this server, which is reached over HTTP: the ${noun} would be written to the ` +
-      'server\'s disk instead of yours, so passing outputPath is rejected. ' +
-      (opts.returnLink
-        ? 'Use asAttachment to receive the bytes, or returnLink for a one-time download URL.'
-        : 'Use asAttachment to receive the bytes.');
-  }
-  return `Optional local file path to save the ${noun} to (e.g. "/home/user/out.pdf" or "~/out.pdf"). ` +
-    'When set, the file is written to disk and the tool returns the saved path + size instead of embedding ' +
-    'the document inline — ideal for large files. The path must not exist yet: an existing file is never ' +
-    'overwritten (the call fails and asks for a new file name).';
+export function outputPathDescription(noun: string): string {
+  return `Local path to save the ${noun} to, e.g. "~/out.pdf"; returns the path and size. Never overwrites a file.`;
 }

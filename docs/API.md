@@ -7,6 +7,7 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 **Document operations**
 - [convert\_document](#convert_document)
 - [render\_document](#render_document)
+- [get\_render\_result](#get_render_result) (async renders only)
 
 **Template management**
 - [inspect\_template](#inspect_template)
@@ -25,6 +26,7 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 **Server**
 - [File inputs](#file-inputs)
 - [Output & file delivery](#output--file-delivery)
+- [Async renders](#async-renders)
 - [Transport modes](#transport-modes)
 - [Configuration](#configuration)
 - [Health endpoint](#health-endpoint)
@@ -36,15 +38,15 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 
 Convert a document to another format without storing a template. This is a **pure conversion**: no data is sent, so Carbone tags such as `{d.name}` are kept as written (use `render_document` to fill them).
 
-**File input:** absolute local path (stdio only), URL, or base64 string — see [File inputs](#file-inputs).
+**File input:** absolute local path (stdio only), URL, or base64 string (see [File inputs](#file-inputs)).
 
 > **Accepted formats.** `convert_document` and `render_document` use the same Carbone endpoint and the same
-> format validation, so they accept the same inputs: XML-based and text-based documents, plus PDF — `DOCX`,
+> format validation, so they accept the same inputs: XML-based and text-based documents, plus PDF: `DOCX`,
 > `XLSX`, `PPTX`, `ODT`, `ODS`, `ODP`, `ODG`, `HTML`, `XHTML`, `XML`, `SVG`, `IDML`, `MD`, `TXT`, `CSV`,
 > `RTF`, `PDF`. The legacy **binary** formats `DOC`, `XLS` and `PPT` are **rejected as input** (415, error `w118`)
-> even though Carbone can produce them as output — re-save them as `DOCX`/`XLSX`/`PPTX` first.
+> even though Carbone can produce them as output: re-save them as `DOCX`/`XLSX`/`PPTX` first.
 
-> **Carbone tags are preserved.** Converting a DOCX template to PDF shows the tags as written — that is how
+> **Carbone tags are preserved.** Converting a DOCX template to PDF shows the tags as written. That is how
 > you proof a template's layout, or convert a template between formats (DOCX → ODT) while it stays a template.
 > Use `render_document` to resolve tags into real values, or `render_document` with `keepTags` to proof a
 > stored template.
@@ -54,27 +56,32 @@ Convert /path/to/report.docx to PDF
 Convert https://example.com/presentation.pptx to PNG
 Convert this HTML to PDF: <h1>Hello</h1>
 Render /path/to/report.pdf as a PNG thumbnail
+Render this SVG chart as a sharp PNG (converter C, Scale 2) so I can check it
 ```
+
+> **See the result:** an image output (`png`, `jpg`, `webp`) is returned inline, so the assistant can check the layout. HTML or SVG: converter `C`, with `formatOptions: { "Scale": 2 }` for sharp text (Carbone v5.17.0+). DOCX, PDF or PPTX: the default converter renders the first page or slide.
 
 > **PDF as input:** a PDF converts to `docx`, `odt`, `html` or `txt`, to an image (`png`, `jpg`, `webp`), or is re-saved as `pdf` (e.g. to add a password, watermarks or PDF/A: the server sets `hardRefresh` for you, without which Carbone would return the PDF unchanged).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `file` | string | ✅ | Absolute local path (stdio only), URL, or base64 string ([File inputs](#file-inputs)) |
+| `file` | string | ✅ | Absolute local path (stdio only), URL, or base64 string ([File inputs](#file-inputs)). Over HTTP, required unless `attachedFile` is given |
+| `attachedFile` | object | ❌ | HTTP only. A file attached to the ChatGPT conversation ([Chat attachments](#chat-attachments-chatgpt)). Mutually exclusive with `file` |
 | `convertTo` | string \| object | ✅ | Target format (see [Supported output formats](#supported-output-formats)) or advanced object. Valid outputs depend on the input format; `doc`, `xls` and `ppt` are output-only |
 | `converter` | `L` \| `O` \| `C` \| `I` | ❌ | Converter engine (default: `L` LibreOffice) |
-| `reportName` | string | ❌ | Name of the delivered file, **without** extension: the server names it `<reportName>.<ext>` (attachment name, and the default saved file name in stdio). The server names the file itself: a conversion has no templating pass, which is where Carbone resolves `reportName` (the file would otherwise be `report.<ext>`). Used literally — tags are not resolved. Ignored with `returnLink` and `outputPath` |
+| `reportName` | string | ❌ | Name of the delivered file, **without** extension: the server names it `<reportName>.<ext>` (attachment name, and the default saved file name in stdio). The server names the file itself: a conversion has no templating pass, which is where Carbone resolves `reportName` (the file would otherwise be `report.<ext>`). Used literally: tags are not resolved. Ignored with `returnLink` and `outputPath` |
 | `hardRefresh` | boolean | ❌ | Run the converter even when the output format equals the input format, and recompute pagination and the table of contents. Needed for **PDF → PDF**: without it Carbone returns the PDF unchanged and `formatOptions` (password, permissions, watermarks, PDF/A…) are not applied. **Set automatically** when the input is a PDF, `convertTo` is `pdf` and `formatOptions` are given; pass `false` to opt out |
-| `outputPath` | string | ❌ | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
+| `failOn` | string[] | ❌ | `["IMAGE_URL_ERROR"]`: with converter `C` (Carbone v5.16.0+), an image (or another resource) of the HTML or SVG document that cannot be downloaded fails the conversion instead of being left out |
+| `outputPath` | string | ❌ | **stdio only**: save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | ❌ | Return the bytes as a downloadable attachment instead of inline |
 | `returnLink` | boolean | ❌ | Return a public **one-time** download URL instead of the file |
 | `egressAuthorization` | string | ❌ | `Authorization` header value Carbone adds when fetching protected external assets during conversion (e.g. a Chromium HTML→PDF fetching a secured image). Max 511 chars |
 
 **`converter` options** (used whenever the format changes, not only for PDF):
-- `L` — LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- `I` — Carbone ICE: DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, tracked changes, form fields and equations: keep the default `L` for documents with those. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
-- `O` — OnlyOffice: DOCX, XLSX, PPTX → PDF
-- `C` — Chromium: HTML → PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max
+- `L`: LibreOffice (default), DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
+- `I`: Carbone ICE, DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default `L` for documents with those. ODT to PDF is in beta and also ignores tracked changes and footnotes. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
+- `O`: OnlyOffice, DOCX, XLSX, PPTX → PDF
+- `C`: Chromium, HTML, XHTML → PDF, PNG, JPG, WEBP with full CSS/JS, and SVG → PDF, PNG, JPG, WEBP (Carbone v5.17.0+); 100 MB max. Image size and sharpness come from `formatOptions` (see below)
 
 PDF options: `L` supports all of them; `O`, `C` and `I` apply Security (passwords, permissions) and Watermarks.
 
@@ -106,8 +113,10 @@ PDF options: `L` supports all of them; `O`, `C` and `I` apply Security (password
 | `SelectPdfVersion` | PDF (`L` only) | `1`–`4` = PDF/A-1 to PDF/A-4; `15`, `16`, `17`, `20` = PDF 1.5, 1.6, 1.7, 2.0 |
 | `PageRange` | PDF (`L` only) | Export specific pages, e.g. `"1-5"` |
 | `UseTaggedPDF` / `PDFUACompliance` | PDF (`L` only) | Tagged PDF / PDF/UA accessibility |
-| `PixelWidth` / `PixelHeight` | PNG/JPG | Output image size in pixels |
-| `Quality` | JPG | Quality 1–100 |
+| `PixelWidth` / `PixelHeight` | PNG/JPG/WEBP | Output image size in pixels. With `L` (one page or slide): the image size. With `C` (HTML, SVG): `PixelWidth` is the layout width (default: the document width, at least 800), `PixelHeight` the height when `FullPage` is false (default 600); 1 to 16383 each |
+| `FullPage` | PNG/JPG/WEBP (`C` only) | `true` (default): capture the whole height of the document; `false`: crop to `PixelHeight` |
+| `Scale` | PNG/JPG/WEBP (`C` only) | Resolution factor, 0.1 to 4 (default 1): `2` doubles the width and height, text and SVG stay sharp. At most 16383 px per side and 25 million pixels in all |
+| `Quality` | JPG/WEBP | Quality 1–100 (`C`: 0–100, default 90, 100 = lossless WEBP) |
 | `fieldSeparator` | CSV | Custom column separator, e.g. `";"` |
 
 ---
@@ -128,20 +137,21 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 | Parameter | Type | Description |
 |---|---|---|
 | `templateId` | string | Template ID (64-bit) or Version ID (SHA-256) returned by `upload_template` |
-| `template` | string | Absolute local path (stdio only), URL, or base64 ([File inputs](#file-inputs)) — uploaded and rendered in a single request |
+| `template` | string | Absolute local path (stdio only), URL, or base64 ([File inputs](#file-inputs)), uploaded and rendered in a single request |
+| `attachedTemplate` | object | HTTP only. A file attached to the ChatGPT conversation, used like `template` ([Chat attachments](#chat-attachments-chatgpt)) |
 
 ### Data & output
 
 | Parameter | Type | Description |
 |---|---|---|
-| `data` | object \| array \| string | **Optional** — JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, `{}` is sent: templating still runs, so every tag resolves to an **empty string**; to keep the tags, use `keepTags` (or `convert_document` for a file) |
-| `keepTags` | boolean | Skip templating entirely and leave every tag **as literal text** (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Mutually exclusive with `data` — passing both is rejected |
+| `data` | object \| array \| string | **Optional**. JSON data injected into `{d.field}` tags. Accepts an object, a top-level array (`{d[i].field}`), **or** a string reference to a JSON file (see [Pass JSON by reference](#pass-json-by-reference)). If omitted, `{}` is sent: templating still runs, so every tag resolves to an **empty string**; to keep the tags, use `keepTags` (or `convert_document` for a file) |
+| `keepTags` | boolean | Skip templating entirely and leave every tag **as literal text** (`{d.customer}` stays `{d.customer}`). Use it to proof a stored template by `templateId`. Mutually exclusive with `data`: passing both is rejected |
 | `convertTo` | string \| object | Convert output to a different format (e.g. `"pdf"`); same values and `formatOptions` as `convert_document` |
 | `converter` | `L` \| `O` \| `C` \| `I` | Converter engine (see `convert_document`) |
 | `reportName` | string | Output filename **without extension** (Carbone appends it), supports Carbone tags (e.g. `"{d.client}-invoice"`). With `keepTags` (no templating pass), the server names the file `<reportName>.<ext>` itself, literally |
 | `failOn` | string[] | Conditions that stop the render with an error (Carbone v5.15.0+). `["IMAGE_URL_ERROR"]`: an image that cannot be downloaded from its URL fails the render instead of showing a broken-image placeholder |
 | `preReleaseFeatureIn` | integer | Pre-release feature level for this render only (e.g. `5000000`) |
-| `outputPath` | string | **stdio only** — save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
+| `outputPath` | string | **stdio only**: save the result to this local path (see [Output & file delivery](#output--file-delivery)) |
 | `asAttachment` | boolean | Return the bytes as a downloadable attachment instead of inline |
 | `returnLink` | boolean | Return a public **one-time** download URL instead of the file. Ignored when `webhookUrl` is set |
 
@@ -149,7 +159,7 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `lang` | string | BCP-47 locale (e.g. `"fr-fr"`, `"en-us"`) — affects number/currency/translation formatting |
+| `lang` | string | BCP-47 locale (e.g. `"fr-fr"`, `"en-us"`): affects number/currency/translation formatting |
 | `timezone` | string | IANA timezone for date formatting (e.g. `"America/New_York"`) |
 | `translations` | object | Translation map for `{t(key)}` tags: `{ "fr-fr": { "hello": "Bonjour" } }` |
 | `complement` | object | Extra data accessible via `{c.field}` tags (e.g. company info, logos) |
@@ -164,13 +174,14 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 | Parameter | Type | Description |
 |---|---|---|
-| `webhookUrl` | string | Enables async rendering (5-minute timeout). The tool then returns only Carbone's acceptance message, never the document: Carbone POSTs `{ "success": true, "data": { "renderId": "…" } }` to this URL, and the server behind it downloads the document from `GET /render/{renderId}` (one-time, no auth). The agent cannot fetch it. `outputPath`, `asAttachment` and `returnLink` are ignored |
+| `async` | boolean | HTTP with [async renders](#async-renders) on only. Renders in the background (10-minute timeout) with this server's own webhook, and returns a job ID at once; [`get_render_result`](#get_render_result) returns the download link. Works for batches (`batchSplitBy`). Mutually exclusive with `webhookUrl` |
+| `webhookUrl` | string | Enables async rendering (10-minute timeout). The tool then returns only Carbone's acceptance message, never the document: Carbone POSTs `{ "success": true, "data": { "renderId": "…" } }` to this URL, and the server behind it downloads the document from `GET /render/{renderId}` (one-time, no auth). The agent cannot fetch it. `outputPath`, `asAttachment` and `returnLink` are ignored |
 | `webhookHeaders` | object | Additional headers sent with the webhook POST (e.g. auth headers) |
-| `egressAuthorization` | string | `Authorization` header value Carbone adds to its **outbound** requests while rendering — external images (`{d.imageUrl}`), external PDFs (`:appendFile`/`:attachFile`), and webhooks. Max 511 chars. `webhookHeaders.authorization` overrides it for webhook calls only |
+| `egressAuthorization` | string | `Authorization` header value Carbone adds to its **outbound** requests while rendering: external images (`{d.imageUrl}`), external PDFs (`:appendFile`/`:attachFile`), and webhooks. Max 511 chars. `webhookHeaders.authorization` overrides it for webhook calls only |
 
 ### Batch generation
 
-> **Batch rendering is always asynchronous** — `webhookUrl` is required, and the result is delivered to the webhook as above. At most 100 objects per batch on Carbone Cloud.
+> **Batch rendering is always asynchronous:** pass `async: true` when the server runs [async renders](#async-renders), or a `webhookUrl` that receives the result as above. At most 100 objects per batch on Carbone Cloud.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -180,13 +191,13 @@ Render /path/to/invoice.docx with { "customer": "Acme" } and convert to PDF
 
 ### Pass JSON by reference
 
-The JSON-valued parameters — `data`, `complement`, `translations`, `enum`, `currencyRates` — can be given **inline** (an object, or an array for `data`) or as a **string reference** that the server reads and parses. This keeps large datasets (and big translation maps) out of the tool call, cutting token cost — especially for batch.
+The JSON-valued parameters (`data`, `complement`, `translations`, `enum`, `currencyRates`) can be given **inline** (an object, or an array for `data`) or as a **string reference** that the server reads and parses. This keeps large datasets (and big translation maps) out of the tool call, cutting token cost, especially for batch.
 
 A string value is resolved as:
 
 | Reference | Resolved as | stdio | HTTP |
 |---|---|---|---|
-| `"/data/invoices.json"`, `"~/data.json"` | local file → parsed JSON | ✅ | ❌ refused — stdio only |
+| `"/data/invoices.json"`, `"~/data.json"` | local file → parsed JSON | ✅ | ❌ refused (stdio only) |
 | `"https://example.com/data.json"` | downloaded → parsed JSON | ✅ | ✅ |
 | base64 of a JSON document | decoded → parsed JSON | ✅ | ✅ |
 | `'{"customer":"Acme"}'` / `'[…]'` | parsed directly as inline JSON | ✅ | ✅ |
@@ -215,6 +226,7 @@ List the Carbone tags of /path/to/invoice.docx and give me sample data for it
 |---|---|---|
 | `templateId` | string | A stored template: Template ID (64-bit, inspects its deployed version) or Version ID (SHA-256, inspects that exact version) |
 | `template` | string | A template that is not stored, in the same forms as `render_document`'s `template`: absolute local path (stdio only), URL, or base64 ([File inputs](#file-inputs)) |
+| `attachedTemplate` | object | HTTP only. A file attached to the ChatGPT conversation, used like `template` ([Chat attachments](#chat-attachments-chatgpt)) |
 
 **Output:** a text summary (the tags, then the sample as JSON), and structured output:
 
@@ -274,8 +286,10 @@ Upload /path/to/invoice.docx as "Invoice Template", category "invoices"
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `template` | string | ✅ | Absolute local path (stdio only), URL, or base64 ([File inputs](#file-inputs)) |
-| `name` | string? | ❌ | Display name, max 200 chars. Recommended: `list_templates` shows it and its search matches it |
+| `template` | string | ✅ | Absolute local path (stdio only), URL, or base64 ([File inputs](#file-inputs)). Over HTTP, required unless `attachedTemplate` is given |
+| `attachedTemplate` | object | ❌ | HTTP only. A file attached to the ChatGPT conversation ([Chat attachments](#chat-attachments-chatgpt)). Mutually exclusive with `template` |
+| `requestUploadUrl` | `{ size, sha256 }` | ❌ | HTTP with `MCP_TICKET_SECRET` only. Returns an upload URL for this file only, instead of uploading it ([Upload URLs](#upload-urls)). Mutually exclusive with `template` and `sample` |
+| `name` | string? | ❌ | Display name, max 200 chars. Recommended: `list_templates` shows it and its search matches it. Defaults to the file name of `attachedTemplate` |
 | `id` | string? | ❌ | Existing Template ID to add this upload as a new version |
 | `versioning` | boolean? | ❌ | Enable versioning (default: `true`). `false` returns only `templateId` (SHA-256) and `templateExtension` |
 | `category` | string? | ❌ | Category (e.g. `"invoices"`), max 200 chars |
@@ -309,11 +323,10 @@ Rename, re-categorise, tag, deploy, schedule the deletion of, or move **one** te
 |---|---|---|---|
 | `templateId` | string | ✅ | Template ID (patches only its **currently deployed** version) or Version ID (patches that exact version) |
 | `moveToTemplateId` | string? | ❌ | **Structural change:** moves the patched version to this other Template ID (the API's `id` body field). Pass the Version ID as `templateId`; with a Template ID, its deployed version is moved and that Template ID falls back to its next most recent version |
-| `id` | string? | ❌ | **Deprecated** — the 1.6.0 name of `moveToTemplateId`, still accepted. Passing both with different values is rejected |
 | `name` | string? | ❌ | New display name, max 200 chars |
 | `comment` | string? | ❌ | New free-text comment, max 200 chars |
 | `category` | string? | ❌ | New category, max 200 chars |
-| `tags` | string[]? | ❌ | New tags — replaces existing tags entirely (same rules as `upload_template`) |
+| `tags` | string[]? | ❌ | New tags, replacing the existing ones entirely (same rules as `upload_template`) |
 | `deployedAt` | number? | ❌ | Unix timestamp to activate this version. Use `42000000000` for "now". Future values are not allowed, and the deployed version's `deployedAt` cannot move back in time |
 | `expireAt` | number? | ❌ | Unix timestamp at which the patched version is scheduled for deletion. `0` cancels a scheduled deletion; omit it to leave the expiration unchanged |
 
@@ -347,8 +360,20 @@ Download the original template file (DOCX, XLSX, etc.), or the JSON sample data 
 |---|---|---|---|
 | `templateId` | string | ✅ | Template ID (downloads deployed version) or Version ID (downloads exact version) |
 | `sample` | boolean? | ❌ | `true` downloads the JSON sample dataset stored with the template (the `sample` passed to `upload_template`) instead of the template file, returned inline as JSON. Errors if the template has no sample |
-| `outputPath` | string? | ❌ | **stdio only** — save the file to this local path |
+| `outputPath` | string? | ❌ | **stdio only**: save the file to this local path |
 | `asAttachment` | boolean? | ❌ | Return the file as a downloadable attachment instead of inline |
+
+---
+
+## `get_render_result`
+
+Offered only when the server runs [async renders](#async-renders). Returns the result of a `render_document` call made with `async: true`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `jobId` | string | ✅ | The job ID `render_document` returned |
+
+**Output:** the one-time download link once the document is ready, the render error if it failed (or no result after 10 minutes), or "still rendering" (call again a few seconds later). Results are kept 1 hour, and only the caller who started the render can read them.
 
 ---
 
@@ -372,11 +397,32 @@ Returns a full overview of supported formats, features, and usage examples. No p
 
 | Form | Example | stdio | HTTP |
 |---|---|---|---|
-| Local path | `/Users/me/invoice.docx`, `~/invoice.docx`, `C:\Users\me\invoice.docx` | ✅ | ❌ refused — the server cannot read the caller's disk |
+| Local path | `/Users/me/invoice.docx`, `~/invoice.docx`, `C:\Users\me\invoice.docx` | ✅ | ❌ refused: the server cannot read the caller's disk |
 | URL (`http://` or `https://`) | `https://example.com/invoice.docx` | ✅ | ✅ |
 | Base64 | the file content, base64-encoded | ✅ | ✅ |
 
 A string that is neither a URL nor a path (starting with `/`, `./`, `../`, `~` or a drive letter) is taken as base64: a bare file name such as `invoice.docx` is **not** looked up and fails. Relative paths resolve against the server's working directory, which the client chooses, so prefer absolute paths. URLs are SSRF-guarded (see below), and every form is limited to `CARBONE_MAX_FILE_BYTES`. The JSON parameters passed by reference follow the same rules ([Pass JSON by reference](#pass-json-by-reference)).
+
+### Chat attachments (ChatGPT)
+
+ChatGPT passes a file the user attached to the conversation only to a tool input listed in the tool's `_meta["openai/fileParams"]` ([OpenAI Apps SDK reference](https://developers.openai.com/apps-sdk/reference)). Over HTTP, the server declares one such input per file tool: `attachedFile` for `convert_document`'s `file`, and `attachedTemplate` for the `template` of `render_document`, `inspect_template` and `upload_template`.
+
+ChatGPT fills the input with `{ "download_url": "https://…", "file_id": "file_…", "mime_type": "…", "file_name": "…" }`. The server downloads `download_url` (HTTPS only) with the same [URL guard](#url-guard) and size limit as a URL input. Give either the attachment or the string input, not both. `upload_template` uses `file_name` as the template name when `name` is not given.
+
+Other clients ignore `_meta`: they see an optional parameter and leave it empty. The inputs are not offered in stdio, where a local path does the job.
+
+### Upload URLs
+
+A file too large to pass as base64 can be sent outside the MCP messages, by an assistant that can run shell commands (Claude Code, Cursor, VS Code, or a code sandbox allowed to reach the server). The server must run over HTTP with `MCP_TICKET_SECRET` set.
+
+1. `upload_template` with `requestUploadUrl: { "size": <bytes>, "sha256": "<hex>" }` (and any other field: `name`, `category`, `versioning`, `expireAt`…) returns a URL, an `X-Upload-Token` header and the command to send the file. Nothing is stored yet.
+2. The file is sent with `curl -H 'X-Upload-Token: …' --data-binary @<file> <url>`. The server streams it to Carbone as it arrives and answers with the stored template, as `upload_template` would (`id`, `versionId`, …).
+
+The URL accepts only the file it was issued for: a different size or SHA-256 is refused, and nothing is stored. It is valid for 10 minutes, or until the caller's sign-in expires if that comes first. Sending the same file again within that time stores no new template when `versioning` is `false`; otherwise it stores another copy (a new Template ID, or a new version of `id` when given). It runs at most 2 uploads at once per caller (the signed-in user or the API key) and 1 per URL, and drops an upload whose first bytes take over 5 seconds, or arriving slower than 1 MiB per 30 seconds.
+
+The token is encrypted with AES-256-GCM and carries the caller's credential: the OAuth access token on the hosted server, the Carbone API key in API-key mode. It ends up in the assistant's conversation and shell history, where only this server can read it, with `MCP_TICKET_SECRET`. Keep that secret private: anyone holding it could read the credentials in tokens they have seen. Changing it makes the URLs issued just before invalid, and their error says to ask for a new one.
+
+Server instances share nothing but the secret, so the URL works whichever instance receives the file. The secret is bound to `MCP_PUBLIC_URL`: two deployments sharing it (staging and production) never accept each other's URLs.
 
 ### URL guard
 
@@ -399,21 +445,38 @@ Local paths are a separate guard: they are read in stdio only, where the server 
 
 | Output | stdio (local clients) | HTTP (remote / self-hosted) |
 |---|---|---|
-| Text — HTML, XHTML, TXT, CSV, MD, XML, JSON (template samples) | inline `text` | inline `text` |
-| Inline images — PNG, JPG, GIF, WEBP | inline `image` | inline `image` |
-| Everything else — PDF, Office, SVG, TIFF, BMP, EMF… | saved to a temp file, **path returned** as text | returned as an `EmbeddedResource` **attachment** |
+| Text: HTML, XHTML, TXT, CSV, MD, XML, JSON (template samples) | inline `text` | inline `text` |
+| Inline images: PNG, JPG, GIF, WEBP | inline `image` | inline `image` |
+| Everything else (PDF, Office, SVG, TIFF, BMP, EMF…) | saved to a temp file, **path returned** as text | **one-time download link** (as with `returnLink`) |
 
 Override the default with these optional parameters:
 
 | Parameter | Behaviour |
 |---|---|
 | `outputPath` | **stdio only.** Write the output to this local path and return a summary instead of the bytes. The path must not exist yet: an existing file (or symlink) is never overwritten, and the new file is readable by the current user only (`0600`). In HTTP mode it is rejected (the file would land on the server, not your machine). |
-| `asAttachment` | Return the bytes as an `EmbeddedResource` download attachment for **any** format (including text/images), instead of inlining. |
-| `returnLink` | Render without returning the bytes; instead return Carbone's public download URL (`<API URL>/render/{renderId}`). The link is **one-time and short-lived** — Carbone deletes the file after the first download — so pass it to the end user and do **not** fetch it yourself. Works in both transports. Mutually exclusive with `outputPath` / `asAttachment`; ignored when `webhookUrl` is set. |
+| `asAttachment` | Return the bytes as an `EmbeddedResource` download attachment for **any** format (including text/images), instead of inlining or a link. Over HTTP, this is how to receive a PDF or Office file's bytes (or pass `returnLink: false`). |
+| `returnLink` | Render without returning the bytes; instead return Carbone's public download URL (`<API URL>/render/{renderId}?download=true`, which downloads the file as an attachment named after `reportName`; a conversion has no templating pass, so its file is `report.<ext>`). Over HTTP it is the default for outputs not returned inline; `false` asks for the bytes. The link is **one-time and short-lived** (Carbone deletes the file after the first download), so pass it to the end user and do **not** fetch it yourself. Works in both transports. Mutually exclusive with `outputPath` / `asAttachment`; ignored when `webhookUrl` is set. |
 
-> **Claude Desktop note:** Claude Desktop (and claude.ai) mis-handle inline binary `EmbeddedResource` blobs — they coerce them into image blocks and reject the media type. The same blocks render correctly in Cursor, VS Code, and the MCP Inspector. For PDFs/Office files in Claude Desktop, use the default stdio temp-file path or `returnLink`.
+> **Claude Desktop note:** Claude Desktop (and claude.ai) mis-handle inline binary `EmbeddedResource` blobs: they coerce them into image blocks and reject the media type. The same blocks render correctly in Cursor, VS Code, and the MCP Inspector. This is why HTTP returns a link for PDF and Office outputs by default; with the local package, use the default temp-file path or `returnLink`.
 
 ---
+
+## Async renders
+
+Batch generation (`batchSplitBy`) and renders over a minute need Carbone's asynchronous mode, which delivers the result to a webhook. An assistant has no webhook of its own, so the server can be one: `render_document` with `async: true` returns a job ID at once, and `get_render_result` returns the download link when the document is ready.
+
+1. The server gives Carbone its own `/webhook` URL, and a sealed job token in a header Carbone sends back.
+2. Carbone renders, then calls `/webhook` once with the renderId. The instance receiving it stores the result in the shared store, encrypted, under a hash of the job. The first result recorded is final.
+3. `get_render_result` reads it, from any instance, for the caller who started the render (the same OAuth user or API key).
+
+Requirements, HTTP only: `MCP_TICKET_SECRET`, and a store every instance shares ([Configuration](#configuration)), since the webhook call and the next request rarely reach the same instance:
+
+- an S3-compatible bucket (AWS S3, MinIO, Cloudflare R2…), set with the five `MCP_S3_*` variables. Add a lifecycle rule deleting `jobs/` objects after 1 day to clean the bucket.
+- or a directory, `MCP_JOBS_DIR`: for a single instance, or a volume mounted by every instance. A disk that belongs to each instance (container ephemeral storage) does not work with more than one. The server deletes files older than 1 hour itself.
+
+Results are a few hundred bytes each.
+
+Carbone stops an async render after 10 minutes, and calls the webhook once without retrying: a job with no result after 10 minutes (the render too long, or its result lost on the way) is reported failed, to start again.
 
 ## Transport modes
 
@@ -457,7 +520,7 @@ Deploying it: no server key (each client sends its own Bearer key) is the safe d
 | Request | Response |
 |---|---|
 | `POST` | MCP over Streamable HTTP, stateless (no sessions). Serves protocol `2026-07-28` (`server/discover`, per-request `_meta`) and 2025-era clients that open with `initialize`. Closing the response stream cancels the request, including its upstream Carbone API call. |
-| `GET`, `DELETE` | `405` `Method not allowed` — no standalone SSE stream, no sessions (opening the endpoint in a browser shows this) |
+| `GET`, `DELETE` | `405` `Method not allowed`: no standalone SSE stream, no sessions (opening the endpoint in a browser shows this) |
 | `Origin` header present but not allowed | `403` before the request is processed (DNS-rebinding protection). Requests without an `Origin` header are unaffected. |
 | Malformed or empty JSON body | `400` with JSON-RPC parse error `-32700` |
 | Body over `MCP_MAX_BODY_BYTES` | `413` |
@@ -483,6 +546,14 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `MCP_ALLOWED_ORIGINS` | none | HTTP only. Browser `Origin` hostnames allowed in addition to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request with any other `Origin` gets `403`; requests without an `Origin` are unaffected. Invalid entries stop the server at startup. |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP only. `true` requires `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server: anyone reaching the port can spend it, and the server warns at startup). No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs resolve to private and internal addresses ([URL guard](#url-guard)). Off by default to block SSRF; enable it only on a trusted deployment with internal template hosts. |
+| `MCP_TICKET_SECRET` | none | HTTP only. Turns on [upload URLs](#upload-urls), and [async renders](#async-renders) with `MCP_S3_*` or `MCP_JOBS_DIR`: at least 32 random bytes, base64 (`openssl rand -base64 32`), the same on every instance. |
+| `MCP_PUBLIC_URL` | origin of `MCP_RESOURCE_URL` | HTTP only. The server's public origin (e.g. `https://mcp.example.com`), used to build upload URLs and the async render webhook. Required with `MCP_TICKET_SECRET` in API-key mode, where the server cannot know the address clients reach it at. |
+| `MCP_S3_ENDPOINT` | none | HTTP only, for [async renders](#async-renders): the S3-compatible service origin, e.g. `https://s3.us-east-1.amazonaws.com` (http on localhost only). Set all five `MCP_S3_*` variables, or none. |
+| `MCP_S3_REGION` | none | The bucket region, e.g. `us-east-1`. |
+| `MCP_S3_BUCKET` | none | The bucket async render results are kept in. |
+| `MCP_S3_ACCESS_KEY_ID` | none | An access key allowed to read, write and list that bucket (without list, S3 answers 403 instead of 404 for a missing object; the server checks this at startup and logs it). |
+| `MCP_S3_SECRET_ACCESS_KEY` | none | Its secret key. |
+| `MCP_JOBS_DIR` | none | HTTP only, for [async renders](#async-renders), instead of `MCP_S3_*`: the absolute path of an existing, writable directory that every instance shares. |
 | `MCP_OPENAI_APPS_CHALLENGE` | none | HTTP only. The domain-verification token OpenAI gives when you submit the server to the ChatGPT plugin directory. When set, the server returns it as plain text at `/.well-known/openai-apps-challenge`. |
 
 ### Hosted server (OAuth mode)
@@ -511,7 +582,7 @@ Setting only some of these variables, or `CARBONE_API_KEY` with them, stops the 
 
 ## Health endpoint
 
-Available in HTTP mode at `GET /health`. Always returns HTTP 200 — the status code signals MCP server liveness.
+Available in HTTP mode at `GET /health`. Always returns HTTP 200: the status code signals MCP server liveness.
 
 ```bash
 curl http://localhost:3000/health

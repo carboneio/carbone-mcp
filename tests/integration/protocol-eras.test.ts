@@ -84,10 +84,13 @@ beforeAll(async () => {
     if (req.method === 'GET' && req.url === '/templates') {
       return json(res, { success: true, data: [{ id: '1', name: 'Invoice' }], hasMore: false });
     }
-    if (req.method === 'POST' && req.url === '/render/template?download=true') {
+    // stdio renders with download=true (the bytes); over HTTP a PDF is delivered as a one-time link, so the
+    // render answers with a renderId.
+    if (req.method === 'POST' && (req.url === '/render/template' || req.url === '/render/template?download=true')) {
       const hold = holdNextRender;
       holdNextRender = undefined;
       if (hold) return hold(res);
+      if (req.url === '/render/template') return json(res, { success: true, data: { renderId: 'mock-render-id' } });
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="out.pdf"' });
       return res.end('%PDF-1.4 mock');
     }
@@ -185,8 +188,9 @@ describe('HTTP transport serves both protocol eras', () => {
       const file = Buffer.alloc(3_900_000, 'carbone').toString('base64'); // ~5.2 MB of base64
       const result = await client.callTool({ name: 'convert_document', arguments: { file, convertTo: 'pdf' } });
       expect(result.isError).toBeFalsy();
-      expect(result.content[0]).toMatchObject({ type: 'resource', resource: { mimeType: 'application/pdf' } });
-      expect(lastAuthFor('/render/template?download=true')).toBe(`Bearer ${key}`);
+      expect(result.content[0]).toMatchObject({ type: 'text' });
+      expect((result.content[0] as { text: string }).text).toContain(`${mockUrl}/render/mock-render-id?download=true`);
+      expect(lastAuthFor('/render/template')).toBe(`Bearer ${key}`);
     });
   });
 

@@ -84,7 +84,7 @@ describe('handleGetCapabilities', () => {
 
     expect(text).toContain('webhookUrl');
     expect(text).toContain('asynchronous');
-    expect(text).toContain('5 minute');
+    expect(text).toContain('10 minute');
   });
 
   test('documents convertTo parameter for output format', () => {
@@ -106,6 +106,13 @@ describe('handleGetCapabilities', () => {
     expect(text).toContain('tags such as `{d.name}` are kept'); // convert_document = pure conversion
     expect(text).toContain('GET /render/{renderId}');           // async: the webhook's server downloads it
     expect(text).toContain('failOn');
+    expect(text).toContain('toWord');                         // v5.16.0 formatter, driven by the lang / currency options
+    expect(text).toMatch(/SVG → PDF, PNG, JPG, WEBP/);         // v5.17.0 Chromium image export
+    expect(text).toMatch(/`FullPage`/);
+    expect(text).toMatch(/`Scale`/);
+    expect(text).toContain('#image-options-chromium');
+    expect(text).toMatch(/returned inline/);
+    expect(text).not.toMatch(/comments, tracked changes/);     // ICE renders DOCX tracked changes since v5.16.0
     expect(text).toContain('preReleaseFeatureIn');
     expect(text).toContain('max 511');
   });

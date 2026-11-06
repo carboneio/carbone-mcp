@@ -1,4 +1,10 @@
 import { CarboneClient } from '../carbone/client.js';
+import { UPLOAD_PATH } from './uploadTicket.js';
+import { parseTicketSecret } from './sealer.js';
+import { WEBHOOK_PATH } from './jobs.js';
+import { accessSync, constants, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
+import type { ObjectStoreConfig } from './objectStore.js';
 
 export type TransportMode = 'stdio' | 'http';
 
@@ -18,6 +24,20 @@ export interface ServerConfig {
   openAiAppsChallenge?: string;
   /** HTTP OAuth mode (Carbone's hosted server), when every MCP_OAUTH_* variable is set; API-key mode otherwise. */
   oauth?: OAuthConfig;
+  /** HTTP only, when MCP_TICKET_SECRET is set: upload_template issues upload URLs. */
+  tickets?: TicketConfig;
+  /** HTTP only, with tickets, when MCP_S3_* or MCP_JOBS_DIR is set: render_document runs async renders itself. */
+  jobStore?: JobStoreConfig;
+}
+
+/** Where async render results are kept: an S3-compatible bucket (MCP_S3_*), or a directory (MCP_JOBS_DIR). */
+export type JobStoreConfig = ObjectStoreConfig | { dir: string };
+
+export interface TicketConfig {
+  /** MCP_TICKET_SECRET: seals and opens upload tickets and async render jobs. */
+  secret: Buffer;
+  /** The origin upload URLs point to (MCP_PUBLIC_URL, by default the origin of MCP_RESOURCE_URL). */
+  publicUrl: string;
 }
 
 export interface OAuthConfig {
@@ -36,6 +56,19 @@ export const DEFAULT_OAUTH_ISSUER = 'https://account.carbone.io';
 function isSecureUrl(url: URL): boolean {
   return url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname));
 }
+
+/** A secure URL written as a bare origin: no path, not even a trailing slash. */
+function isSecureOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return isSecureUrl(url) && value === url.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** An environment variable, trimmed; undefined when unset or blank. */
+const setting = (name: string) => process.env[name]?.trim() || undefined;
 
 /**
  * MCP_RESOURCE_URL must be the canonical URL clients connect to, because the PRM `resource` and the token
@@ -91,11 +124,9 @@ function loadOAuthConfig(transport: TransportMode, mcpPath: string, apiKey: stri
     );
   }
   const issuer = env('MCP_OAUTH_ISSUER') ?? DEFAULT_OAUTH_ISSUER;
-  let issuerUrl: URL | undefined;
-  try { issuerUrl = new URL(issuer); } catch { /* reported below */ }
   // An origin, written as the authorization server writes its own issuer: the endpoints are built from it, and
   // clients refuse metadata whose issuer differs from the one advertised by even a trailing slash (RFC 8414 §3.3).
-  if (!issuerUrl || !isSecureUrl(issuerUrl) || issuer !== issuerUrl.origin) {
+  if (!isSecureOrigin(issuer)) {
     throw new Error(`Invalid MCP_OAUTH_ISSUER value "${issuer}". Must be an https origin without a path or trailing slash, such as "${DEFAULT_OAUTH_ISSUER}".`);
   }
   return {
@@ -104,6 +135,70 @@ function loadOAuthConfig(transport: TransportMode, mcpPath: string, apiKey: stri
     clientSecret: env('MCP_OAUTH_CLIENT_SECRET')!,
     resourceUrl: parseResourceUrl(env('MCP_RESOURCE_URL')!, mcpPath),
   };
+}
+
+/**
+ * Upload URLs (and async renders, with an object store) are on when MCP_TICKET_SECRET is set. Every instance behind a
+ * load balancer must share the secret, as a ticket issued by one is opened by whichever receives the next request.
+ * They need the public origin to build their URLs.
+ */
+function loadTicketConfig(transport: TransportMode, mcpPath: string, oauth: OAuthConfig | undefined): TicketConfig | undefined {
+  const secret = setting('MCP_TICKET_SECRET');
+  if (!secret) return undefined;
+  if (transport !== 'http') {
+    throw new Error('MCP_TICKET_SECRET is for the HTTP transport: set MCP_TRANSPORT=http, or unset MCP_TICKET_SECRET.');
+  }
+  if (mcpPath === UPLOAD_PATH || mcpPath === WEBHOOK_PATH) {
+    throw new Error(`MCP_PATH "${mcpPath}" is reserved for upload URLs and async renders: choose another MCP_PATH, or unset MCP_TICKET_SECRET.`);
+  }
+  const publicUrl = setting('MCP_PUBLIC_URL') ?? (oauth && new URL(oauth.resourceUrl).origin);
+  if (!publicUrl) {
+    throw new Error('MCP_TICKET_SECRET needs the public address of this server: set MCP_PUBLIC_URL (e.g. "https://mcp.example.com").');
+  }
+  if (!isSecureOrigin(publicUrl)) {
+    throw new Error(`Invalid MCP_PUBLIC_URL value "${publicUrl}". Must be an https origin without a path or trailing slash, such as "https://mcp.example.com".`);
+  }
+  return { secret: parseTicketSecret(secret), publicUrl };
+}
+
+/**
+ * Where async renders keep their results, shared by every instance: a directory (MCP_JOBS_DIR), or an S3-compatible
+ * bucket (all five MCP_S3_* variables, or none); async renders are off without either. Needs MCP_TICKET_SECRET,
+ * which seals what is stored.
+ */
+function loadJobStoreConfig(tickets: TicketConfig | undefined): JobStoreConfig | undefined {
+  const names = ['MCP_S3_ENDPOINT', 'MCP_S3_REGION', 'MCP_S3_BUCKET', 'MCP_S3_ACCESS_KEY_ID', 'MCP_S3_SECRET_ACCESS_KEY'] as const;
+  const values = names.map(setting);
+  const dir = setting('MCP_JOBS_DIR');
+  if (dir && values.some((v) => v !== undefined)) {
+    throw new Error('Async renders keep their results in MCP_JOBS_DIR or in MCP_S3_*, not both: unset one.');
+  }
+  if (dir) {
+    if (!tickets) throw new Error('Async renders (MCP_JOBS_DIR) need MCP_TICKET_SECRET: set it too.');
+    let writable = false;
+    try {
+      accessSync(dir, constants.W_OK);
+      writable = statSync(dir).isDirectory();
+    } catch { /* reported below */ }
+    if (!isAbsolute(dir) || !writable) {
+      throw new Error(`Invalid MCP_JOBS_DIR value "${dir}". Must be the absolute path of an existing, writable directory.`);
+    }
+    return { dir };
+  }
+  if (values.every((v) => v === undefined)) return undefined;
+  const missing = names.filter((_, i) => values[i] === undefined);
+  if (missing.length) {
+    throw new Error(`Async renders are partially configured: set ${missing.join(', ')}, or unset every MCP_S3_* variable.`);
+  }
+  if (!tickets) throw new Error('Async renders (MCP_S3_*) need MCP_TICKET_SECRET: set it too.');
+  const [endpoint, region, bucket, accessKeyId, secretAccessKey] = values as string[];
+  if (!isSecureOrigin(endpoint!)) {
+    throw new Error(`Invalid MCP_S3_ENDPOINT value "${endpoint}". Must be an https origin, such as "https://s3.example.com" (http on localhost).`);
+  }
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket!)) {
+    throw new Error(`Invalid MCP_S3_BUCKET value "${bucket}". Must be a bucket name: lowercase letters, digits, dots and hyphens.`);
+  }
+  return { endpoint: endpoint!, region: region!, bucket: bucket!, accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! };
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, name: string): number {
@@ -182,6 +277,8 @@ export function loadConfig(): ServerConfig {
   }
 
   const oauth = loadOAuthConfig(transport, mcpPath, apiKey);
+  const tickets = loadTicketConfig(transport, mcpPath, oauth);
+  const jobStore = loadJobStoreConfig(tickets);
 
   const openAiAppsChallenge = process.env['MCP_OPENAI_APPS_CHALLENGE']?.trim() || undefined;
   if (openAiAppsChallenge && /\s/.test(openAiAppsChallenge)) {
@@ -210,5 +307,7 @@ export function loadConfig(): ServerConfig {
     allowedOriginHostnames: parseOriginHostnames(process.env['MCP_ALLOWED_ORIGINS'], 'MCP_ALLOWED_ORIGINS'),
     ...(openAiAppsChallenge && { openAiAppsChallenge }),
     ...(oauth && { oauth }),
+    ...(tickets && { tickets }),
+    ...(jobStore && { jobStore }),
   };
 }

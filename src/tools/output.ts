@@ -5,6 +5,8 @@ import {
   writeOutputFile, toToolContent, isInlineFormat,
   type FormatArg, type TextContent, type ImageContent, type EmbeddedResource,
 } from '../utils/file.js';
+import type { UploadIssuer } from '../server/upload.js';
+import type { Jobs } from '../server/jobs.js';
 
 /** Config threaded from the server into file-producing tools (set per transport in the entry points). */
 export interface FileContext {
@@ -22,6 +24,10 @@ export interface FileContext {
   allowPrivateNetwork: boolean;
   /** Maximum size in bytes for a resolved input file (from CARBONE_MAX_FILE_BYTES). */
   maxFileBytes: number;
+  /** HTTP with MCP_TICKET_SECRET: issues upload_template's upload URLs. */
+  uploads?: UploadIssuer;
+  /** HTTP with MCP_TICKET_SECRET and an object store: runs render_document's async renders. */
+  jobs?: Jobs;
 }
 
 /**
@@ -105,6 +111,25 @@ export async function deliverDocument(params: {
   }
   // HTTP: no local disk — return the bytes as an attachment (EmbeddedResource).
   return { content: [toToolContent(params.buffer, params.filename, params.format, true)] };
+}
+
+/**
+ * Whether a render/convert asks Carbone for a one-time link (renderId) rather than the bytes. An explicit
+ * returnLink wins. Otherwise, over HTTP only, a format that is not returned inline (PDF, Office, …) gets a link:
+ * claude.ai and Claude Desktop mishandle a binary EmbeddedResource, and its base64 would fill the context. Without
+ * convertTo the output keeps the template's format, unknown here, so it gets a link too. stdio keeps the bytes
+ * (saved to a temp file), and asAttachment / outputPath ask for the bytes explicitly.
+ */
+export function wantsLink(params: {
+  returnLink?: boolean;
+  asAttachment?: boolean;
+  outputPath?: string;
+  convertTo?: FormatArg;
+  allowFileOutput: boolean;
+}): boolean {
+  if (params.returnLink !== undefined) return params.returnLink;
+  if (params.allowFileOutput || params.asAttachment || params.outputPath) return false;
+  return params.convertTo === undefined || !isInlineFormat(params.convertTo);
 }
 
 /** Build the tool result for a returnLink render: a public, short-lived, one-time download URL. */

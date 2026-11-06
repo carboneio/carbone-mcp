@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.2.0] - 2026-11-06
+
+### Added
+
+- **Upload URLs for large templates:** `upload_template` with `requestUploadUrl: { size, sha256 }` returns a 10-minute URL and a `curl` command, so the file no longer goes through the conversation as base64. HTTP only, with `MCP_TICKET_SECRET`.
+- **Async renders and batches without your own webhook:** `render_document` with `async: true` returns a job ID, and the new `get_render_result` tool returns the download link. HTTP only, with `MCP_TICKET_SECRET` and a shared store (`MCP_S3_*` or `MCP_JOBS_DIR`).
+- **ChatGPT attachments:** a file attached to the conversation can be passed to `convert_document` (`attachedFile`), `render_document`, `inspect_template` and `upload_template` (`attachedTemplate`).
+- **Chromium converter:** HTML and SVG to PNG, JPG or WEBP, and SVG to PDF (Carbone v5.17.0+); `failOn: ["IMAGE_URL_ERROR"]` on `convert_document` (v5.16.0+).
+
+### Changed
+
+- **Over HTTP, PDF and Office outputs are returned as a one-time download link** by default, named after `reportName`. Pass `asAttachment: true` to get the bytes as before.
+- Template ID fields (`id`, `moveToTemplateId`) must be digits only, checked before the call.
+- Tool descriptions are about 45% shorter (fewer tokens per conversation), with the details in `get_capabilities`; `outputPath` is no longer listed over HTTP.
+- `render_document` and `convert_document` are no longer annotated read-only: each call creates a document at Carbone, so clients may ask to confirm it.
+
+---
+
 ## [2.1.4] — 2026-10-26
 
 ### Security
@@ -420,6 +438,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.2.0]: https://github.com/carboneio/carbone-mcp/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/carboneio/carbone-mcp/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/carboneio/carbone-mcp/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/carboneio/carbone-mcp/compare/v2.1.1...v2.1.2

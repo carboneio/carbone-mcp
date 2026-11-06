@@ -8,7 +8,7 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
 
 vi.mock('node:fs/promises', () => ({ mkdtemp: vi.fn(async (prefix: string) => `${prefix}AbC123`) }));
 
-import { saveOrReject, deliverDocument, deliver, oneTimeLinkResult, withReportName } from '../../../src/tools/output.js';
+import { saveOrReject, deliverDocument, deliver, oneTimeLinkResult, wantsLink, withReportName } from '../../../src/tools/output.js';
 import { writeOutputFile } from '../../../src/utils/file.js';
 import { mkdtemp } from 'node:fs/promises';
 
@@ -135,6 +135,11 @@ describe('deliver (dispatch)', () => {
     expect(r.content[0].type).toBe('resource');
   });
 
+  test('bytes without convertTo → the format comes from the returned file name', async () => {
+    const r = await deliver({ buffer: Buffer.from('<h1>x</h1>'), filename: 'f.html' }, undefined, opts);
+    expect(r.content[0]).toMatchObject({ type: 'text', text: '<h1>x</h1>' });
+  });
+
   test('bytes in stdio → the temp-file hint names returnLink (render_document and convert_document have it)', async () => {
     vi.mocked(writeOutputFile).mockImplementationOnce(async (path, buffer) => ({ path, size: buffer.length }));
     const r = await deliver({ buffer: Buffer.from('%PDF'), filename: 'f.pdf' }, 'pdf', { ...opts, allowFileOutput: true });
@@ -169,9 +174,47 @@ describe('withReportName (reportName applied by the MCP when Carbone skips templ
     expect(withReportName(bytes, '../etc/x\\y\n', 'pdf').filename).toBe('.._etc_x_y_.pdf');
   });
 
+  test('without convertTo, keeps the returned extension, or adds none', () => {
+    expect(withReportName(bytes, 'contract', undefined).filename).toBe('contract.pdf');
+    expect(withReportName({ ...bytes, filename: 'document' }, 'contract', undefined).filename).toBe('contract');
+  });
+
   test('leaves results without bytes, and an unset reportName, unchanged', () => {
     const link = { renderId: 'r1' };
     expect(withReportName(link, 'contract', 'pdf')).toBe(link);
     expect(withReportName(bytes, undefined, 'pdf')).toBe(bytes);
+  });
+});
+
+describe('wantsLink: link or bytes, decided before the render', () => {
+  const HTTP = { allowFileOutput: false };
+  const STDIO = { allowFileOutput: true };
+
+  test('HTTP: a format not returned inline gets a one-time link by default', () => {
+    expect(wantsLink({ ...HTTP, convertTo: 'pdf' })).toBe(true);
+    expect(wantsLink({ ...HTTP, convertTo: { formatName: 'docx' } })).toBe(true);
+    // Without convertTo the output keeps the template's format, unknown here.
+    expect(wantsLink({ ...HTTP })).toBe(true);
+  });
+
+  test('HTTP: text and the four inline image formats keep coming back inline', () => {
+    for (const convertTo of ['html', 'md', 'csv', 'png', 'jpg', 'webp'] as const) {
+      expect(wantsLink({ ...HTTP, convertTo })).toBe(false);
+    }
+  });
+
+  test('asAttachment, outputPath and an explicit returnLink: false ask for the bytes', () => {
+    expect(wantsLink({ ...HTTP, convertTo: 'pdf', asAttachment: true })).toBe(false);
+    expect(wantsLink({ ...HTTP, convertTo: 'pdf', outputPath: '/out.pdf' })).toBe(false);
+    expect(wantsLink({ ...HTTP, convertTo: 'pdf', returnLink: false })).toBe(false);
+  });
+
+  test('an explicit returnLink: true always wins', () => {
+    expect(wantsLink({ ...HTTP, convertTo: 'html', returnLink: true })).toBe(true);
+    expect(wantsLink({ ...STDIO, convertTo: 'pdf', returnLink: true })).toBe(true);
+  });
+
+  test('stdio keeps the bytes (saved to a temp file)', () => {
+    expect(wantsLink({ ...STDIO, convertTo: 'pdf' })).toBe(false);
   });
 });

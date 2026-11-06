@@ -175,6 +175,32 @@ describe('handleListTemplates', () => {
 
 // ─── handleUploadTemplate ─────────────────────────────────────────────────────
 
+describe('handleUploadTemplate: requestUploadUrl', () => {
+  const SHA = 'c'.repeat(64);
+  const issue = vi.fn(() => ({ uploadUrl: 'https://mcp.example.test/upload', headers: { 'X-Upload-Token': 't' }, expiresAt: 1_900_000_000 }));
+  const ctx = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 100, uploads: { issue } };
+  const client = { assertCanAuthenticate: vi.fn(), uploadTemplate: vi.fn() } as unknown as CarboneClient;
+  const textOf = (r: { content: Array<{ text: string }> }) => r.content[0]!.text;
+
+  test('issues the URL with the template fields, and stores nothing', async () => {
+    const r = await handleUploadTemplate({ requestUploadUrl: { size: 10, sha256: SHA }, name: 'N', versioning: false, expireAt: 5 }, client, undefined, ctx, { credential: { apiKey: 'k' } });
+    expect(issue).toHaveBeenCalledWith({ size: 10, sha256: SHA, fields: { versioning: false, name: 'N', expireAt: 5 } }, { credential: { apiKey: 'k' } });
+    expect(textOf(r)).toMatch(/^NOT uploaded yet\. Send the file before 2030-03-17T17:46:40\.000Z with:/);
+    expect(vi.mocked(client.uploadTemplate)).not.toHaveBeenCalled();
+  });
+
+  test('refused when the server issues no upload URLs, the file is over the limit, or no credential is available', async () => {
+    const noUploads = { ...ctx, uploads: undefined };
+    expect(textOf(await handleUploadTemplate({ requestUploadUrl: { size: 10, sha256: SHA } }, client, undefined, noUploads)))
+      .toMatch(/does not issue upload URLs/);
+    expect(textOf(await handleUploadTemplate({ requestUploadUrl: { size: 101, sha256: SHA } }, client, undefined, ctx)))
+      .toMatch(/101 bytes, over this server's limit of 100 bytes/);
+    const noKey = { ...client, assertCanAuthenticate: () => { throw new CarboneAuthError('No API key'); } } as unknown as CarboneClient;
+    const r = await handleUploadTemplate({ requestUploadUrl: { size: 10, sha256: SHA } }, noKey, undefined, ctx);
+    expect([r.isError, textOf(r)]).toEqual([true, expect.stringMatching(/No API key/)]);
+  });
+});
+
 describe('handleUploadTemplate', () => {
   afterEach(() => vi.restoreAllMocks());
 

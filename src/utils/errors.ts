@@ -49,9 +49,17 @@ export function formatError(error: unknown): string {
       : /can(?:not|'t) be converted/i.test(error.message)
         ? `This input format cannot be converted to the requested convertTo with this converter: check the conversion matrix (${CONVERSION_MATRIX}) or change the converter.`
       : 'Check the template syntax, the data, the convertTo / converter combination, failOn, watermarks (max 4) and batch options.';
+    // ENOTFOUND is also what Carbone answers for a host on a private network: Carbone Cloud never reaches one, and a
+    // self-hosted Carbone refuses them by default from v5.16.0 (securityLevel 1024), on purpose without saying so.
+    const unresolved = /ENOTFOUND|getaddrinfo/i.test(error.message)
+      ? ' A host in a URL (image, attached file or webhook) could not be resolved. Carbone gives the same error for a ' +
+        'host on a private network (localhost, 127.x, 10.x, 172.16-31.x, 192.168.x): Carbone Cloud never reaches one, ' +
+        'and a self-hosted Carbone refuses them by default from v5.16.0 (securityLevel 1024). Use a public URL, or ' +
+        'lower securityLevel on your own server.'
+      : '';
     return (
       `Document generation failed${codeOf(error)}: ${error.message}\n\n` +
-      `The request caused this error, not a Carbone outage: sending it again unchanged fails the same way. ${hint}`
+      `The request caused this error, not a Carbone outage: sending it again unchanged fails the same way. ${hint}${unresolved}`
     );
   }
 

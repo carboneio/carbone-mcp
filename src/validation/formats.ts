@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-const DOCS = 'https://carbone.io/documentation/developer/http-api/generate-reports.html';
-
 /**
  * Supported `convertTo` format names: a closed list synced with the Carbone OpenAPI (v5.15.0) RenderSuccess
  * content types and ConvertToOption examples, plus `jpeg` (the API accepts it like `jpg`). The LaTeX, BibTeX
@@ -42,52 +40,42 @@ export const INPUT_FORMATS = [
   'DOCX', 'XLSX', 'PPTX', 'ODT', 'ODS', 'ODP', 'ODG', 'HTML', 'XHTML', 'XML', 'SVG', 'IDML', 'MD', 'TXT', 'CSV', 'RTF', 'PDF',
 ] as const;
 
-/** Input-format guidance shared by the file/template parameters and get_capabilities. */
+/**
+ * Input-format guidance shared by the file/template parameters. The tool texts below are kept short: every tool
+ * description is sent to the model on each conversation, and get_capabilities holds the details.
+ */
 export const INPUT_FORMATS_DESCRIPTION =
-  'Supported input formats: ' + INPUT_FORMATS.join(', ') + '. ' +
-  'Carbone reads XML-based and text-based documents (plus PDF): the legacy binary Office formats DOC, XLS and PPT ' +
-  'are rejected as input, although they are valid outputs. Re-save such a file as DOCX, XLSX or PPTX first.';
+  'Formats: ' + INPUT_FORMATS.join(', ') + '; not the legacy binary DOC, XLS or PPT (re-save them as DOCX, XLSX, PPTX).';
 
-/** Converter guidance shared by render_document and convert_document (OpenAPI `Converter`). */
+/** Converter guidance shared by render_document and convert_document; the details are in get_capabilities. */
 export const CONVERTER_DESCRIPTION =
-  'Converter engine, used whenever the format changes (not only for PDF). If omitted, "L" is used. ' +
-  '"L" LibreOffice: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options. ' +
-  '"I" Carbone ICE: DOCX and ODT to PDF; Carbone\'s own engine, 3x to 300x faster, recommended over "O" for DOCX ' +
-  'from v5.15.0. It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, ' +
-  'area, pie and doughnut charts are drawn), comments, tracked changes, form fields and equations: keep the default ' +
-  '"L" for documents with those. A missing font is replaced by Noto Sans (' + DOCS + '#converters-carbone-ice-limitations). ' +
-  '"O" OnlyOffice: DOCX, XLSX, PPTX to PDF. ' +
-  '"C" Chromium: HTML to PDF, JPG, PNG, WEBP with full CSS/JS; 100 MB max. ' +
-  'PDF options: "L" supports all of them; "O", "C" and "I" apply Security (passwords, permissions) and Watermarks. ' +
-  'Docs: ' + DOCS + '#converters';
+  'Converter, used whenever the format changes. "L" LibreOffice (default): every format, and the only one with ' +
+  'PDF/A, page ranges and accessibility. "I" Carbone ICE: DOCX and ODT to PDF, the fastest (keep "L" for SmartArt, ' +
+  'complex charts, comments, form fields, equations). "O" OnlyOffice: DOCX, XLSX, PPTX to PDF. "C" Chromium: HTML ' +
+  'and SVG to PDF, PNG, JPG, WEBP. Details: get_capabilities.';
 
 /** convertTo guidance shared by both tools. */
 export const OUTPUT_FORMAT_DESCRIPTION =
-  'Valid outputs depend on the input format (e.g. HTML converts to pdf, docx or png, but not xlsx); ' +
-  'see the conversion matrix: ' + DOCS + '#output-file-type. ' +
-  '"doc", "xls" and "ppt" are output formats; as input, use DOCX, XLSX or PPTX. ' +
-  'Simple usage: "pdf". With options: { "formatName": "pdf", "formatOptions": { ... } }.';
+  'Valid outputs depend on the input format (HTML converts to pdf or png, not xlsx; doc, xls and ppt are output ' +
+  'only). With options: { "formatName": "pdf", "formatOptions": { ... } }.';
 
 /** Target format: either a simple string or an object with advanced options. */
 export const OutputFormatSchema = z.union([
   z.enum(OUTPUT_FORMATS),
   z.object({
-    formatName: z.enum(OUTPUT_FORMATS).describe('Target format name.'),
+    // Checked against OUTPUT_FORMATS without listing them a second time in the schema the model reads.
+    formatName: z.string().refine((name) => (OUTPUT_FORMATS as readonly string[]).includes(name), {
+      message: `Unknown format. Use one of: ${OUTPUT_FORMATS.join(', ')}.`,
+    }).describe('Same values as the string form.'),
     formatOptions: z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        // Every key below exists in the OpenAPI ConvertToOption formatOptions.
-        'Format-specific options. Examples: ' +
-        'PDF password: { "EncryptFile": true, "DocumentOpenPassword": "s3cr3t" }; ' +
-        'PDF permissions: { "RestrictPermissions": true, "PermissionPassword": "owner" }; ' +
-        'PDF watermarks (max 4): { "Watermarks": [{ "text": "DRAFT", "size": 60, "opacity": 0.2, "rotation": -45 }] }; ' +
-        'PDF/A (L only): { "SelectPdfVersion": 2 } (2 = PDF/A-2b, 3 = PDF/A-3b, 4 = PDF/A-4); ' +
-        'page selection (L only): { "PageRange": "1-5" }; ' +
-        'accessibility (L only): { "UseTaggedPDF": true, "PDFUACompliance": true }; ' +
-        'JPG/PNG: { "PixelWidth": 1200, "PixelHeight": 630 }, JPG quality: { "Quality": 80 } (1-100); ' +
-        'CSV: { "fieldSeparator": ";" }. ' +
-        'All options: ' + DOCS + '#pdf-options'
+        // Every key below exists in the Carbone documentation; get_capabilities lists them all.
+        'PDF: { "EncryptFile": true, "DocumentOpenPassword": "s3cr3t" }, { "Watermarks": [{ "text": "DRAFT", ' +
+        '"opacity": 0.2 }] }, PDF/A { "SelectPdfVersion": 2 } or { "PageRange": "1-5" } (converter "L"). ' +
+        'Images: { "PixelWidth": 1200, "Scale": 2, "Quality": 80 }. CSV: { "fieldSeparator": ";" }. ' +
+        'All options: get_capabilities.'
       ),
   }),
 ]);

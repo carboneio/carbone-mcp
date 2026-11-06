@@ -8,19 +8,29 @@ import { AuthorizationServerUnavailableError, logOAuth } from '../carbone/tokenE
 import { isBlockedIp } from '../utils/file.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
-import { serverInfo, SERVER_OPTIONS } from './serverInfo.js';
-import type { OAuthConfig } from './config.js';
+import { serverInfo, serverOptionsFor } from './serverInfo.js';
+import type { JobStoreConfig, OAuthConfig, TicketConfig } from './config.js';
 import { createOAuthGate } from './oauth.js';
+import { uploadSealer as createUploadSealer, UPLOAD_PATH } from './uploadTicket.js';
+import { createJobs, JOB_TOKEN_HEADER, JOB_TTL_SECONDS, WEBHOOK_BODY_TIMEOUT_MS, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_PATH } from './jobs.js';
+import { createDirStore, createObjectStore } from './objectStore.js';
+import { UPLOAD_TICKET_HEADER, UPLOAD_TIMEOUT_MS, createUploadIssuer, createUploadRoute } from './upload.js';
 
-export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
+/** Time for an MCP request body to arrive (the Carbone API max timeout + 5 s, as the server's requestTimeout was). */
+const MCP_BODY_TIMEOUT_MS = 65_000;
+
+export function parseBody(req: IncomingMessage, maxBytes: number, timeoutMs = MCP_BODY_TIMEOUT_MS): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
+    // The server-wide requestTimeout is longer when upload URLs are on, so an MCP body keeps its own deadline.
+    const deadline = setTimeout(() => req.destroy(new Error('Request body timeout')), timeoutMs);
     const onData = (chunk: Buffer) => {
       totalBytes += chunk.length;
       if (totalBytes > maxBytes) {
         // Stop reading at the limit instead of draining the rest: the caller answers 413 with
         // "Connection: close", so the socket is closed once that response is sent.
+        clearTimeout(deadline);
         req.off('data', onData);
         req.pause();
         reject(new Error('Request body too large'));
@@ -30,12 +40,16 @@ export function parseBody(req: IncomingMessage, maxBytes: number): Promise<unkno
     };
     req.on('data', onData);
     req.on('end', () => {
+      clearTimeout(deadline);
       const raw = Buffer.concat(chunks).toString();
       if (!raw) { resolve(undefined); return; }
       try { resolve(JSON.parse(raw)); }
       catch { reject(new Error('Invalid JSON body')); }
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      clearTimeout(deadline);
+      reject(err);
+    });
   });
 }
 
@@ -139,10 +153,24 @@ export async function startHttpServer(options: {
   openAiAppsChallenge?: string;
   /** OAuth mode; API-key mode when unset. */
   oauth?: OAuthConfig;
+  /** Upload URLs for upload_template (MCP_TICKET_SECRET); off when unset. */
+  tickets?: TicketConfig;
+  /** With tickets: where async renders keep their results (MCP_S3_* or MCP_JOBS_DIR); async renders off when unset. */
+  jobStore?: JobStoreConfig;
 }): Promise<Server> {
   const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork, allowedOriginHostnames } = options;
   // Built before listening, so a bad issuer stops the server at startup.
   const oauthGate = options.oauth ? createOAuthGate(options.oauth) : undefined;
+  // Upload URLs and async renders: tokens sealed with the shared secret, so whichever instance receives the next
+  // request (the file, Carbone's webhook call, the assistant asking for the result) can open them.
+  const { tickets, jobStore } = options;
+  const uploadSealer = tickets && createUploadSealer(tickets.secret, tickets.publicUrl);
+  const uploadIssuer = uploadSealer && createUploadIssuer({ sealer: uploadSealer, publicUrl: tickets.publicUrl });
+  const handleUpload = uploadSealer && createUploadRoute({ sealer: uploadSealer, client, maxBytes: maxFileBytes, exchange: oauthGate?.exchangeForUpload });
+  const store = jobStore && ('dir' in jobStore ? createDirStore(jobStore.dir, { maxAgeMs: JOB_TTL_SECONDS * 1000 }) : createObjectStore(jobStore));
+  const jobs = tickets && store && createJobs({ secret: tickets.secret, publicUrl: tickets.publicUrl, store });
+  const bodyPaths = [mcpPath, ...(handleUpload ? [UPLOAD_PATH] : []), ...(jobs ? [WEBHOOK_PATH] : [])];
+  const serverOptions = serverOptionsFor({ allowLocalPath: false, allowFileOutput: false, allowUploadUrl: !!uploadIssuer, allowAsync: !!jobs });
   /** OAuth mode: how the first MCP requests were addressed is logged, to check the client address on a new platform. */
   let addressSamples = oauthGate ? 3 : 0;
 
@@ -178,7 +206,7 @@ export async function startHttpServer(options: {
   const onerror = (err: Error) =>
     process.stderr.write(`[carbone-mcp] MCP error: ${err.message.replace(/[^\x20-\x7E]/g, '')}\n`);
   const mcpHandler = createMcpHandler(() => {
-    const mcpServer = new McpServer(serverInfo(version), SERVER_OPTIONS);
+    const mcpServer = new McpServer(serverInfo(version), serverOptions);
     // HTTP clients are remote: they may neither write outputPath to the server's disk nor read
     // local paths from it (that would expose server files such as /proc/self/environ).
     registerTools(mcpServer, client, {
@@ -186,6 +214,8 @@ export async function startHttpServer(options: {
       allowFileInput: false,
       allowPrivateNetwork,
       maxFileBytes,
+      ...(uploadIssuer && { uploads: uploadIssuer }),
+      ...(jobs && { jobs }),
     });
     registerResources(mcpServer, client);
     return mcpServer;
@@ -197,8 +227,7 @@ export async function startHttpServer(options: {
   // listed hostname, otherwise it is answered 403. Non-browser clients send no Origin and pass.
   const validateOrigin = originValidation([...localhostAllowedOrigins(), ...allowedOriginHostnames]);
 
-  const httpServer = createServer(
-    async (req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse) => {
+  const handleRequest = async (req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse) => {
       const start = Date.now();
       let pathname: string;
       try {
@@ -206,6 +235,11 @@ export async function startHttpServer(options: {
       } catch {
         res.writeHead(400).end('Bad Request');
         return;
+      }
+      // Only the MCP endpoint, uploads and the webhook read a body: elsewhere, close the connection after answering
+      // rather than let Node drain one (under requestTimeout, which upload URLs lengthen).
+      if (!bodyPaths.includes(pathname) && (req.headers['content-length'] || req.headers['transfer-encoding'])) {
+        res.setHeader('Connection', 'close');
       }
       // OAuth mode: the address the failed-token limit applies to, and the one logged. API-key mode logs, as before,
       // the first X-Forwarded-For entry (set by reverse proxies such as nginx, but also by the client) or the socket.
@@ -217,7 +251,7 @@ export async function startHttpServer(options: {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Protocol-Version, Mcp-Method, Mcp-Name');
+      res.setHeader('Access-Control-Allow-Headers', `Content-Type, Authorization, Mcp-Protocol-Version, Mcp-Method, Mcp-Name, ${UPLOAD_TICKET_HEADER}`);
       // Browser clients must be able to read the OAuth challenge, and how long to wait after a 429 or 503.
       res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Mcp-Session-Id, Retry-After');
       res.on('finish', () => {
@@ -304,6 +338,30 @@ export async function startHttpServer(options: {
           return;
         }
 
+        // ── Async render webhook (MCP_TICKET_SECRET + a job store) ────────────
+        // Carbone's one call per async render, authenticated by the sealed job token it sends back, checked before
+        // the body is read; see jobs.ts.
+        if (jobs && pathname === WEBHOOK_PATH) {
+          if (req.method !== 'POST') {
+            res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'POST' });
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+          const token = req.headers[JOB_TOKEN_HEADER];
+          const status = await jobs.record(typeof token === 'string' ? token : undefined, () => parseBody(req, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_BODY_TIMEOUT_MS));
+          // Refused, the body is left unread: close the connection after answering.
+          res.writeHead(status, { 'Content-Type': 'application/json', ...(status !== 200 && { Connection: 'close' }) });
+          res.end(JSON.stringify(status === 200 ? { ok: true } : { error: 'Invalid job token' }));
+          return;
+        }
+
+        // ── Upload URLs (MCP_TICKET_SECRET) ───────────────────────────────────
+        // Authenticated by the ticket alone, checked before the body is read; see src/server/upload.ts.
+        if (handleUpload && pathname === UPLOAD_PATH) {
+          await handleUpload(req, res);
+          return;
+        }
+
         // ── 404 ───────────────────────────────────────────────────────────────
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -312,7 +370,7 @@ export async function startHttpServer(options: {
           if (err instanceof Error && err.message === 'Request body too large') {
             // The unread rest of the body is still in flight: close the connection after answering.
             res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
-            res.end(JSON.stringify({ error: 'Request body too large', maxBytes: maxBodyBytes }));
+            res.end(JSON.stringify({ error: 'Request body too large', maxBytes: pathname === WEBHOOK_PATH ? WEBHOOK_MAX_BODY_BYTES : maxBodyBytes }));
           } else if (err instanceof AuthorizationServerUnavailableError) {
             // OAuth mode: the token could not be checked or exchanged. 503, never 401, which would send the
             // client to sign in again for nothing.
@@ -337,11 +395,20 @@ export async function startHttpServer(options: {
           `[carbone-mcp] HTTP error: ${(err instanceof Error ? err.message : String(err)).replace(/[^\x20-\x7E]/g, '')}\n`
         );
       }
-    }
-  );
+  };
 
-  // Abort requests that take longer than the Carbone API max timeout (65 s > 60 s)
-  httpServer.requestTimeout = 65_000;
+  const httpServer = createServer(handleRequest);
+  // A client waiting for "100 Continue" (curl does for bodies over 1 MiB) is told to send at once, except on uploads,
+  // whose route says so only once the upload URL is checked: a refused upload is then never transferred.
+  httpServer.on('checkContinue', (req: IncomingMessage, res: ServerResponse) => {
+    if (!handleUpload || !req.url?.startsWith(UPLOAD_PATH)) res.writeContinue();
+    void handleRequest(req, res);
+  });
+
+  // Abort requests that take longer than the Carbone API max timeout (65 s > 60 s). With upload URLs, a request may
+  // be a whole template file arriving: the limit covers the token exchange (10 s) and the upload's own limit. MCP
+  // bodies keep 65 s (MCP_BODY_TIMEOUT_MS), and an upload that arrives too slowly is dropped sooner (MIN_UPLOAD_RATE).
+  httpServer.requestTimeout = handleUpload ? UPLOAD_TIMEOUT_MS + 15_000 : MCP_BODY_TIMEOUT_MS;
 
   // Graceful shutdown — stop accepting connections, wait for in-flight requests.
   // Force-exit after 10 s to avoid hanging indefinitely on stuck keep-alive connections.
@@ -372,6 +439,17 @@ export async function startHttpServer(options: {
   process.stderr.write(`Health check : http://0.0.0.0:${port}/health\n`);
   if (options.oauth) {
     process.stderr.write(`OAuth mode   : resource ${options.oauth.resourceUrl}, authorization server ${options.oauth.issuer}\n`);
+  }
+  if (tickets) {
+    process.stderr.write(`Upload URLs  : ${new URL(UPLOAD_PATH, tickets.publicUrl).href}\n`);
+  }
+  if (jobs && tickets && jobStore) {
+    process.stderr.write(`Async renders: webhook ${new URL(WEBHOOK_PATH, tickets.publicUrl).href}, results in ${'dir' in jobStore ? `directory ${jobStore.dir}` : `bucket ${jobStore.bucket}`}\n`);
+    // Reading an object that does not exist must answer "none": otherwise every pending job reads as an error.
+    void store!.get('jobs/startup-check').catch((err: unknown) => process.stderr.write(
+      `Async renders: the job store cannot be read (${err instanceof Error ? err.message : String(err)}). ` +
+      'With S3, the access key needs to read, write and list the bucket (a missing object then answers 404, not 403).\n'
+    ));
   }
   return httpServer;
 }

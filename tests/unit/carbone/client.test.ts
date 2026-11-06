@@ -53,6 +53,10 @@ describe('CarboneClient', () => {
       expect(client['timeout']).toBe(60000);
     });
 
+    test('renderUrl asks for an attachment, named after the resolved reportName (verified live)', () => {
+      expect(client.renderUrl('abc')).toBe('https://api.carbone.io/render/abc?download=true');
+    });
+
     test('accepts custom base URL and timeout', () => {
       const c = new CarboneClient({ apiKey: 'k', baseUrl: 'https://custom.io', timeout: 5000 });
       expect(c['baseUrl']).toBe('https://custom.io');
@@ -1312,5 +1316,35 @@ describe('CarboneClient', () => {
       expect(error).not.toBeInstanceOf(CarboneConnectionError);
       expect(formatError(error)).not.toContain('timed out');
     });
+  });
+});
+
+describe('uploadTemplateStream: Carbone refusing before reading the whole file', () => {
+  test('the error is returned at once, though Carbone stops reading and keeps the connection open', async () => {
+    const { createServer } = await import('node:net');
+    // Answers 401 on the first bytes, then reads nothing more and never closes: the client's writes back up.
+    const server = createServer((socket) => {
+      socket.once('data', () => {
+        socket.pause();
+        const body = JSON.stringify({ success: false, error: 'Invalid token' });
+        socket.write(`HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}`);
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as { port: number };
+    const size = 64 * 1024 * 1024;
+    async function* content() {
+      const chunk = new Uint8Array(1024 * 1024);
+      for (let sent = 0; sent < size; sent += chunk.length) yield chunk;
+    }
+    const started = Date.now();
+    try {
+      const upload = new CarboneClient({ baseUrl: `http://127.0.0.1:${port}`, transport: 'http' })
+        .uploadTemplateStream({ fields: [], size, content: content(), timeoutMs: 30_000 }, { apiKey: 'k' });
+      await expect(upload).rejects.toBeInstanceOf(CarboneAuthError);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      server.close();
+    }
   });
 });

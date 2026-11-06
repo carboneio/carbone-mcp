@@ -315,6 +315,12 @@ export interface OAuthGate {
    * the signal's reason when the client left before the exchange.
    */
   authenticate(authorization: string | undefined, signal?: AbortSignal, clientAddress?: string): Promise<AuthInfo | Response>;
+  /**
+   * Upload URLs: the Carbone API key for a caller's own token sealed in an upload ticket (`extra.uploadSubject`),
+   * exchanged when the file arrives. A token refused since then throws CarboneAuthError; an unreachable
+   * authorization server, AuthorizationServerUnavailableError.
+   */
+  exchangeForUpload(subjectToken: string, signal?: AbortSignal): Promise<string>;
 }
 
 export function createOAuthGate(
@@ -406,8 +412,14 @@ export function createOAuthGate(
           // problem (503), for this token only, asked again once the refusal is forgotten.
           throw new AuthorizationServerUnavailableError('The authorization server refused to exchange an active token', REFUSED_SUBJECT_SECONDS);
         });
-        // The client's own token stops here: the request carries the exchanged key, and the means to renew it.
-        return { ...authInfo, token: key, extra: { ...authInfo.extra, refreshKey: refreshKeyFor(authInfo.token, key) } };
+        // The client's own token stops here: the request carries the exchanged key, and the means to renew it. It
+        // only goes on, behind a function so that it is never serialized or logged, into a sealed upload ticket.
+        const subjectToken = authInfo.token;
+        return {
+          ...authInfo,
+          token: key,
+          extra: { ...authInfo.extra, refreshKey: refreshKeyFor(subjectToken, key), uploadSubject: () => subjectToken },
+        };
       } catch (err) {
         if (err instanceof TooManyFailedAttemptsError) {
           return Response.json(
@@ -416,6 +428,22 @@ export function createOAuthGate(
           );
         }
         if (err instanceof OAuthError) return bearerAuthChallengeResponse(err, bearer);
+        throw err;
+      }
+    },
+    async exchangeForUpload(subjectToken, signal) {
+      const refused = () => new CarboneAuthError('Your Carbone sign-in has expired or was revoked: sign in again from your MCP client, then ask for a new upload URL.');
+      try {
+        // Checked again as an MCP request is (the verdict is cached a minute), not only exchanged: the exchanged key
+        // may be cached for longer, and a sign-in revoked since the URL was issued must stop it.
+        await verifier.verify(subjectToken);
+        return await exchanger.exchange(subjectToken, signal);
+      } catch (err) {
+        if (err instanceof OAuthError) throw refused();
+        if (err instanceof SubjectTokenRejectedError) {
+          if (!err.repeated) verifier.forget(subjectToken);
+          throw refused();
+        }
         throw err;
       }
     },

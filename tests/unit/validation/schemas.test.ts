@@ -8,6 +8,8 @@ import {
   DownloadTemplateSchema,
   OutputFormatSchema,
 } from '../../../src/validation/schemas.js';
+import { z } from 'zod';
+import { listTemplatesSchema } from '../../../src/tools/templates.js';
 
 describe('OutputFormatSchema', () => {
   test('accepts a simple format string', () => {
@@ -239,6 +241,9 @@ describe('RenderDocumentSchema', () => {
     expect(RenderDocumentSchema.parse({ templateId: 'tpl1', failOn: ['IMAGE_URL_ERROR'] }).failOn).toEqual(['IMAGE_URL_ERROR']);
     expect(RenderDocumentSchema.safeParse({ templateId: 'tpl1', failOn: ['UNKNOWN_ERROR'] }).success).toBe(false);
     expect(RenderDocumentSchema.safeParse({ templateId: 'tpl1', failOn: 'IMAGE_URL_ERROR' }).success).toBe(false);
+    // convert_document takes the same option (Chromium conversions download images too, v5.16.0+)
+    expect(ConvertDocumentSchema.parse({ file: 'data', convertTo: 'pdf', failOn: ['IMAGE_URL_ERROR'] }).failOn).toEqual(['IMAGE_URL_ERROR']);
+    expect(ConvertDocumentSchema.safeParse({ file: 'data', convertTo: 'pdf', failOn: ['UNKNOWN_ERROR'] }).success).toBe(false);
   });
 
   test('preReleaseFeatureIn: integer accepted, non-integer rejected', () => {
@@ -249,6 +254,30 @@ describe('RenderDocumentSchema', () => {
   test('egressAuthorization: 511 characters accepted, 512 rejected', () => {
     expect(RenderDocumentSchema.safeParse({ templateId: 'tpl1', egressAuthorization: 'x'.repeat(511) }).success).toBe(true);
     expect(RenderDocumentSchema.safeParse({ templateId: 'tpl1', egressAuthorization: 'x'.repeat(512) }).success).toBe(false);
+  });
+});
+
+describe('Template ID fields are digits only (the API refuses the rest with a 400 from Carbone v5.16.0)', () => {
+  const ListTemplatesSchema = z.object(listTemplatesSchema);
+  const cases: Array<[string, (id: string) => { success: boolean; error?: z.ZodError }]> = [
+    ['upload_template id',                   (id) => UploadTemplateSchema.safeParse({ template: 'data', id })],
+    ['list_templates id',                    (id) => ListTemplatesSchema.safeParse({ id })],
+    ['update_template_metadata moveToTemplateId', (id) => UpdateTemplateSchema.safeParse({ templateId: 'sha-v1', moveToTemplateId: id })],
+    ['update_template_metadata id (deprecated)',  (id) => UpdateTemplateSchema.safeParse({ templateId: 'sha-v1', id })],
+  ];
+
+  test('accepts a 64-bit Template ID', () => {
+    for (const [field, parse] of cases) expect(parse('1530905183164918624').success, field).toBe(true);
+  });
+
+  test('refuses an empty string, spaces, hex and a Version ID, naming the field', () => {
+    for (const [field, parse] of cases) {
+      for (const bad of ['', ' 12 ', '0x1F', 'a'.repeat(64)]) {
+        const result = parse(bad);
+        expect(result.success, `${field}: ${JSON.stringify(bad)}`).toBe(false);
+        expect(result.error!.issues[0]!.message).toMatch(/Template ID \(64-bit format, digits only/);
+      }
+    }
   });
 });
 

@@ -127,6 +127,16 @@ describe('handleConvertDocument', () => {
     );
   });
 
+  test('passes failOn to client (Chromium conversions download images, v5.16.0+)', async () => {
+    const client = makeClient();
+    await handleConvertDocument({ file: 'data', convertTo: 'pdf', converter: 'C', failOn: ['IMAGE_URL_ERROR'] }, client);
+
+    expect(vi.mocked(client.convertDocument)).toHaveBeenCalledWith(
+      expect.objectContaining({ converter: 'C', failOn: ['IMAGE_URL_ERROR'] }),
+      undefined
+    );
+  });
+
   test('does not send reportName to Carbone (ignored without templating)', async () => {
     const client = makeClient();
     await handleConvertDocument({ file: 'data', convertTo: 'pdf', reportName: 'contract' }, client);
@@ -203,8 +213,9 @@ describe('PDF → PDF: hardRefresh defaults to true when formatOptions must be a
   /** The exact JSON body sent to POST /render/template. */
   async function bodyFor(input: string, args: Omit<Parameters<typeof handleConvertDocument>[0], 'file'>) {
     vi.mocked(resolveFileInput).mockResolvedValue(input);
+    // No FileContext: the HTTP default, where a PDF comes back as a one-time link (a renderId).
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(Buffer.from('%PDF-1.7'), { status: 200, headers: { 'content-disposition': 'filename="report.pdf"' } })
+      new Response(JSON.stringify({ success: true, data: { renderId: 'r1' } }), { status: 200 })
     );
     const client = new CarboneClient({ apiKey: 'test-key' });
     const result = await handleConvertDocument({ file: 'in', ...args }, client);

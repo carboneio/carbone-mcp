@@ -174,10 +174,11 @@ describe('HTTP mode: authentication is checked before any URL is fetched', () =>
   test('a call that can authenticate (on-premise Carbone, no key needed) still downloads its input', async () => {
     // Stand-in for an on-premise Carbone server, loopback only.
     let carboneCalls = 0;
+    // Over HTTP a PDF is delivered as a one-time link, so the render answers with a renderId.
     const carbone = createServer((_req, res) => {
       carboneCalls++;
-      res.setHeader('content-disposition', 'attachment; filename="report.pdf"');
-      res.end('%PDF-1.7');
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ success: true, data: { renderId: 'r1' } }));
     });
     await new Promise<void>((resolve) => carbone.listen(0, '127.0.0.1', resolve));
     try {

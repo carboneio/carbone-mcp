@@ -1,3 +1,8 @@
+import { randomBytes } from 'node:crypto';
+import { request as httpRequest, type IncomingMessage } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
   CarboneAuthError,
   CarboneConnectionError,
@@ -103,10 +108,11 @@ export class CarboneClient {
 
   /**
    * Public one-time download URL for a renderId (produced by render/convert with returnLink).
-   * The endpoint needs no auth; Carbone deletes the file after the first GET.
+   * The endpoint needs no auth; Carbone deletes the file after the first GET. `download=true` serves it as an
+   * attachment named after the resolved reportName (inline otherwise, as "report.<ext>" in the browser viewer).
    */
   renderUrl(renderId: string): string {
-    return `${this.baseUrl}/render/${renderId}`;
+    return `${this.baseUrl}/render/${encodeURIComponent(renderId)}?download=true`;
   }
 
   /**
@@ -122,6 +128,7 @@ export class CarboneClient {
     convertTo: OutputFormat;
     converter?: string;
     hardRefresh?: boolean;
+    failOn?: string[];
     returnLink?: boolean;
     egressAuthorization?: string;
   }, options?: CallOptions): Promise<{ buffer: Buffer; filename: string } | { renderId: string }> {
@@ -135,6 +142,7 @@ export class CarboneClient {
     };
     if (params.converter)                 body['converter']   = params.converter;
     if (params.hardRefresh !== undefined) body['hardRefresh'] = params.hardRefresh;
+    if (params.failOn)                    body['failOn']      = params.failOn;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     // Authorize Carbone's egress fetches (external images/PDFs during conversion).
@@ -329,6 +337,75 @@ export class CarboneClient {
       body: JSON.stringify(body),
     }, options);
 
+    const json = await response.json() as { data: UploadTemplateResult };
+    return json.data;
+  }
+
+  /**
+   * Upload a template whose bytes are streamed, not held in memory: POST /template as multipart/form-data.
+   * `fields` come first and in order (Carbone requires id, versioning and salt before the file), then the file.
+   * `content` must yield exactly `size` bytes; if it throws instead, the request is destroyed before the final
+   * boundary, so Carbone stores nothing. The body cannot be sent twice, so there is no retry with a renewed key.
+   * node:http rather than fetch: before Node 26.8, fetch keeps every chunk of a streamed body until the request ends
+   * (measured: a 100 MB upload held 100 MB), whereas pipeline() keeps memory flat with backpressure.
+   */
+  async uploadTemplateStream(params: {
+    fields: Array<[string, string]>;
+    size: number;
+    content: AsyncIterable<Uint8Array>;
+    timeoutMs: number;
+  }, options?: CallOptions): Promise<UploadTemplateResult> {
+    const boundary = `----carbone-mcp-${randomBytes(16).toString('hex')}`;
+    const head = Buffer.from(
+      params.fields.map(([name, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`).join('') +
+      `--${boundary}\r\nContent-Disposition: form-data; name="template"; filename="template"\r\n` +
+      'Content-Type: application/octet-stream\r\n\r\n'
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    async function* body(): AsyncGenerator<Uint8Array> {
+      yield head;
+      yield* params.content;
+      yield tail;
+    }
+    const key = this.resolveKey(options);
+    const { timeoutMs } = params;
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const url = new URL(`${this.baseUrl}/template`);
+    const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
+      method: 'POST',
+      signal: options?.signal ? AbortSignal.any([timeout, options.signal]) : timeout,
+      headers: {
+        ...(key && { Authorization: `Bearer ${key}` }),
+        'carbone-version': '5',
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(head.length + params.size + tail.length),
+      },
+    });
+    const responded = new Promise<IncomingMessage>((resolve, reject) => {
+      request.once('response', resolve);
+      request.once('error', reject);
+    });
+    // An error answered before the whole body was sent ends the pipe early: the response is what counts then.
+    const piping = pipeline(Readable.from(body()), request).catch(() => {});
+    let response: Response;
+    try {
+      const incoming = await responded;
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(chunk as Buffer);
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) if (typeof value === 'string') headers.set(name, value);
+      response = new Response(Buffer.concat(chunks), { status: incoming.statusCode ?? 502, statusText: incoming.statusMessage ?? '', headers });
+      // Refused before the whole file was sent: stop sending, rather than wait for a connection Carbone may keep open.
+      if (response.ok) await piping;
+      else request.destroy();
+    } catch (err) {
+      // Same reporting as send(): a cancellation as is, a timeout or network failure as a connection error.
+      if (options?.signal?.aborted) throw err;
+      if (timeout.aborted) throw new CarboneConnectionError(`Carbone API request timed out after ${timeoutMs / 1000} s.`, err);
+      const reason = (err as { code?: string } | undefined)?.code ?? (err instanceof Error ? err.message : String(err));
+      throw new CarboneConnectionError(`Could not reach the Carbone API at ${url.host}: ${reason}.`, err);
+    }
+    if (!response.ok) throw await this.buildError(response);
     const json = await response.json() as { data: UploadTemplateResult };
     return json.data;
   }

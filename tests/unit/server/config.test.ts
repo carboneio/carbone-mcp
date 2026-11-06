@@ -1,4 +1,6 @@
 import { describe, test, expect, afterEach, vi } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from '../../../src/server/config.js';
 import { CarboneClient } from '../../../src/carbone/client.js';
 
@@ -455,5 +457,104 @@ describe('loadConfig: OAuth mode', () => {
   test('a resource that is not a URL is refused', () => {
     stubOAuth({ ...OAUTH_ENV, MCP_RESOURCE_URL: 'mcp.example.test' });
     expect(() => loadConfig()).toThrow('Invalid MCP_RESOURCE_URL value "mcp.example.test". Must be an absolute URL');
+  });
+});
+
+// ─── Upload URLs (MCP_TICKET_SECRET) ─────────────────────────────────────────
+
+describe('loadConfig: upload URLs', () => {
+  const SECRET = Buffer.alloc(32, 3).toString('base64');
+
+  function stubUploads(env: Record<string, string>) {
+    stubHttp('');
+    vi.stubEnv('MCP_PATH', '/mcp');
+    for (const name of ['MCP_TICKET_SECRET', 'MCP_PUBLIC_URL', 'MCP_OAUTH_ISSUER', 'MCP_OAUTH_CLIENT_ID', 'MCP_OAUTH_CLIENT_SECRET', 'MCP_RESOURCE_URL']) vi.stubEnv(name, '');
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+  }
+
+  test('off by default', () => {
+    stubUploads({});
+    expect(loadConfig().tickets).toBeUndefined();
+  });
+
+  test('API-key mode: the secret and MCP_PUBLIC_URL', () => {
+    stubUploads({ MCP_TICKET_SECRET: SECRET, MCP_PUBLIC_URL: 'https://mcp.example.test' });
+    expect(loadConfig().tickets).toEqual({ secret: Buffer.alloc(32, 3), publicUrl: 'https://mcp.example.test' });
+  });
+
+  test('OAuth mode: the public URL defaults to the origin of MCP_RESOURCE_URL', () => {
+    stubUploads({
+      MCP_TICKET_SECRET: SECRET, MCP_PATH: '/', MCP_OAUTH_CLIENT_ID: 'c', MCP_OAUTH_CLIENT_SECRET: 's', MCP_RESOURCE_URL: 'https://mcp.example.test',
+    });
+    expect(loadConfig().tickets?.publicUrl).toBe('https://mcp.example.test');
+  });
+
+  test('refused: no public URL, a public URL with a path, stdio, MCP_PATH /upload, a short secret', () => {
+    stubUploads({ MCP_TICKET_SECRET: SECRET });
+    expect(() => loadConfig()).toThrow(/set MCP_PUBLIC_URL/);
+    stubUploads({ MCP_TICKET_SECRET: SECRET, MCP_PUBLIC_URL: 'https://mcp.example.test/base' });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_PUBLIC_URL/);
+    stubUploads({ MCP_TICKET_SECRET: SECRET, MCP_PUBLIC_URL: 'http://mcp.example.test' });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_PUBLIC_URL/);
+    stubUploads({ MCP_TICKET_SECRET: SECRET, MCP_PUBLIC_URL: 'https://mcp.example.test', MCP_PATH: '/upload' });
+    expect(() => loadConfig()).toThrow(/MCP_PATH "\/upload" is reserved for upload URLs and async renders/);
+    stubUploads({ MCP_TICKET_SECRET: 'c2hvcnQ=', MCP_PUBLIC_URL: 'https://mcp.example.test' });
+    expect(() => loadConfig()).toThrow(/openssl rand -base64 32/);
+    stubStdio();
+    vi.stubEnv('MCP_TICKET_SECRET', SECRET);
+    expect(() => loadConfig()).toThrow(/for the HTTP transport/);
+  });
+});
+
+// ─── Async renders (MCP_S3_*) ────────────────────────────────────────────────
+
+describe('loadConfig: async renders', () => {
+  const S3 = {
+    MCP_S3_ENDPOINT: 'https://s3.example.test', MCP_S3_REGION: 'eu-west-1', MCP_S3_BUCKET: 'mcp-jobs',
+    MCP_S3_ACCESS_KEY_ID: 'AK', MCP_S3_SECRET_ACCESS_KEY: 'SK',
+  };
+
+  function stubAsync(env: Record<string, string>) {
+    stubHttp('');
+    vi.stubEnv('MCP_PATH', '/mcp');
+    for (const name of ['MCP_TICKET_SECRET', 'MCP_PUBLIC_URL', 'MCP_OAUTH_ISSUER', 'MCP_OAUTH_CLIENT_ID', 'MCP_OAUTH_CLIENT_SECRET', 'MCP_RESOURCE_URL', 'MCP_JOBS_DIR', ...Object.keys(S3)]) vi.stubEnv(name, '');
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+  }
+  const TICKETS = { MCP_TICKET_SECRET: Buffer.alloc(32, 3).toString('base64'), MCP_PUBLIC_URL: 'https://mcp.example.test' };
+
+  test('off without MCP_S3_*; on with all of them and the ticket secret', () => {
+    stubAsync(TICKETS);
+    expect(loadConfig().jobStore).toBeUndefined();
+    stubAsync({ ...TICKETS, ...S3 });
+    expect(loadConfig().jobStore).toEqual({ endpoint: 'https://s3.example.test', region: 'eu-west-1', bucket: 'mcp-jobs', accessKeyId: 'AK', secretAccessKey: 'SK' });
+  });
+
+  test('refused: some MCP_S3_* only, no ticket secret, an endpoint that is no https origin, a bad bucket, MCP_PATH /webhook', () => {
+    stubAsync({ ...TICKETS, MCP_S3_BUCKET: 'mcp-jobs' });
+    expect(() => loadConfig()).toThrow(/partially configured: set MCP_S3_ENDPOINT, MCP_S3_REGION, MCP_S3_ACCESS_KEY_ID, MCP_S3_SECRET_ACCESS_KEY/);
+    stubAsync(S3);
+    expect(() => loadConfig()).toThrow(/need MCP_TICKET_SECRET/);
+    stubAsync({ ...TICKETS, ...S3, MCP_S3_ENDPOINT: 'http://s3.example.test' });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_S3_ENDPOINT/);
+    stubAsync({ ...TICKETS, ...S3, MCP_S3_ENDPOINT: 'https://s3.example.test/path' });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_S3_ENDPOINT/);
+    stubAsync({ ...TICKETS, ...S3, MCP_S3_BUCKET: 'Bad_Bucket' });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_S3_BUCKET/);
+    stubAsync({ ...TICKETS, ...S3, MCP_PATH: '/webhook' });
+    expect(() => loadConfig()).toThrow(/reserved for upload URLs and async renders/);
+  });
+
+  test('MCP_JOBS_DIR: an existing, writable, absolute directory, with the ticket secret, and not with MCP_S3_*', () => {
+    const dir = tmpdir();
+    stubAsync({ ...TICKETS, MCP_JOBS_DIR: dir });
+    expect(loadConfig().jobStore).toEqual({ dir });
+    stubAsync({ ...TICKETS, MCP_JOBS_DIR: join(dir, 'does-not-exist-mcp-jobs') });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_JOBS_DIR.*existing, writable directory/);
+    stubAsync({ ...TICKETS, MCP_JOBS_DIR: 'relative/jobs' });
+    expect(() => loadConfig()).toThrow(/Invalid MCP_JOBS_DIR/);
+    stubAsync({ MCP_JOBS_DIR: dir });
+    expect(() => loadConfig()).toThrow(/need MCP_TICKET_SECRET/);
+    stubAsync({ ...TICKETS, ...S3, MCP_JOBS_DIR: dir });
+    expect(() => loadConfig()).toThrow(/MCP_JOBS_DIR or in MCP_S3_\*, not both/);
   });
 });

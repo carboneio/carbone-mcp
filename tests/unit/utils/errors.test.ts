@@ -54,6 +54,19 @@ describe('formatError', () => {
     }
   });
 
+  test('explains an unresolved host (ENOTFOUND) as a possible private-network refusal, for Cloud and self-hosted', () => {
+    const result = formatError(new CarboneGenerationError(
+      'Unable to generate the document. Unable to download file from URL http://intranet.local/logo.png: getaddrinfo ENOTFOUND intranet.local', 'w101'
+    ));
+    expect(result).toContain('Document generation failed (Carbone w101)');
+    expect(result).toMatch(/private network/);
+    expect(result).toMatch(/securityLevel 1024/);
+    expect(result).toMatch(/v5\.16\.0/);
+
+    const other = formatError(new CarboneGenerationError('Unable to generate the document. Error: bad tag', 'w101'));
+    expect(other).not.toMatch(/private network/);
+  });
+
   test('formats CarboneGenerationError as a request-caused failure with its code, never "try again"', () => {
     const result = formatError(new CarboneGenerationError('Unable to generate the document. Error: bad tag', 'w101'));
     expect(result).toContain('Document generation failed (Carbone w101): Unable to generate the document. Error: bad tag');

@@ -6,7 +6,8 @@ import { resolveFileInput } from '../utils/file.js';
 import { formatError } from '../utils/errors.js';
 import type { FileContext } from './output.js';
 import { TEMPLATE_XOR_MESSAGE } from './render.js';
-import { type IoModes, STDIO_IO, inputForms, inputFormsShort } from './inputForms.js';
+import { type IoModes, STDIO_IO, fieldIf, inputForms, inputFormsShort } from './inputForms.js';
+import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 
 // ─── inspect_template ────────────────────────────────────────────────────────
 
@@ -14,10 +15,8 @@ export const inspectTemplateToolName = 'inspect_template';
 
 export function inspectTemplateDescriptionFor(io: IoModes): string {
   return 'List the Carbone tags a template uses and return a sample JSON dataset matching its structure. ' +
-    'Call it before render_document when you do not know which data a template expects. ' +
-    'Pass exactly one of templateId (a stored template: Template ID or Version ID) or template: ' + inputFormsShort(io) + '. ' +
-    'It runs one render on the Carbone account and discards the document. ' +
-    '{t()} translation tags are not listed.';
+    'Call it before render_document when you do not know which data a template expects. Pass templateId (a stored ' +
+    'template) or template (' + inputFormsShort(io) + '). It counts as one render on the account; {t()} tags are not listed.';
 }
 
 /** Default (stdio) wording. */
@@ -29,21 +28,13 @@ export function inspectTemplateSchemaFor(io: IoModes) {
       .string()
       .min(1)
       .optional()
-      .describe(
-        'The ID of a stored template to inspect. Two ID formats are accepted: ' +
-        '(1) Template ID (64-bit) — the deployed version is inspected. ' +
-        '(2) Version ID (SHA-256) — that exact version is inspected. ' +
-        'Both are returned by upload_template and list_templates. ' +
-        'Mutually exclusive with template — provide exactly one, never both.'
-      ),
+      .describe('Template ID (its deployed version) or Version ID, from list_templates. Exclusive with template.'),
     template: z
       .string()
       .min(1)
       .optional()
-      .describe(
-        'Inline template to inspect, without storing it. ' + inputForms(io) + INPUT_FORMATS_DESCRIPTION + ' ' +
-        'Mutually exclusive with templateId — provide exactly one, never both.'
-      ),
+      .describe('A template to inspect, not stored. ' + inputForms(io) + INPUT_FORMATS_DESCRIPTION + ' Exclusive with templateId.'),
+    ...fieldIf(acceptsChatAttachments(io), 'attachedTemplate', chatFileSchema('template', 'template and templateId')),
   };
 }
 
@@ -101,12 +92,14 @@ function summary(inspection: Inspection): string {
 }
 
 export async function handleInspectTemplate(
-  args: { templateId?: string; template?: string },
+  args: { templateId?: string; template?: string; attachedTemplate?: ChatFile },
   client: CarboneClient,
   options?: CallOptions,
   fileCtx?: FileContext
 ) {
-  if ((args.templateId != null) === (args.template != null)) {
+  const { source: templateSource, error } = pickFile(args.template, args.attachedTemplate, ['template', 'attachedTemplate']);
+  if (error) return { isError: true, content: [{ type: 'text' as const, text: error }] };
+  if ((args.templateId != null) === (templateSource != null)) {
     return { isError: true, content: [{ type: 'text' as const, text: TEMPLATE_XOR_MESSAGE }] };
   }
 
@@ -114,9 +107,9 @@ export async function handleInspectTemplate(
     // Authenticate first: a caller without credentials must not be able to trigger any URL download.
     client.assertCanAuthenticate(options);
 
-    const debug = args.template != null
+    const debug = templateSource != null
       ? await client.inspectTemplate({
-          template: await resolveFileInput(args.template, {
+          template: await resolveFileInput(templateSource, {
             isCloud: client.isCloud,
             maxBytes: fileCtx?.maxFileBytes,
             allowLocalPath: fileCtx?.allowFileInput ?? false,

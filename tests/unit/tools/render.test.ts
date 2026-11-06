@@ -5,7 +5,7 @@ vi.mock('../../../src/utils/file.js', async (importOriginal) => {
   return { ...actual, resolveFileInput: vi.fn(), writeOutputFile: vi.fn() };
 });
 
-import { handleRenderDocument } from '../../../src/tools/render.js';
+import { handleGetRenderResult, handleRenderDocument } from '../../../src/tools/render.js';
 import { resolveFileInput, writeOutputFile } from '../../../src/utils/file.js';
 import type { CarboneClient } from '../../../src/carbone/client.js';
 import { CarboneAuthError, CarboneError } from '../../../src/carbone/errors.js';
@@ -331,5 +331,54 @@ describe('handleRenderDocument', () => {
     expect((result.content[0] as { text: string }).text).toContain('Authentication failed');
     expect(resolveFileInput).not.toHaveBeenCalled();
     expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
+  });
+});
+
+describe('delivery: the HTTP default asks Carbone for a one-time link', () => {
+  beforeEach(() => vi.mocked(resolveFileInput).mockResolvedValue('resolved-base64=='));
+  afterEach(() => vi.restoreAllMocks());
+
+  const HTTP_CTX = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 100 };
+  const linkClient = () => ({
+    assertCanAuthenticate: vi.fn(),
+    renderDocument: vi.fn().mockResolvedValue({ renderId: 'r1' }),
+    renderUrl: (id: string) => `https://api.carbone.io/render/${id}?download=true`,
+  }) as unknown as CarboneClient;
+
+  test('a PDF render over HTTP returns the link, and the client is asked for one', async () => {
+    const client = linkClient();
+    const result = await handleRenderDocument({ templateId: 't', convertTo: 'pdf' }, client, undefined, HTTP_CTX);
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(expect.objectContaining({ returnLink: true }), undefined);
+    expect((result.content[0] as { text: string }).text).toContain('https://api.carbone.io/render/r1?download=true');
+  });
+
+  test('asAttachment over HTTP still asks for the bytes', async () => {
+    const client = makeClient();
+    await handleRenderDocument({ templateId: 't', convertTo: 'pdf', asAttachment: true }, client, undefined, HTTP_CTX);
+    expect(vi.mocked(client.renderDocument)).toHaveBeenCalledWith(expect.objectContaining({ returnLink: false }), undefined);
+  });
+});
+
+describe('async renders: this server\'s own webhook', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test('refused when the server runs none, before any call', async () => {
+    const client = makeClient();
+    const result = await handleRenderDocument({ templateId: 't', async: true }, client, undefined,
+      { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1 });
+    expect(result.content[0]).toMatchObject({ text: 'This server does not run async renders: render without async, or pass a webhookUrl the user provides.' });
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
+  });
+
+  test('get_render_result: the caller is passed on, and a store failure is reported without its details', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const jobs = { start: vi.fn(), record: vi.fn(), status: vi.fn().mockRejectedValue(new Error("EACCES: permission denied, open '/srv/jobs/x'")) };
+    const result = await handleGetRenderResult({ jobId: 'x' }, makeClient(), jobs, 'key:caller');
+    expect(result).toMatchObject({ isError: true, content: [{ text: 'Could not read the render result: try again in a few seconds.' }] });
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('EACCES'));
+    stderr.mockRestore();
+    jobs.status.mockResolvedValueOnce({ status: 'pending' });
+    expect((await handleGetRenderResult({ jobId: 'x' }, makeClient(), jobs, 'key:caller')).content[0]).toMatchObject({ text: expect.stringMatching(/^Still rendering/) });
+    expect(jobs.status).toHaveBeenLastCalledWith('x', 'key:caller');
   });
 });

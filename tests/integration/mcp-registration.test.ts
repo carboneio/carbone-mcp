@@ -94,12 +94,12 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(inspect.title).toBe('Inspect Template');
     expect(inspect.annotations).toEqual({ title: 'Inspect Template', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
     expect(inspect.description).toMatch(/before render_document/);
-    expect(inspect.description).toMatch(/\{t\(\)\} translation tags are not listed/);
+    expect(inspect.description).toMatch(/\{t\(\)\} tags are not listed/);
 
     const input = inspect.inputSchema as Schema;
     expect(Object.keys(input.properties ?? {}).sort()).toEqual(['template', 'templateId']);
     expect(input.required ?? []).toEqual([]); // exactly one of the two, checked by the handler
-    expect((input.properties?.['template'] as { description?: string }).description).toMatch(/Local file path —/); // stdio
+    expect((input.properties?.['template'] as { description?: string }).description).toMatch(/absolute local path/); // stdio
 
     const output = inspect.outputSchema as Schema;
     expect(output.required?.sort()).toEqual(['sample', 'tags']);
@@ -153,6 +153,9 @@ describe('MCP registration surface (in-process, no API key)', () => {
     const upd = update.inputSchema as Schema;
 
     expect(up.required).toEqual(['template']);
+    // Upload URLs and async renders are offered only by an HTTP server with MCP_TICKET_SECRET (and MCP_S3_*).
+    expect(tools.find((t) => t.name === 'get_render_result')).toBeUndefined();
+    expect(up.properties).not.toHaveProperty('requestUploadUrl');
     expect(up.properties?.['sample']).toMatchObject({ maxItems: 1, items: { additionalProperties: false } });
     expect(up.properties?.['sample']?.items?.required).toBeUndefined();
     for (const p of [up, upd]) {
@@ -161,8 +164,9 @@ describe('MCP registration surface (in-process, no API key)', () => {
     }
     for (const p of [up, upd]) expect(p.properties?.['tags']).toMatchObject({ maxItems: 100, items: { minLength: 1, maxLength: 96 } });
     expect(upd.properties).toHaveProperty('moveToTemplateId');
-    // The API body field `id` is documented as moveToTemplateId; `id` stays only as the deprecated 1.6.0 alias.
-    expect((upd.properties?.['id'] as { description?: string } | undefined)?.description).toMatch(/^DEPRECATED: the 1\.6\.0 name of moveToTemplateId/);
+    // The API body field `id` is documented as moveToTemplateId. Its deprecated 1.6.0 name `id` is still accepted,
+    // but not listed: a model reading tools/list must not take it for the template to patch.
+    expect(upd.properties).not.toHaveProperty('id');
     expect((update.outputSchema as Schema | undefined)?.required).toEqual(['versionId']);
     expect((upload.outputSchema as Schema | undefined)?.properties).toHaveProperty('deployedAt');
     expect((upload.outputSchema as Schema | undefined)?.properties).toHaveProperty('templateExtension');
@@ -230,11 +234,12 @@ describe('MCP registration surface (in-process, no API key)', () => {
  */
 describe('structured output passes SDK output-schema validation (live API response shapes)', () => {
   let client: Client;
+  let lastUpdate: Record<string, unknown> | undefined;
   const carbone = {
     isCloud: true,
     assertCanAuthenticate: () => {},
     // PATCH name + category + tags: the API echoes "deployedAt": null although it was not sent.
-    updateTemplate: async () => ({
+    updateTemplate: async (params: Record<string, unknown>) => (lastUpdate = params, {
       name: 'BattleTest updated', category: 'bt-cat2', tags: ['bt', 'upd'], deployedAt: null, versionId: '4dc8abc',
     }),
     // POST /render/template with isDebugActive (live shape), plus nulls an older or on-premise API might send.
@@ -262,17 +267,36 @@ describe('structured output passes SDK output-schema validation (live API respon
     await client.close();
   });
 
-  test('tools/list over HTTP offers no local path and marks outputPath unavailable', async () => {
+  test('tools/list over HTTP offers no local path and no outputPath', async () => {
     const { tools } = await client.listTools();
     for (const name of ['convert_document', 'render_document', 'download_template']) {
       const tool = tools.find((t) => t.name === name)!;
-      const props = tool.inputSchema.properties as Record<string, { description?: string }>;
-      expect(props['outputPath']?.description, name).toMatch(/^NOT AVAILABLE/);
+      expect(tool.inputSchema.properties, name).not.toHaveProperty('outputPath');
     }
     const convert = tools.find((t) => t.name === 'convert_document')!;
-    expect(convert.description).toMatch(/local file paths are not accepted over HTTP/);
+    expect(convert.description).toMatch(/"file": "https:\/\/example\.com\/report\.docx"/);
     expect((convert.inputSchema.properties as Record<string, { description?: string }>)['file']?.description)
-      .not.toMatch(/Local file path —/);
+      .toMatch(/local paths are refused over HTTP/);
+  });
+
+  test('update_template_metadata: the unlisted deprecated `id` still reaches the API, and still conflicts', async () => {
+    const moved = await client.callTool({
+      name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: '1234567890' },
+    });
+    expect(moved.isError).toBeFalsy();
+    expect(lastUpdate).toMatchObject({ templateId: 'sha-v1', id: '1234567890' });
+
+    // Still validated like moveToTemplateId: digits only, never a Version ID.
+    const invalid = await client.callTool({
+      name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: 'not-a-template-id' },
+    });
+    expect(invalid.isError).toBe(true);
+
+    const conflict = await client.callTool({
+      name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: '1', moveToTemplateId: '2' },
+    });
+    expect(conflict.isError).toBe(true);
+    expect((conflict.content as Array<{ text: string }>)[0]!.text).toMatch(/Conflicting destinations/);
   });
 
   test('update_template_metadata: "deployedAt": null in the API response is not an error', async () => {
@@ -295,9 +319,9 @@ describe('structured output passes SDK output-schema validation (live API respon
   test('tools/list over HTTP: inspect_template offers no local path either', async () => {
     const { tools } = await client.listTools();
     const inspect = tools.find((t) => t.name === 'inspect_template')!;
-    expect(inspect.description).toMatch(/local file paths are not accepted over HTTP/);
+    expect(inspect.description).toMatch(/template \(HTTPS URL or base64\)/);
     expect((inspect.inputSchema.properties as Record<string, { description?: string }>)['template']?.description)
-      .not.toMatch(/Local file path —/);
+      .toMatch(/local paths are refused over HTTP/);
   });
 
   test('upload_template: the live versioned response passes', async () => {
@@ -324,18 +348,18 @@ const STDIO_CTX = { allowFileOutput: true, allowFileInput: true, allowPrivateNet
 const HTTP_CTX = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1024 * 1024 };
 const DOCUMENT_TOOLS = ['render_document', 'convert_document', 'download_template'];
 
-describe('tool annotations follow the transport', () => {
+describe('tool annotations (MCP spec and the OpenAI Apps definitions)', () => {
+  // render and convert create a document at Carbone (and render can post it to a webhook): never read-only.
+  const generation = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
   test.each([
-    ['stdio', STDIO_CTX, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
-    ['HTTP', HTTP_CTX, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }],
-  ])('%s: render/convert/download_template hints', async (_name, ctx, expected) => {
+    ['stdio', STDIO_CTX, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }],
+    ['HTTP', HTTP_CTX, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
+  ])('%s: render/convert are not read-only; download_template writes a file in stdio only', async (_name, ctx, download) => {
     const client = await connect(new CarboneClient({ apiKey: 'unused' }), ctx);
     const { tools } = await client.listTools();
     for (const name of DOCUMENT_TOOLS) {
       const tool = tools.find((t) => t.name === name);
-      // download_template only reaches the user's Carbone account, unlike render and convert, which fetch URLs.
-      const openWorldHint = name !== 'download_template';
-      expect(tool?.annotations, name).toEqual({ title: tool?.title, ...expected, openWorldHint });
+      expect(tool?.annotations, name).toEqual({ title: tool?.title, ...(name === 'download_template' ? download : generation) });
     }
     await client.close();
   });
@@ -412,8 +436,8 @@ describe('model-facing texts only show valid Carbone syntax', () => {
     }
     // The alias wording itself: defined with {#… = …}, used with {$…}.
     const variableStr = (tools.find((t) => t.name === 'render_document')!.inputSchema.properties as Record<string, { description: string }>)['variableStr']!.description;
-    expect(variableStr).toMatch(/\{#alias = d\.path\}/);
-    expect(variableStr).toMatch(/\{\$alias\}/);
+    expect(variableStr).toMatch(/\{#buyer = d\.order\.customer\}/);
+    expect(variableStr).toMatch(/\{\$buyer\.name\}/);
   });
 
   test('convert_document\'s example uses a valid input form for each transport', async () => {

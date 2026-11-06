@@ -2,6 +2,7 @@
 
 import type { McpServerOptions } from '@modelcontextprotocol/server';
 import { CARBONE_ICON_SVG, CARBONE_ICON_PNG } from './icons.js';
+import { type IoModes, STDIO_IO } from '../tools/inputForms.js';
 
 export function serverInfo(version: string) {
   return {
@@ -19,33 +20,40 @@ export function serverInfo(version: string) {
   };
 }
 
-/** Usage primer surfaced to the client/model via the initialize response (server options). */
-export const SERVER_INSTRUCTIONS =
-  'Carbone generates and converts documents (PDF, DOCX, XLSX, PPTX, ODT, HTML, Markdown, images, …) ' +
-  'from templates and JSON data.\n\n' +
-  '- Call get_capabilities for a full overview of tools, supported formats, and template syntax.\n' +
-  '- Use convert_document to convert an existing file between formats (no data injection).\n' +
-  '- Use render_document to merge JSON data into a Carbone template ({d.field} tags): pass a ' +
-  'templateId for a stored template, or an inline template for a one-shot render.\n' +
-  '- Don\'t know which data a template expects? Call inspect_template first: it lists the template\'s tags and ' +
-  'returns a sample JSON dataset matching its structure.\n' +
-  '- Writing, editing, or validating a Carbone template? Carbone tags are a unique language (NOT ' +
-  'Mustache/Handlebars/Jinja), so never guess syntax. The Carbone Skill is the reference for tags, formatters, ' +
-  'loops, and conditions: https://carbone.io/documentation/developer/ai/skills.md (get_capabilities lists its ' +
-  'download link).\n' +
-  '- Manage stored templates with upload_template, list_templates, update_template_metadata, ' +
-  'download_template, and delete_template.\n' +
-  '- File inputs accept an HTTPS URL or a base64 string, and a local path in stdio (local) mode only, where ' +
-  'outputPath also saves large outputs to disk instead of returning them inline.\n' +
-  '- Docs are LLM-friendly: replace .html with .md on any carbone.io doc URL for Markdown. The index is ' +
-  'https://carbone.io/llms.txt and the full corpus https://carbone.io/llms-full.txt.';
+/**
+ * Usage primer surfaced to the client/model via the initialize response. Kept short (clients that load tools on
+ * demand read only names and instructions up front), and worded per transport like the tool descriptions.
+ */
+export function serverInstructionsFor(io: IoModes): string {
+  return 'Carbone generates documents (PDF, DOCX, XLSX, PPTX, HTML, images...) from templates and JSON data, and ' +
+    'converts files.\n\n' +
+    '- convert_document changes a file\'s format; render_document merges JSON into a template ({d.field} tags).\n' +
+    '- Unsure which data a template expects? Call inspect_template first.\n' +
+    '- Carbone tags are their own language (not Mustache or Jinja): never guess the syntax. The Carbone Skill is the ' +
+    'reference: https://carbone.io/documentation/developer/ai/skills.md\n' +
+    (io.allowFileOutput
+      ? '- Files: local paths, HTTPS URLs or base64. PDF and Office results are saved to a temp file.\n'
+      : '- Files: HTTPS URLs or base64 (no local paths). PDF and Office results come back as a one-time download ' +
+        'link: give it to the user as is, never open it yourself.\n') +
+    (io.allowAsync ? '- Batches and long renders: render_document with async: true, then get_render_result.\n' : '') +
+    (io.allowUploadUrl ? '- A large template: upload_template with requestUploadUrl, then send it with the curl command.\n' : '') +
+    '- get_capabilities has the formats, converters, options and examples. Docs: https://carbone.io/llms.txt ' +
+    '(replace .html with .md on any carbone.io doc URL).';
+}
+
+/** The stdio wording (also what tests and the default options use). */
+export const SERVER_INSTRUCTIONS = serverInstructionsFor(STDIO_IO);
 
 /**
  * Options for every McpServer instance, on both transports and both protocol eras. The tool and
  * resource lists are static, so `listChanged` is not advertised: a client then has no reason to keep
  * an idle change-notification stream (`subscriptions/listen`) open.
  */
-export const SERVER_OPTIONS = {
-  instructions: SERVER_INSTRUCTIONS,
-  capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
-} satisfies McpServerOptions;
+export function serverOptionsFor(io: IoModes) {
+  return {
+    instructions: serverInstructionsFor(io),
+    capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
+  } satisfies McpServerOptions;
+}
+
+export const SERVER_OPTIONS = serverOptionsFor(STDIO_IO);
