@@ -3,9 +3,7 @@ import type { CarboneClient, CallOptions } from '../carbone/client.js';
 export const TEMPLATES_URI = 'carbone://templates';
 
 export const templatesResourceDescription =
-  'Browse stored Carbone templates (up to 100, most recent first). ' +
-  'For filtering by category/search/version/origin, includeVersions, or pagination, use the list_templates tool — ' +
-  'MCP resources cannot receive query-string parameters.';
+  'The 100 most recent stored templates. To filter, search, list versions or page, use the list_templates tool.';
 
 export async function readTemplatesResource(
   uri: URL,
@@ -30,7 +28,7 @@ export async function readTemplatesResource(
 export const TEMPLATE_BY_ID_URI_TEMPLATE = 'carbone://templates/{id}';
 
 export const templateByIdResourceDescription =
-  'Fetch a single stored template by its Template ID (64-bit) or Version ID (SHA-256), including its version history.';
+  'One stored template, with its version history, by Template ID (digits) or Version ID (64 hex characters).';
 
 export async function readTemplateByIdResource(
   uri: URL,

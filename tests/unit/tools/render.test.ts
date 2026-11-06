@@ -137,6 +137,7 @@ describe('handleRenderDocument', () => {
         batchReportName:'item-{d.id}',
         preReleaseFeatureIn: 5000000,
         failOn:         ['IMAGE_URL_ERROR'],
+        webhookUrl:     'https://example.com/hook',
       },
       client
     );
@@ -263,9 +264,20 @@ describe('handleRenderDocument', () => {
   test('allows batchOutput:pdf with convertTo:pdf', async () => {
     const client = makeClient();
     const result = await handleRenderDocument(
-      { template: 'abc', data: {}, batchSplitBy: 'd.items', batchOutput: 'pdf', convertTo: 'pdf' }, client);
+      { template: 'abc', data: {}, batchSplitBy: 'd.items', batchOutput: 'pdf', convertTo: 'pdf', webhookUrl: 'https://example.com/hook' }, client);
 
     expect(result.isError).toBeUndefined();
+  });
+
+  test('a batch without async or a webhook is refused before the call, with the way forward', async () => {
+    const client = makeClient();
+    const ctx = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1 };
+    const stdio = await handleRenderDocument({ template: 'abc', data: [{}], batchSplitBy: 'd' }, client);
+    expect(stdio.content[0]).toMatchObject({ text: 'batchSplitBy needs a webhookUrl the user provides; without one, render one document per call.' });
+    const jobs = { start: vi.fn(), status: vi.fn(), record: vi.fn() };
+    const http = await handleRenderDocument({ template: 'abc', data: [{}], batchSplitBy: 'd' }, client, undefined, { ...ctx, jobs });
+    expect(http.content[0]).toMatchObject({ text: 'batchSplitBy needs async: true: add it, then call get_render_result with the job ID.' });
+    expect(vi.mocked(client.renderDocument)).not.toHaveBeenCalled();
   });
 
   test('returns isError on client error', async () => {

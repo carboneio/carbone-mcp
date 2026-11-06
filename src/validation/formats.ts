@@ -31,6 +31,17 @@ export const OUTPUT_FORMATS = [
 export const CONVERTERS = ['L', 'O', 'C', 'I'] as const;
 
 /**
+ * An integer, checked as a safe integer, whose JSON Schema states no ±2^53 bounds: zod adds them, and they are only
+ * noise in what the model reads. Pass `min` to keep a real lower bound.
+ */
+export function integer(min?: number) {
+  const schema = z.number().int();
+  return min === undefined
+    ? schema.meta({ minimum: undefined, maximum: undefined })
+    : schema.min(min).meta({ maximum: undefined });
+}
+
+/**
  * Formats Carbone reads as a template or a conversion source. Rendering and conversion share one endpoint and
  * one validation, so the list is the same for both. Checked live: a legacy binary DOC is rejected with 415
  * "Template format not supported, it must be an XML-based or Text-based document" (w118), although the OpenAPI

@@ -4,7 +4,7 @@ import type { UploadTemplateResult } from '../carbone/types.js';
 import { resolveFileInput } from '../utils/file.js';
 import { deliverDocument, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
-import { INPUT_FORMATS_DESCRIPTION } from '../validation/formats.js';
+import { INPUT_FORMATS_DESCRIPTION, integer } from '../validation/formats.js';
 import { type IoModes, STDIO_IO, fieldIf, inputForms, outputPathDescription } from './inputForms.js';
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 import type { UploadCaller } from '../server/upload.js';
@@ -55,9 +55,7 @@ export const listTemplatesSchema = {
     .string()
     .optional()
     .describe('Filter by category (e.g. "invoices", "legal").'),
-  origin: z
-    .number()
-    .int()
+  origin: integer()
     .optional()
     .describe('Upload origin: 0 API (this server), 1 Carbone Studio, 2 Salesforce, 3 Odoo, 4 HubSpot.'),
   includeVersions: z
@@ -156,7 +154,7 @@ export const uploadTemplateOutputSchema = {
 /** The upload URL mode's input: the file the URL will accept, and only that file. */
 const requestUploadUrlSchema = z
   .strictObject({
-    size: z.number().int().positive().describe('The file size in bytes, e.g. from `wc -c < file`.'),
+    size: integer(1).describe('The file size in bytes, e.g. from `wc -c < file`.'),
     sha256: z.string().regex(/^[a-fA-F0-9]{64}$/).describe('The file SHA-256 in hex, e.g. from `sha256sum file` (or `shasum -a 256 file`).'),
   })
   .optional()
@@ -217,15 +215,10 @@ export function uploadTemplateSchemaFor(io: IoModes) {
       .max(1)
       .optional()
       .describe('A sample dataset stored with the template, at most one: [{ "data": { "name": "Acme" } }].'),
-    deployedAt: z
-      .number()
-      .int()
+    deployedAt: integer()
       .optional()
       .describe('42000000000 deploys this version now: renders by Template ID use the most recently deployed version.'),
-    expireAt: z
-      .number()
-      .int()
-      .min(0)
+    expireAt: integer(0)
       .optional()
       .describe('Delete the template at this UTC Unix time (seconds); 0 (default) never. To delete now, use delete_template.'),
   };
@@ -411,15 +404,10 @@ export const updateTemplateMetadataSchema = {
   tags: tagsSchema
     .optional()
     .describe('New tags, replacing the current ones: sorted, deduplicated, 100 characters in all.'),
-  deployedAt: z
-    .number()
-    .int()
+  deployedAt: integer()
     .optional()
     .describe('42000000000 deploys this version now: renders by Template ID use the most recently deployed version.'),
-  expireAt: z
-    .number()
-    .int()
-    .min(0)
+  expireAt: integer(0)
     .optional()
     .describe('Delete this version at this UTC Unix time (seconds); 0 cancels a scheduled deletion.'),
 };

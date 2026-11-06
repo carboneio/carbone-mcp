@@ -3,7 +3,7 @@ import type { CarboneClient, CallOptions } from '../carbone/client.js';
 export const STATUS_URI = 'carbone://status';
 
 export const statusResourceDescription =
-  'Check the Carbone API health status and current version.';
+  'The Carbone API health and version.';
 
 export async function readStatusResource(
   uri: URL,

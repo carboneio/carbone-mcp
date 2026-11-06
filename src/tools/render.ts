@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import {
-  CONVERTERS, CONVERTER_DESCRIPTION, INPUT_FORMATS_DESCRIPTION, OUTPUT_FORMAT_DESCRIPTION, OutputFormatSchema,
+  CONVERTERS, CONVERTER_DESCRIPTION, INPUT_FORMATS_DESCRIPTION, OUTPUT_FORMAT_DESCRIPTION, OutputFormatSchema, integer,
 } from '../validation/formats.js';
 import { resolveFileInput, resolveJsonInput } from '../utils/file.js';
 import { deliver, oneTimeLinkResult, wantsLink, withReportName, type FileContext } from './output.js';
@@ -176,16 +176,14 @@ export function renderDocumentSchemaFor(io: IoModes) {
     batchOutput: z
       .enum(['zip', 'pdf'])
       .optional()
-      .describe('Batch result: "zip" (default) or "pdf", one concatenated PDF (needs convertTo "pdf").'),
+      .describe('Batch result: "zip" (default, downloaded as batch.zip) or "pdf", one concatenated PDF (needs convertTo "pdf").'),
 
     batchReportName: z
       .string()
       .optional()
       .describe('Name of each file in the batch ZIP, without extension; tags resolve per item, e.g. "invoice-{d.id}".'),
 
-    preReleaseFeatureIn: z
-      .number()
-      .int()
+    preReleaseFeatureIn: integer()
       .optional()
       .describe('Turn on Carbone pre-release features up to this version tag, e.g. 5000000.'),
 
@@ -306,6 +304,18 @@ export async function handleRenderDocument(
   if (args.async && !fileCtx?.jobs) {
     return { isError: true, content: [{ type: 'text' as const, text: 'This server does not run async renders: render without async, or pass a webhookUrl the user provides.' }] };
   }
+  // Carbone renders a batch only asynchronously: without a webhook it answers a raw "nbReportMaxPerBatch = 0".
+  if (args.batchSplitBy && !args.async && !args.webhookUrl) {
+    return {
+      isError: true,
+      content: [{
+        type: 'text' as const,
+        text: fileCtx?.jobs
+          ? 'batchSplitBy needs async: true: add it, then call get_render_result with the job ID.'
+          : 'batchSplitBy needs a webhookUrl the user provides; without one, render one document per call.',
+      }],
+    };
+  }
 
   // keepTags skips templating, so data could never be injected — reject rather than silently drop it.
   if (args.keepTags && args.data != null) {
@@ -341,7 +351,9 @@ export async function handleRenderDocument(
     ]);
 
     // async: this server's own webhook records the result, for get_render_result.
-    const job = args.async ? fileCtx!.jobs!.start(caller, formatNameOf(args.convertTo)) : undefined;
+    // A batch delivers a ZIP, or one PDF with batchOutput "pdf": that is what the link will download.
+    const resultFormat = args.batchSplitBy ? (args.batchOutput ?? 'zip') : formatNameOf(args.convertTo);
+    const job = args.async ? fileCtx!.jobs!.start(caller, resultFormat) : undefined;
     const result = await client.renderDocument({
       ...args,
       ...(job && { webhookUrl: job.webhookUrl, webhookHeaders: job.webhookHeaders }),

@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 
 - **Over HTTP, PDF and Office outputs are returned as a one-time download link** by default, named after `reportName`. Pass `asAttachment: true` to get the bytes as before.
 - Template ID fields (`id`, `moveToTemplateId`) must be digits only, checked before the call.
+- A batch (`batchSplitBy`) without `async` or `webhookUrl` is refused before the call, with what to add, instead of Carbone's raw error.
 - Tool descriptions are about 45% shorter (fewer tokens per conversation), with the details in `get_capabilities`; `outputPath` is no longer listed over HTTP.
 - `render_document` and `convert_document` are no longer annotated read-only: each call creates a document at Carbone, so clients may ask to confirm it.
 

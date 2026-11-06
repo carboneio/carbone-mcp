@@ -8,7 +8,7 @@ describe('serverInfo', () => {
     expect(info.version).toBe('9.9.9');
     expect(info.title).toBe('Carbone');
     expect(info.websiteUrl).toBe('https://carbone.io');
-    expect(info.description).toContain('Carbone API');
+    expect(info.description).toContain('100+ conversions');
   });
 
   test('advertises an SVG icon and a PNG fallback, both as self-contained data URIs', () => {

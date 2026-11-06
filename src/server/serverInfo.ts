@@ -10,8 +10,7 @@ export function serverInfo(version: string) {
     version,
     title: 'Carbone',
     description:
-      'Generate and convert documents (PDF, DOCX, XLSX, PPTX, ODT, HTML, Markdown, images) ' +
-      'from templates and JSON data via the Carbone API.',
+      'Automate enterprise-grade documents from templates, merge and 100+ conversions: PDF, Office, HTML.',
     websiteUrl: 'https://carbone.io',
     icons: [
       { src: CARBONE_ICON_SVG, mimeType: 'image/svg+xml', sizes: ['any'] },

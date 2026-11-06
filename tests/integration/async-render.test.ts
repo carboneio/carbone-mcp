@@ -127,9 +127,16 @@ describe('async renders end to end', () => {
     expect([...objects.keys()].every((key) => /^\/jobs\/jobs\/[0-9a-f]{64}$/.test(key))).toBe(true);
   });
 
-  test('a batch needs no webhookUrl of its own with async', async () => {
-    await withClient((client) => startJob(client, { data: [{ a: 1 }, { a: 2 }], batchSplitBy: 'd', batchOutput: 'zip' }));
+  test('a batch needs no webhookUrl of its own with async, and its result is labelled a ZIP', async () => {
+    const text = await withClient(async (client) => {
+      const jobId = await startJob(client, { data: [{ a: 1 }, { a: 2 }], batchSplitBy: 'd', batchOutput: 'zip' });
+      let result = '';
+      await expect.poll(async () => (result = textOf(await client.callTool({ name: 'get_render_result', arguments: { jobId } }))))
+        .toMatch(/One-time download link/);
+      return result;
+    });
     expect(renders.at(-1)!.body).toMatchObject({ batchSplitBy: 'd', batchOutput: 'zip' });
+    expect(text).toMatch(/^Generated zip\./);
   });
 
   test('a failed render is reported with Carbone error; an unknown job ID is refused', async () => {
