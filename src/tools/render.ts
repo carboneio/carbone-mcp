@@ -176,7 +176,7 @@ export function renderDocumentSchemaFor(io: IoModes) {
     batchOutput: z
       .enum(['zip', 'pdf'])
       .optional()
-      .describe('Batch result: "zip" (default, downloaded as batch.zip) or "pdf", one concatenated PDF (needs convertTo "pdf").'),
+      .describe('Batch result: "zip" (default, named after reportName, or batch.zip without one) or "pdf", one concatenated PDF (needs convertTo "pdf").'),
 
     batchReportName: z
       .string()
