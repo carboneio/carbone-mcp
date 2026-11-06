@@ -183,8 +183,8 @@ describe('handleUploadTemplate: requestUploadUrl', () => {
   const textOf = (r: { content: Array<{ text: string }> }) => r.content[0]!.text;
 
   test('issues the URL with the template fields, and stores nothing', async () => {
-    const r = await handleUploadTemplate({ requestUploadUrl: { size: 10, sha256: SHA }, name: 'N', versioning: false, expireAt: 5 }, client, undefined, ctx, { credential: { apiKey: 'k' } });
-    expect(issue).toHaveBeenCalledWith({ size: 10, sha256: SHA, fields: { versioning: false, name: 'N', expireAt: 5 } }, { credential: { apiKey: 'k' } });
+    const r = await handleUploadTemplate({ requestUploadUrl: { size: 10, sha256: SHA }, name: 'N', versioning: false, expireAt: 5 }, client, undefined, ctx, { id: 'key:k', credential: { apiKey: 'k' } });
+    expect(issue).toHaveBeenCalledWith({ size: 10, sha256: SHA, fields: { versioning: false, name: 'N', expireAt: 5 } }, { id: 'key:k', credential: { apiKey: 'k' } });
     expect(textOf(r)).toMatch(/^NOT uploaded yet\. Send the file before 2030-03-17T17:46:40\.000Z with:/);
     expect(vi.mocked(client.uploadTemplate)).not.toHaveBeenCalled();
   });

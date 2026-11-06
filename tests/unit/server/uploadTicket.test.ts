@@ -11,6 +11,7 @@ const ticket = (overrides: Partial<UploadTicket> = {}): UploadTicket => ({
   exp: NOW / 1000 + 600,
   nonce: 'n'.repeat(32),
   credential: { apiKey: 'key-1' },
+  caller: 'caller-hash',
   size: 3,
   sha256: 'a'.repeat(64),
   fields: { versioning: true, name: 'Invoice' },

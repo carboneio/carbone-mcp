@@ -250,7 +250,7 @@ describe('upload route', () => {
 });
 
 describe('uploadFormFields', () => {
-  const base = { exp: 0, nonce: 'n1', credential: { serverKey: true as const }, size: 1, sha256: SHA };
+  const base = { exp: 0, nonce: 'n1', credential: { serverKey: true as const }, caller: '', size: 1, sha256: SHA };
 
   test('versioning: versioning (and id) first, then the metadata', () => {
     expect(uploadFormFields({ ...base, fields: { versioning: true, id: '42', name: 'N', category: 'c', comment: 'm', tags: ['a', 'b'], deployedAt: 1, expireAt: 2 } }))
