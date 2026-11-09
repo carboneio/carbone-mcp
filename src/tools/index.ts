@@ -3,6 +3,7 @@ import type { McpServer, StandardSchemaWithJSON, ToolAnnotations } from '@modelc
 import { callOptionsFrom, type CarboneClient } from '../carbone/client.js';
 import type { FileContext } from './output.js';
 import type { IoModes } from './inputForms.js';
+import { type ToolName, NO_TOOLS, withoutTools } from './toolNames.js';
 import { chatFileMeta } from './attachments.js';
 import { uploadCallerFrom } from '../server/upload.js';
 import { callerIdFrom } from '../server/caller.js';
@@ -164,7 +165,8 @@ function titled(title: string, hints: Hints) {
   return { title, annotations: { title, ...hints } };
 }
 
-export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext): void {
+/** `disabledTools` (MCP_DISABLED_TOOLS) are not registered: absent from tools/list, a call gets the SDK's unknown-tool error. */
+export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext, disabledTools: ReadonlySet<ToolName> = NO_TOOLS): void {
   const io: IoModes = {
     allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput,
     allowUploadUrl: !!fileCtx.uploads, allowAsync: !!fileCtx.jobs,
@@ -174,9 +176,13 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     inspectTemplateDescription, inspectTemplateInput, uploadTemplateDescription, uploadTemplateInput,
     downloadTemplateDescription, downloadTemplateInput, downloadToolHints, attachedFileMeta, attachedTemplateMeta,
   } = transportToolsFor(io);
-  // Every tool records its outcome for the HTTP access line (an error's text, never arguments or results).
-  const registerTool = ((name: string, config: never, callback: (...args: never[]) => unknown) =>
-    server.registerTool(name, config, withOutcome(callback) as never)) as McpServer['registerTool'];
+  // Every tool records its outcome for the HTTP access line (an error's text, never arguments or results). A disabled
+  // tool is not registered, and the description sentences naming one are left out (see withoutTools).
+  const registerTool = ((name: ToolName, config: { description: string }, callback: (...args: never[]) => unknown) => {
+    if (disabledTools.has(name)) return undefined;
+    if (disabledTools.size) config = { ...config, description: withoutTools(config.description, disabledTools, 'sentence') };
+    return server.registerTool(name, config as never, withOutcome(callback) as never);
+  }) as McpServer['registerTool'];
 
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
   // badges and help models reason about which tools are read-only, repeatable, or destructive.
@@ -331,6 +337,6 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       ...titled('Capabilities', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
       description: getCapabilitiesDescription,
     },
-    () => handleGetCapabilities(io)
+    () => handleGetCapabilities(io, disabledTools)
   );
 }

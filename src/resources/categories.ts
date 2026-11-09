@@ -3,7 +3,7 @@ import type { CarboneClient, CallOptions } from '../carbone/client.js';
 export const CATEGORIES_URI = 'carbone://categories';
 
 export const categoriesResourceDescription =
-  'The template categories in use, such as "invoices" or "legal": the category filter of list_templates and upload_template.';
+  'The template categories in use, such as "invoices" or "legal": to filter templates, or to file a new one.';
 
 export async function readCategoriesResource(
   uri: URL,

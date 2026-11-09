@@ -3,6 +3,7 @@ import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import { formatError } from '../utils/errors.js';
 import { INPUT_FORMATS, OUTPUT_FORMATS } from '../validation/formats.js';
 import { type IoModes, defaultDelivery, inputFormsShort, jsonRefForms } from './inputForms.js';
+import { type ToolName, NO_TOOLS, withoutTools } from './toolNames.js';
 
 // ─── get_api_status ───────────────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ export const getCapabilitiesDescription =
 
 export const getCapabilitiesSchema = {};
 
+// A line names one tool (the async lines are there only with both of theirs), and a section heading the tool it is
+// about: withoutTools drops what names a disabled tool.
 const capabilitiesText = (io: IoModes) => `# Carbone: Document Generation & Conversion
 
 ## Tools available
@@ -87,7 +90,10 @@ Invoice, Quote/Proposal, Purchase order, Pay slip, Delivery note, Offer letter, 
 
 ## 1. Document Conversion (no template needed)
 
-Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags such as \`{d.name}\` are kept as written (use \`render_document\` to fill them). That makes it the way to proof a template in another format (DOCX template → PDF), or to convert a template while it stays a template (DOCX → ODT). \`render_document\` can also skip templating with \`keepTags: true\`, to proof a STORED template by \`templateId\`.
+Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags such as \`{d.name}\` are kept as written. That makes it the way to proof a template in another format (DOCX template → PDF), or to convert a template while it stays a template (DOCX → ODT).
+Plain HTML or Markdown (no Carbone tags) is a static document: \`convert_document\` turns it into PDF, DOCX, etc.
+\`convert_document\` takes \`egressAuthorization\`: the \`authorization\` header Carbone sends for protected assets (HTML→PDF images, max 511 chars).
+\`render_document\` fills Carbone tags with data; with \`keepTags: true\` it keeps them as written, to proof a STORED template by \`templateId\`.
 
 **Accepted file input:** ${inputFormsShort(io)}. Rendering and conversion accept the same input formats: ${INPUT_FORMATS.join(', ')}. The legacy binary formats DOC, XLS and PPT are rejected as input (re-save them as DOCX/XLSX/PPTX), although Carbone can produce them.
 
@@ -123,29 +129,23 @@ Full conversion matrix: https://carbone.io/documentation/developer/http-api/gene
 
 ---
 
-## 2. Template-Based Generation
+## 2. Template-Based Generation (render_document)
 
 > **Authoring from scratch?** LLMs can write HTML documents or templates directly:
 > - **HTML or Markdown with Carbone tags** → use as a template with \`render_document\`. The Carbone Skill (see Documentation) is a reference for the Universal Carbone Templating syntax; validate all tag structures before rendering.
-> - **Plain HTML or Markdown (no Carbone tags)** → static document, use \`convert_document\` to produce PDF, DOCX, etc.
 > - **DOCX / XLSX / PPTX editing** → if the LLM supports editing Office files, Carbone tags can be injected directly into existing DOCX, XLSX, or PPTX files to create or update templates. The same Carbone tag syntax applies.
 
-Two modes, depending on whether you need to reuse the template:
-
 **Mode A: stored template (reusable)**
-1. Design a template in Word / Excel / PowerPoint / LibreOffice / HTML / Markdown with \`{d.field}\` tags
-2. Upload it with \`upload_template\` → get a Template ID
-3. Call \`render_document\` with \`templateId\`, your JSON data, and \`convertTo\` (e.g. \`"pdf"\`)
+- Design a template in Word / Excel / PowerPoint / LibreOffice / HTML / Markdown with \`{d.field}\` tags, then upload it with \`upload_template\` to get a Template ID
+- Call \`render_document\` with \`templateId\`, your JSON data, and \`convertTo\` (e.g. \`"pdf"\`)
 
-**Mode B: inline template (one-shot, no storage)**
-1. Call \`render_document\` with \`template\` (${inputFormsShort(io)}), your JSON data, and \`convertTo\`
-2. The template is uploaded and rendered in a single request; no Template ID is returned
+**Mode B: inline template (one-shot, no storage):** call \`render_document\` with \`template\` (${inputFormsShort(io)}), your JSON data and \`convertTo\`; it is uploaded and rendered in one request, and no Template ID is returned.
 
 **Output format:** \`convertTo\` controls the generated file format (e.g. \`"pdf"\`, \`"docx"\`, \`"xlsx"\`, \`"html"\`). Defaults to the template's own format if omitted.
 
-**Passing data:** \`data\` is an inline JSON object, or a top-level array (\`{d[i].field}\`). It is optional: without it, {} is sent and every tag resolves to empty (to keep the tags as written, pass \`keepTags: true\` without data, or use \`convert_document\` for a file). \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: ${jsonRefForms(io)}, read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
+**Passing data:** \`data\` is an inline JSON object, or a top-level array (\`{d[i].field}\`). It is optional: without it, {} is sent and every tag resolves to empty (to keep the tags as written, pass \`keepTags: true\` without data). \`data\` (and \`complement\`, \`translations\`, \`enum\`, \`currencyRates\`) may also be passed by reference as a STRING: ${jsonRefForms(io)}, read and parsed server-side. Prefer a reference for large datasets to keep them out of the tool call.
 
-**External resources behind auth:** if a template fetches a protected external image/PDF, or you call a secured webhook, pass \`egressAuthorization\` (e.g. "Bearer abc123", max 511 chars): Carbone sends it as the \`authorization\` header on those outbound requests. Also available on convert_document (for HTML→PDF assets). For webhooks, webhookHeaders.authorization overrides it.
+**External resources behind auth:** if a template fetches a protected external image/PDF, or you call a secured webhook, pass \`egressAuthorization\` (e.g. "Bearer abc123", max 511 chars): Carbone sends it as the \`authorization\` header on those outbound requests. For webhooks, webhookHeaders.authorization overrides it.
 
 **Template data tags (quick reference):**
 - \`{d.customer.name}\`: simple field access
@@ -161,7 +161,7 @@ Two modes, depending on whether you need to reuse the template:
 
 > The full syntax reference (all formatters, conditions, loops and translations) is in the Carbone Skill and the documentation below.
 
-**Fail fast and feature level:** \`failOn: ["IMAGE_URL_ERROR"]\` (v5.15.0+) stops the render when an image cannot be downloaded from its URL, instead of showing a broken-image placeholder; with converter \`C\` (v5.16.0+) it also stops an HTML or SVG conversion, on both tools. \`preReleaseFeatureIn\` (integer, e.g. 5000000) sets the pre-release feature level for one render.
+**Fail fast and feature level:** \`failOn: ["IMAGE_URL_ERROR"]\` (v5.15.0+) stops the render when an image cannot be downloaded from its URL, instead of showing a broken-image placeholder; with converter \`C\` (v5.16.0+) it also stops an HTML or SVG conversion. \`preReleaseFeatureIn\` (integer, e.g. 5000000) sets the pre-release feature level for one render.
 
 **Async rendering** (up to 10 minutes instead of 1):
 ${io.allowAsync
@@ -190,10 +190,13 @@ Valid outputs depend on the input format: see the conversion matrix above. \`doc
 
 ## 4. Stored Templates
 
-- \`upload_template\`: pass the file in \`template\`${io.allowUploadUrl ? ' (or, for a large file when you can run shell commands, \`requestUploadUrl\` with its size and SHA-256: you get a URL and a curl command)' : ''}; give it a \`name\` (list_templates shows and searches it). A result \`deployedAt\` of 0 means the version is not explicitly deployed: if another version of the same Template ID is deployed, renders by Template ID keep using that one.
-- Rendering by Template ID uses the version with the most recent \`deployedAt\`. To deploy a version, call \`update_template_metadata\` with templateId = its Version ID and deployedAt = 42000000000 (now).
+- \`upload_template\`: pass the file in \`template\`${io.allowUploadUrl ? ' (or, for a large file when you can run shell commands, \`requestUploadUrl\` with its size and SHA-256: you get a URL and a curl command)' : ''}; give it a \`name\`. A result \`deployedAt\` of 0 means the version is not explicitly deployed: if another version of the same Template ID is deployed, renders by Template ID keep using that one.
+- \`list_templates\` shows and searches templates by \`name\`.
+- Rendering by Template ID uses the version with the most recent \`deployedAt\`.
+- To deploy a version, call \`update_template_metadata\` with templateId = its Version ID and deployedAt = 42000000000 (now).
 - \`update_template_metadata\` with a Template ID patches only its currently deployed version; with a Version ID, that exact version.
-- Deletion: \`delete_template\` takes effect immediately (no longer listed, downloadable or renderable). \`expireAt\` schedules a deletion at a Unix timestamp instead; 0 means never (on update, 0 cancels a scheduled deletion).
+- \`delete_template\` deletes at once (no longer listed, downloadable or renderable).
+- \`expireAt\` (on upload or update) schedules a deletion at a Unix timestamp; 0 means never, and on update 0 cancels a scheduled deletion.
 - \`download_template\` with \`sample: true\` returns the JSON sample data stored with a template.
 
 ---
@@ -220,8 +223,8 @@ in the Agent Skills format (agentskills.io):
 - GitHub repository:    https://github.com/carboneio/carbone-agent-plugin
 `;
 
-export function handleGetCapabilities(io: IoModes) {
+export function handleGetCapabilities(io: IoModes, disabledTools: ReadonlySet<ToolName> = NO_TOOLS) {
   return {
-    content: [{ type: 'text' as const, text: capabilitiesText(io) }],
+    content: [{ type: 'text' as const, text: withoutTools(capabilitiesText(io), disabledTools) }],
   };
 }

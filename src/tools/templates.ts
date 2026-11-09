@@ -27,8 +27,8 @@ export const listTemplatesToolName = 'list_templates';
 
 export const listTemplatesDescription =
   'List stored templates, with filters and pagination. Each result has an id (Template ID; null for a template ' +
-  'uploaded with versioning: false) and a versionId: pass either as templateId to render_document, download_template ' +
-  'or delete_template. Each result lists its tags: to find templates by tag, keep the results whose tags include it.';
+  'uploaded with versioning: false) and a versionId: pass either as templateId to render, inspect, download, update or ' +
+  'delete that template. Each result lists its tags: to find templates by tag, keep the results whose tags include it.';
 
 export const listTemplatesOutputSchema = {
   templates: z.array(z.record(z.string(), z.unknown())).describe('The matching templates (all fields).'),
@@ -124,7 +124,7 @@ export const uploadTemplateToolName = 'upload_template';
 /** upload_template: which inputs carry the file depends on the transport. */
 export function uploadTemplateDescriptionFor(io: IoModes): string {
   const inputs = ['template', ...(acceptsChatAttachments(io) ? ['attachedTemplate'] : []), ...(io.allowUploadUrl ? ['requestUploadUrl'] : [])];
-  return 'Store a reusable template, then render it with render_document and its Template ID. ' +
+  return 'Store a reusable template. Render it with render_document and its Template ID. ' +
     (inputs.length > 1 ? `Pass exactly one of ${inputs.join(', ')}. ` : '') +
     'Returns id (Template ID) and versionId. A new version of an existing template (id) is used by renders only once ' +
     'deployed (deployedAt).';
@@ -179,8 +179,8 @@ export function uploadTemplateSchemaFor(io: IoModes) {
       .max(200)
       .optional()
       .describe(
-        'Display name, shown and searched by list_templates (max 200 characters).' +
-        (acceptsChatAttachments(io) ? ' Defaults to the attached file name.' : '')
+        'Display name (max 200 characters' + (acceptsChatAttachments(io) ? '; defaults to the attached file name' : '') +
+        '), shown and searched when listing templates.'
       ),
     id: templateId64('id')
       .optional()
@@ -220,7 +220,7 @@ export function uploadTemplateSchemaFor(io: IoModes) {
       .describe('42000000000 deploys this version now: renders by Template ID use the most recently deployed version.'),
     expireAt: integer(0)
       .optional()
-      .describe('Delete the template at this UTC Unix time (seconds); 0 (default) never. To delete now, use delete_template.'),
+      .describe('Delete the template at this UTC Unix time (seconds); 0 (default) never.'),
   };
 }
 
@@ -480,7 +480,7 @@ export const deleteTemplateSchema = {
   templateId: z
     .string()
     .min(1)
-    .describe('Template ID (every version) or Version ID (that version only), from list_templates.'),
+    .describe('Template ID (every version) or Version ID (that version only). Never guess one.'),
 };
 
 export async function handleDeleteTemplate(
@@ -506,7 +506,8 @@ export async function handleDeleteTemplate(
 export const listCategoriesToolName = 'list_categories';
 
 export const listCategoriesDescription =
-  'List the template categories in use, for the category filter of list_templates or upload_template.';
+  'List the template categories in use. To filter by one, pass it as category to list_templates. To reuse one, pass ' +
+  'it as category to upload_template.';
 
 export const listCategoriesSchema = {};
 
@@ -595,7 +596,7 @@ export function downloadTemplateSchemaFor(io: IoModes) {
     templateId: z
       .string()
       .min(1)
-      .describe('Template ID (its deployed version) or Version ID, from list_templates.'),
+      .describe('Template ID (its deployed version) or Version ID. Never guess one.'),
     sample: z
       .boolean()
       .optional()

@@ -306,6 +306,44 @@ describe('loadConfig', () => {
     });
   });
 
+  // ── MCP_DISABLED_TOOLS ───────────────────────────────────────────────────
+  describe('MCP_DISABLED_TOOLS', () => {
+    test.each([undefined, '', ' , ,, '])('disables no tool when %j', (value) => {
+      stubStdio();
+      vi.stubEnv('MCP_DISABLED_TOOLS', value);
+      expect(loadConfig().disabledTools).toEqual(new Set());
+    });
+
+    test('trims, drops empty entries and duplicates', () => {
+      stubHttp();
+      vi.stubEnv('MCP_DISABLED_TOOLS', ' delete_template,upload_template , ,update_template_metadata,delete_template,');
+      expect(loadConfig().disabledTools).toEqual(new Set(['delete_template', 'upload_template', 'update_template_metadata']));
+    });
+
+    // A typo must never leave a tool enabled: the server does not start.
+    test.each(['delete_tempalte', 'Delete_Template'])('refuses the unknown name "%s", listing the valid ones', (entry) => {
+      stubStdio();
+      vi.stubEnv('MCP_DISABLED_TOOLS', `list_tags,${entry}`);
+      expect(() => loadConfig()).toThrow(new RegExp(`cannot disable "${entry}".*valid: convert_document`));
+    });
+
+    test('get_capabilities cannot be disabled', () => {
+      stubStdio();
+      vi.stubEnv('MCP_DISABLED_TOOLS', 'get_capabilities');
+      expect(() => loadConfig()).toThrow('cannot disable "get_capabilities"');
+    });
+
+    test('the error shows invisible characters, and stays under the 300 characters a log value keeps', () => {
+      stubStdio();
+      vi.stubEnv('MCP_DISABLED_TOOLS', `list\u200btags,${'x'.repeat(500)}`);
+      expect(() => loadConfig()).toThrow('cannot disable "list\\u200btags"');
+      vi.stubEnv('MCP_DISABLED_TOOLS', 'x'.repeat(500));
+      const error = (() => { try { loadConfig(); } catch (e) { return (e as Error).message; } })()!;
+      expect(error).toMatch(/^MCP_DISABLED_TOOLS: cannot disable "x{23}\.\.\." \(valid: convert_document, .*, get_api_status\)$/);
+      expect(error.length).toBeLessThan(300);
+    });
+  });
+
   // ── MCP_OPENAI_APPS_CHALLENGE ────────────────────────────────────────────
   describe('MCP_OPENAI_APPS_CHALLENGE', () => {
     test.each([undefined, '', '   '])('is unset when %j', (value) => {

@@ -3,7 +3,7 @@
   "name": "io.carbone/carbone-mcp",
   "title": "Carbone MCP",
   "description": "Automate enterprise-grade documents from templates, merge and 100+ conversions: PDF, Office, HTML.",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "websiteUrl": "https://carbone.io",
   "license": "Apache-2.0",
   "icons": [{
@@ -24,7 +24,7 @@
     {
       "registryType": "npm",
       "identifier": "carbone-mcp",
-      "version": "2.3.0",
+      "version": "2.4.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

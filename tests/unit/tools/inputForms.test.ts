@@ -141,7 +141,8 @@ describe('converter C (Chromium) image export wording (Carbone v5.17.0)', () => 
     const formatOptions = desc(OutputFormatSchema.def.options[1].shape.formatOptions);
     expect(desc(convertDocumentSchemaFor(STDIO).converter)).toMatch(/SVG/);
     expect(formatOptions).toMatch(/Scale/);
-    expect(formatOptions).toMatch(/get_capabilities/);
+    // A parameter description names no tool (it stays listed when that tool is disabled): the instructions point there.
+    expect(formatOptions).not.toMatch(/get_capabilities/);
     expect(handleGetCapabilities(STDIO).content[0].text).toMatch(/FullPage/);
     expect(convertDocumentDescriptionFor(STDIO)).toMatch(/returned inline/);
   });
