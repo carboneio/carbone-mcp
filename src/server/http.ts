@@ -178,6 +178,8 @@ export async function startHttpServer(options: {
   allowedOriginHostnames: string[];
   /** OpenAI's domain-verification token (MCP_OPENAI_APPS_CHALLENGE), served at /.well-known/openai-apps-challenge. */
   openAiAppsChallenge?: string;
+  /** Meta's connector directory domain-verification token (MCP_MUSE_CHALLENGE), served at /.well-known/muse-challenge/<token>. */
+  museChallenge?: string;
   /** OAuth mode; API-key mode when unset. */
   oauth?: OAuthConfig;
   /** Upload URLs for upload_template (MCP_TICKET_SECRET); off when unset. */
@@ -340,6 +342,14 @@ export async function startHttpServer(options: {
           && pathname === '/.well-known/openai-apps-challenge') {
           res.writeHead(200, { 'Content-Type': 'text/plain' });
           res.end(req.method === 'HEAD' ? undefined : options.openAiAppsChallenge);
+          return;
+        }
+
+        // ── Meta connector directory domain verification (MCP_MUSE_CHALLENGE) ───
+        if (options.museChallenge && (req.method === 'GET' || req.method === 'HEAD')
+          && pathname === `/.well-known/muse-challenge/${options.museChallenge}`) {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end(req.method === 'HEAD' ? undefined : `muse-challenge=${options.museChallenge}`);
           return;
         }
 

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.3.1] - 2026-11-09
+
+### Added
+
+- `MCP_MUSE_CHALLENGE`: Meta's connector directory domain-verification token, served as plain text at `/.well-known/muse-challenge/<token>`, to submit the server to the Meta directory.
+
+---
+
 ## [2.3.0] - 2026-11-09
 
 ### Added

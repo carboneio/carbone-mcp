@@ -326,6 +326,34 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).toThrow('Invalid MCP_OPENAI_APPS_CHALLENGE value');
     });
   });
+
+  // ── MCP_MUSE_CHALLENGE ───────────────────────────────────────────────────
+  describe('MCP_MUSE_CHALLENGE', () => {
+    test.each([undefined, '', '   ', 'muse-challenge='])('is unset when %j', (value) => {
+      stubHttp();
+      vi.stubEnv('MCP_MUSE_CHALLENGE', value);
+      expect(loadConfig().museChallenge).toBeUndefined();
+    });
+
+    test('keeps the token, trimmed', () => {
+      stubHttp();
+      vi.stubEnv('MCP_MUSE_CHALLENGE', '  0ad5fed1b48f\n');
+      expect(loadConfig().museChallenge).toBe('0ad5fed1b48f');
+    });
+
+    test('accepts the whole file contents Meta shows', () => {
+      stubHttp();
+      vi.stubEnv('MCP_MUSE_CHALLENGE', 'muse-challenge=0ad5fed1b48f');
+      expect(loadConfig().museChallenge).toBe('0ad5fed1b48f');
+    });
+
+    test.each(['tok 123', 'tok/123', '..', '../tok', 'tok.1', 'tok%2F', 'https://mcp.example.test/.well-known/muse-challenge/tok'])(
+      'rejects %j, which cannot be a path segment', (value) => {
+        stubHttp();
+        vi.stubEnv('MCP_MUSE_CHALLENGE', value);
+        expect(() => loadConfig()).toThrow('Invalid MCP_MUSE_CHALLENGE value');
+      });
+  });
 });
 
 // ─── OAuth mode (MCP_OAUTH_* and MCP_RESOURCE_URL) ──────────────────────────

@@ -556,6 +556,7 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `MCP_S3_SECRET_ACCESS_KEY` | none | Its secret key. |
 | `MCP_JOBS_DIR` | none | HTTP only, for [async renders](#async-renders), instead of `MCP_S3_*`: the absolute path of an existing, writable directory that every instance shares. |
 | `MCP_OPENAI_APPS_CHALLENGE` | none | HTTP only. The domain-verification token OpenAI gives when you submit the server to the ChatGPT plugin directory. When set, the server returns it as plain text at `/.well-known/openai-apps-challenge`. |
+| `MCP_MUSE_CHALLENGE` | none | HTTP only. The domain-verification token Meta gives when you submit the server to its connector directory (the hex string at the end of the file URL, or the whole `muse-challenge=<token>` line). When set, the server returns `muse-challenge=<token>` as plain text at `/.well-known/muse-challenge/<token>`. |
 
 ### Hosted server (OAuth mode)
 
