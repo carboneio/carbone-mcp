@@ -28,7 +28,7 @@ export function inspectTemplateSchemaFor(io: IoModes) {
       .string()
       .min(1)
       .optional()
-      .describe('Template ID (its deployed version) or Version ID, from list_templates. Exclusive with template.'),
+      .describe('Template ID (its deployed version) or Version ID. Never guess one. Exclusive with template.'),
     template: z
       .string()
       .min(1)
@@ -52,7 +52,7 @@ export const inspectTemplateOutputSchema = {
     .record(z.string(), z.unknown())
     .describe(
       'A sample dataset matching the template structure, with placeholder values: { "data": {...}, "complement": {...} }. ' +
-      'Pass sample.data as render_document data, and sample.complement as complement.'
+      'Pass sample.data as the data to render, and sample.complement as complement.'
     ),
   signatures: z.array(z.unknown()).optional().describe('Signature fields found in the template; only present when there are any.'),
   error: z.record(z.string(), z.unknown()).optional().describe('Error reported by Carbone while inspecting; only present when there is one.'),

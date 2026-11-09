@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.4.0] - 2026-11-09
+
+### Added
+
+- **`MCP_DISABLED_TOOLS`** turns off the tools a self-hosted Carbone does not support, or a read-only agent must not have (e.g. `delete_template,upload_template,update_template_metadata`): they are not callable, and their names are left out of the tool and resource lists, the instructions and `get_capabilities`. See [Configuration](docs/API.md#configuration).
+
+---
+
 ## [2.3.0] - 2026-11-09
 
 ### Added

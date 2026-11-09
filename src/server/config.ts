@@ -5,6 +5,7 @@ import { WEBHOOK_PATH } from './jobs.js';
 import { accessSync, constants, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import type { ObjectStoreConfig } from './objectStore.js';
+import { DISABLEABLE_TOOLS, type ToolName } from '../tools/toolNames.js';
 
 export type TransportMode = 'stdio' | 'http';
 
@@ -20,6 +21,8 @@ export interface ServerConfig {
   requireClientAuth: boolean;
   allowPrivateNetwork: boolean;
   allowedOriginHostnames: string[];
+  /** MCP_DISABLED_TOOLS: tools (and their resources) not registered, nor named in the instructions or the other listings. */
+  disabledTools: ReadonlySet<ToolName>;
   /** HTTP only: OpenAI's domain-verification token, served at /.well-known/openai-apps-challenge (MCP_OPENAI_APPS_CHALLENGE). */
   openAiAppsChallenge?: string;
   /** HTTP OAuth mode (Carbone's hosted server), when every MCP_OAUTH_* variable is set; API-key mode otherwise. */
@@ -237,6 +240,21 @@ function parseOriginHostnames(value: string | undefined, name: string): string[]
   return entries;
 }
 
+/**
+ * Comma-separated tool names, for a self-hosted Carbone that lacks some features, or a read-only agent. An unknown
+ * name, or get_capabilities, stops the server: a typo must never leave a tool enabled. The message stays under the 300 characters a log
+ * value keeps, so that it always shows the valid names; the entry is quoted as JSON, with any invisible character escaped.
+ */
+function parseDisabledTools(value: string | undefined, name: string): ReadonlySet<ToolName> {
+  const entries = new Set((value ?? '').split(',').map((entry) => entry.trim()).filter(Boolean));
+  const unknown = [...entries].find((entry) => !(DISABLEABLE_TOOLS as readonly string[]).includes(entry));
+  if (unknown !== undefined) {
+    const quoted = JSON.stringify(unknown).replace(/[^\x20-\x7E]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    throw new Error(`${name}: cannot disable ${quoted.length > 28 ? `${quoted.slice(0, 24)}..."` : quoted} (valid: ${DISABLEABLE_TOOLS.join(', ')})`);
+  }
+  return entries as Set<ToolName>;
+}
+
 function isOriginHostname(entry: string): boolean {
   if (entry.includes('*')) return false;
   try {
@@ -305,6 +323,7 @@ export function loadConfig(): ServerConfig {
     allowPrivateNetwork: parseBool(process.env['CARBONE_ALLOW_PRIVATE_NETWORK'], false, 'CARBONE_ALLOW_PRIVATE_NETWORK'),
     // HTTP only: browser Origins allowed in addition to localhost (DNS-rebinding protection).
     allowedOriginHostnames: parseOriginHostnames(process.env['MCP_ALLOWED_ORIGINS'], 'MCP_ALLOWED_ORIGINS'),
+    disabledTools: parseDisabledTools(process.env['MCP_DISABLED_TOOLS'], 'MCP_DISABLED_TOOLS'),
     ...(openAiAppsChallenge && { openAiAppsChallenge }),
     ...(oauth && { oauth }),
     ...(tickets && { tickets }),

@@ -13,7 +13,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "2.3.0" },
+  "mcp": { "version": "2.4.0" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -185,7 +185,7 @@ More in the [Security section of the README](https://github.com/carboneio/carbon
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `2.3.0` | Specific version |
+| `2.4.0` | Specific version |
 | `2.2` | Latest patch of 2.2 |
 | `2` | Latest minor of v2 |
 

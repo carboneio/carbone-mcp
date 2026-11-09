@@ -25,8 +25,9 @@ export const TEMPLATE_XOR_MESSAGE = 'Provide either templateId or template, not 
 export function renderDocumentDescriptionFor(io: IoModes): string {
   return 'Generate a document (PDF, DOCX, XLSX, PPTX, ...) by merging JSON data into a Carbone template. ' +
     'Pass templateId for a stored template, or template (' + inputFormsShort(io) + ') for a one-off render. ' +
-    'To change the format of a file without data, use convert_document; unsure which data a template expects, ' +
-    'call inspect_template first. ' + defaultDelivery(io) + ' ' +
+    'list_templates lists stored Template IDs. upload_template returns one. ' +
+    'To change the format of a file without data, use convert_document. If unsure which data a template expects, ' +
+    'call inspect_template first. Converters and format options: get_capabilities. ' + defaultDelivery(io) + ' ' +
     (io.allowAsync
       ? 'Batches and renders over a minute: pass async: true, then call get_render_result with the job ID.'
       : 'Batches need a webhookUrl the user provides; otherwise render one document per call.');
@@ -68,8 +69,8 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .min(1)
       .optional()
       .describe(
-        'A stored template, from list_templates or upload_template (never guess one): its Template ID (digits, renders ' +
-        'the deployed version) or a Version ID (64 hex characters, pins that version). Exclusive with template.'
+        'A stored template: its Template ID (digits, renders the deployed version) or a Version ID (64 hex characters, ' +
+        'pins that version). Never guess one. Exclusive with template.'
       ),
 
     template: z
@@ -77,8 +78,8 @@ export function renderDocumentSchemaFor(io: IoModes) {
       .min(1)
       .optional()
       .describe(
-        'A one-off template, not stored. ' + inputForms(io) + INPUT_FORMATS_DESCRIPTION + ' To reuse one, upload_template ' +
-        (io.allowUploadUrl ? '(requestUploadUrl for a large file) ' : '') + 'then pass templateId. Exclusive with templateId.'
+        'A one-off template, not stored. ' + inputForms(io) + INPUT_FORMATS_DESCRIPTION + ' To reuse one, store it, ' +
+        'then pass templateId. Exclusive with templateId.'
       ),
 
     ...fieldIf(acceptsChatAttachments(io), 'attachedTemplate', chatFileSchema('template', 'template and templateId')),

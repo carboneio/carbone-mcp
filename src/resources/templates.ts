@@ -3,7 +3,7 @@ import type { CarboneClient, CallOptions } from '../carbone/client.js';
 export const TEMPLATES_URI = 'carbone://templates';
 
 export const templatesResourceDescription =
-  'The 100 most recent stored templates. To filter, search, list versions or page, use the list_templates tool.';
+  'The 100 most recent stored templates. To filter, search, list versions or page, use the tool that lists templates.';
 
 export async function readTemplatesResource(
   uri: URL,

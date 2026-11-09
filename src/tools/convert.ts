@@ -17,10 +17,10 @@ export const convertDocumentToolName = 'convert_document';
 
 export function convertDocumentDescriptionFor(io: IoModes): string {
   return 'Convert a file to another format, e.g. DOCX, XLSX, PPTX, HTML or Markdown to PDF, or any document to PNG. ' +
-    'No data is merged: Carbone tags such as {d.name} stay as written (use render_document to fill them). ' +
+    'No data is merged: Carbone tags such as {d.name} stay as written. To fill them, use render_document. ' +
     'Example: { "file": "' + exampleFile('report.docx', io) + '", "convertTo": "pdf" }. ' +
     'To check a layout, convert to png: the image is returned inline (for HTML or SVG, converter "C" with ' +
-    'formatOptions { "Scale": 2 }). ' + defaultDelivery(io);
+    'formatOptions { "Scale": 2 }). Converters and format options: get_capabilities. ' + defaultDelivery(io);
 }
 
 /** Default (stdio) wording. */

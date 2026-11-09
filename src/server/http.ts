@@ -13,6 +13,7 @@ import { registerResources } from '../resources/index.js';
 import { serverInfo, serverOptionsFor } from './serverInfo.js';
 import type { JobStoreConfig, OAuthConfig, TicketConfig } from './config.js';
 import { createOAuthGate } from './oauth.js';
+import { type ToolName, NO_TOOLS } from '../tools/toolNames.js';
 import { uploadSealer as createUploadSealer, UPLOAD_PATH } from './uploadTicket.js';
 import { createJobs, JOB_TOKEN_HEADER, JOB_TTL_SECONDS, WEBHOOK_BODY_TIMEOUT_MS, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_PATH } from './jobs.js';
 import { createDirStore, createObjectStore } from './objectStore.js';
@@ -184,20 +185,25 @@ export async function startHttpServer(options: {
   tickets?: TicketConfig;
   /** With tickets: where async renders keep their results (MCP_S3_* or MCP_JOBS_DIR); async renders off when unset. */
   jobStore?: JobStoreConfig;
+  /** MCP_DISABLED_TOOLS: not registered; upload URLs and async renders are off without their tools. */
+  disabledTools?: ReadonlySet<ToolName>;
 }): Promise<Server> {
   const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork, allowedOriginHostnames } = options;
   // Built before listening, so a bad issuer stops the server at startup.
   const oauthGate = options.oauth ? createOAuthGate(options.oauth) : undefined;
   // Upload URLs and async renders: tokens sealed with the shared secret, so whichever instance receives the next
   // request (the file, Carbone's webhook call, the assistant asking for the result) can open them.
-  const { tickets, jobStore } = options;
-  const uploadSealer = tickets && createUploadSealer(tickets.secret, tickets.publicUrl);
+  const { tickets, jobStore, disabledTools = NO_TOOLS } = options;
+  // Upload URLs are issued by upload_template; an async render is started by render_document and read by get_render_result.
+  const uploadUrls = !disabledTools.has('upload_template');
+  const asyncRenders = !disabledTools.has('render_document') && !disabledTools.has('get_render_result');
+  const uploadSealer = tickets && uploadUrls && createUploadSealer(tickets.secret, tickets.publicUrl);
   const uploadIssuer = uploadSealer && createUploadIssuer({ sealer: uploadSealer, publicUrl: tickets.publicUrl });
   const handleUpload = uploadSealer && createUploadRoute({ sealer: uploadSealer, client, maxBytes: maxFileBytes, exchange: oauthGate?.exchangeForUpload });
-  const store = jobStore && ('dir' in jobStore ? createDirStore(jobStore.dir, { maxAgeMs: JOB_TTL_SECONDS * 1000 }) : createObjectStore(jobStore));
+  const store = asyncRenders && jobStore && ('dir' in jobStore ? createDirStore(jobStore.dir, { maxAgeMs: JOB_TTL_SECONDS * 1000 }) : createObjectStore(jobStore));
   const jobs = tickets && store && createJobs({ secret: tickets.secret, publicUrl: tickets.publicUrl, store });
   const bodyPaths = [mcpPath, ...(handleUpload ? [UPLOAD_PATH] : []), ...(jobs ? [WEBHOOK_PATH] : [])];
-  const serverOptions = serverOptionsFor({ allowLocalPath: false, allowFileOutput: false, allowUploadUrl: !!uploadIssuer, allowAsync: !!jobs });
+  const serverOptions = serverOptionsFor({ allowLocalPath: false, allowFileOutput: false, allowUploadUrl: !!uploadIssuer, allowAsync: !!jobs }, disabledTools);
   /** OAuth mode: how the first MCP requests were addressed is logged, to check the client address on a new platform. */
   let addressSamples = oauthGate ? 3 : 0;
 
@@ -244,8 +250,8 @@ export async function startHttpServer(options: {
       maxFileBytes,
       ...(uploadIssuer && { uploads: uploadIssuer }),
       ...(jobs && { jobs }),
-    });
-    registerResources(mcpServer, client);
+    }, disabledTools);
+    registerResources(mcpServer, client, disabledTools);
     // 2025 era: a method this server does not handle gets the SDK's own answer (HTTP 200), with the outcome recorded
     // for the access line. 2026-07-28 answers it 404 before any handler: the access line counts that 4xx itself.
     if (era === 'legacy') {
@@ -503,7 +509,7 @@ export async function startHttpServer(options: {
   log('info', {
     msg: 'running in HTTP mode', version, mcp: `http://0.0.0.0:${port}${mcpPath}`, health: `http://0.0.0.0:${port}/health`,
     ...(options.oauth && { resource: options.oauth.resourceUrl, issuer: options.oauth.issuer }),
-    ...(tickets && { uploads: new URL(UPLOAD_PATH, tickets.publicUrl).href }),
+    ...(tickets && handleUpload && { uploads: new URL(UPLOAD_PATH, tickets.publicUrl).href }),
     ...(jobs && tickets && jobStore && {
       webhook: new URL(WEBHOOK_PATH, tickets.publicUrl).href,
       ...('dir' in jobStore ? { dir: jobStore.dir } : { bucket: jobStore.bucket }),
