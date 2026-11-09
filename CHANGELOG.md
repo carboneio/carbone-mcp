@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.3.0] - 2026-11-09
+
+### Added
+
+- **The access line says what happened:** the MCP method, the tool, the client, the caller (OAuth subject or API key fingerprint, never a token), the tool or resource outcome, and the error, with `error_type=upstream|internal` for a Carbone outage or a server bug. See [Logs](docs/API.md#logs).
+- Every response carries an `X-Request-Id`, the `rid` of its log lines.
+
+### Changed
+
+- **HTTP logs are logfmt, with a level** (`level=info|warn|error`), so log viewers can filter and alert on it. Tools parsing the old `[carbone-mcp] POST / 200 12ms` lines must be updated.
+- The logged client address is the one found past internal proxies, in API-key mode too: a client can no longer write it with `X-Forwarded-For`.
+- `/health` probes from an internal address are no longer logged.
+- The Docker image ships `@hono/node-server` 2.1.6, clearing advisory GHSA-rmxm-3fg6-px4f (in `serveStatic`, which this server does not use).
+
+---
+
 ## [2.2.0] - 2026-11-06
 
 ### Added

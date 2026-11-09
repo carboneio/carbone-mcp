@@ -1,6 +1,7 @@
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { callOptionsFrom, type CarboneClient } from '../carbone/client.js';
+import { withOutcome } from '../server/log.js';
 
 import {
   TEMPLATES_URI, templatesResourceDescription, readTemplatesResource,
@@ -11,12 +12,16 @@ import { TAGS_URI, tagsResourceDescription, readTagsResource } from './tags.js';
 import { STATUS_URI, statusResourceDescription, readStatusResource } from './status.js';
 
 export function registerResources(server: McpServer, client: CarboneClient): void {
+  // Every read records its outcome for the HTTP access line, as tools do (an error's text, never the contents).
+  const registerResource = ((name: string, uri: never, config: never, callback: (...args: never[]) => unknown) =>
+    server.registerResource(name, uri, config, withOutcome(callback) as never) as never /* overloaded return type */) as McpServer['registerResource'];
+
   // The Bearer token (HTTP mode) arrives on authInfo and is forwarded as the
   // per-call API key (callOptionsFrom, as in registerTools) so resources work in multi-tenant
   // HTTP mode. In stdio mode authInfo is undefined and the constructor key is used.
   // Browse-all (static). MCP resources can't receive query strings, so filtering lives in the
   // list_templates tool; this resource just lists templates.
-  server.registerResource(
+  registerResource(
     'carbone-templates',
     TEMPLATES_URI,
     { description: templatesResourceDescription, mimeType: 'application/json' },
@@ -25,7 +30,7 @@ export function registerResources(server: McpServer, client: CarboneClient): voi
 
   // Parameterized: a single template by ID/version, with Template ID autocompletion. Completion
   // requests carry no auth token, so completeTemplateId degrades to no suggestions in HTTP mode.
-  server.registerResource(
+  registerResource(
     'carbone-template',
     new ResourceTemplate(TEMPLATE_BY_ID_URI_TEMPLATE, {
       list: undefined,
@@ -36,21 +41,21 @@ export function registerResources(server: McpServer, client: CarboneClient): voi
       readTemplateByIdResource(uri, String(variables['id']), client, callOptionsFrom(ctx))
   );
 
-  server.registerResource(
+  registerResource(
     'carbone-categories',
     CATEGORIES_URI,
     { description: categoriesResourceDescription, mimeType: 'application/json' },
     (uri, ctx) => readCategoriesResource(uri, client, callOptionsFrom(ctx))
   );
 
-  server.registerResource(
+  registerResource(
     'carbone-tags',
     TAGS_URI,
     { description: tagsResourceDescription, mimeType: 'application/json' },
     (uri, ctx) => readTagsResource(uri, client, callOptionsFrom(ctx))
   );
 
-  server.registerResource(
+  registerResource(
     'carbone-status',
     STATUS_URI,
     { description: statusResourceDescription, mimeType: 'application/json' },

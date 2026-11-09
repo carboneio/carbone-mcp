@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { formatError } from '../../../src/utils/errors.js';
+import { requestLog, type RequestLog } from '../../../src/server/log.js';
 import {
   CarboneAuthError,
   CarboneConnectionError,
@@ -108,5 +109,25 @@ describe('formatError', () => {
     const result = formatError('plain string error');
     expect(result).toContain('Unexpected error');
     expect(result).toContain('plain string error');
+  });
+});
+
+describe('formatError notes a fault for the HTTP access line', () => {
+  const faultOf = (error: unknown) => {
+    const record: RequestLog = { rid: '0' };
+    requestLog.run(record, () => formatError(error));
+    return record.fault;
+  };
+
+  test('a Carbone outage is upstream, a bug internal, a request the client got wrong nothing', () => {
+    for (const error of [new CarboneConnectionError('unreachable'), new CarboneError('down', 503), new CarboneError('no message', 500),
+      Object.assign(new Error('body'), { name: 'TimeoutError' })]) expect(faultOf(error)).toBe('upstream');
+    expect(faultOf(new TypeError('x is undefined'))).toBe('internal');
+    for (const error of [new CarboneAuthError(), new CarboneValidationError('bad'), new CarboneNotFoundError(), new CarboneRateLimitError(),
+      new CarboneGenerationError('w101', 'w101'), new CarboneError('Bad request', 400)]) expect(faultOf(error)).toBeUndefined();
+  });
+
+  test('outside an HTTP request (stdio), nothing is noted', () => {
+    expect(formatError(new TypeError('x'))).toBe('Unexpected error: x');
   });
 });

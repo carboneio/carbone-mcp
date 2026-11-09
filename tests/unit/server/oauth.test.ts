@@ -459,8 +459,8 @@ describe('IntrospectionVerifier under load', () => {
       clock.now += 10_000;
       await exhaust('192.0.2.4');
       expect(stderr.mock.calls.map(([chunk]) => String(chunk))).toEqual([
-        '[carbone-mcp] OAuth: 192.0.2.1 sent too many tokens that are not valid: its unseen tokens get 429 for 60 s\n',
-        '[carbone-mcp] OAuth: 192.0.2.4 sent too many tokens that are not valid: its unseen tokens get 429 for 60 s (and 2 more address(es) since the last report)\n',
+        'level=warn msg="OAuth: 192.0.2.1 sent too many tokens that are not valid: its unseen tokens get 429 for 60 s"\n',
+        'level=warn msg="OAuth: 192.0.2.4 sent too many tokens that are not valid: its unseen tokens get 429 for 60 s (and 2 more address(es) since the last report)"\n',
       ]);
     } finally {
       stderr.mockRestore();
@@ -569,7 +569,7 @@ describe('createOAuthGate().authenticate', () => {
       // Logged once per window, with the address and never a token
       const lines = stderr.mock.calls.map(([chunk]) => String(chunk));
       expect(lines).toEqual([
-        '[carbone-mcp] OAuth: 203.0.113.7 sent too many tokens that are not valid: its unseen tokens get 429 for 60 s\n',
+        'level=warn msg="OAuth: 203.0.113.7 sent too many tokens that are not valid: its unseen tokens get 429 for 60 s"\n',
       ]);
     } finally {
       stderr.mockRestore();

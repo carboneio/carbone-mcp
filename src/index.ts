@@ -5,12 +5,21 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { CarboneClient } from './carbone/client.js';
 import { loadConfig } from './server/config.js';
 import { startHttpServer } from './server/http.js';
+import { exitWhenFlushed, log } from './server/log.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { serverInfo, SERVER_OPTIONS } from './server/serverInfo.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
+/** HTTP mode logs logfmt lines (src/server/log.ts), stdio mode plain text. Read from the environment: a bad configuration fails in loadConfig. */
+const httpMode = process.env['MCP_TRANSPORT'] === 'http';
+
+/** HTTP mode: a fatal error on one line, with its stack's first frames (log() keeps 300 characters). */
+function logFatal(msg: string, error: unknown): void {
+  const err = error instanceof Error ? error : undefined;
+  log('error', { msg, error: err?.message ?? String(error), stack: err?.stack?.split('\n').slice(1).map((frame) => frame.trim()).join(' | ') });
+}
 
 async function main() {
   const config = loadConfig();
@@ -25,10 +34,10 @@ async function main() {
 
   if (config.transport === 'http') {
     if (config.carboneApiKey && !config.requireClientAuth) {
-      process.stderr.write(
-        '[carbone-mcp] Warning: requests without an Authorization: Bearer key use the server-level CARBONE_API_KEY. ' +
-        'Set CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true to require every client to send its own key.\n'
-      );
+      log('warn', {
+        msg: 'requests without an Authorization: Bearer key use the server-level CARBONE_API_KEY',
+        hint: 'Set CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true to require every client to send its own key.',
+      });
     }
     await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork, allowedOriginHostnames: config.allowedOriginHostnames, openAiAppsChallenge: config.openAiAppsChallenge, oauth: config.oauth, tickets: config.tickets, jobStore: config.jobStore });
     return;
@@ -62,14 +71,15 @@ async function main() {
   process.stderr.write(`Carbone API: ${config.carboneBaseUrl}\n`);
 }
 
+// Exits once the line is written: to a pipe, stderr is asynchronous.
 main().catch((error) => {
-  process.stderr.write(`Fatal error: ${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+  if (httpMode) logFatal('fatal error', error);
+  else process.stderr.write(`Fatal error: ${error instanceof Error ? error.message : String(error)}\n`);
+  exitWhenFlushed(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  process.stderr.write(
-    `[carbone-mcp] Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}\n`
-  );
-  process.exit(1);
+  if (httpMode) logFatal('unhandled rejection', reason);
+  else process.stderr.write(`[carbone-mcp] Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}\n`);
+  exitWhenFlushed(1);
 });

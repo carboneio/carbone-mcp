@@ -30,6 +30,7 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 - [Transport modes](#transport-modes)
 - [Configuration](#configuration)
 - [Health endpoint](#health-endpoint)
+- [Logs](#logs)
 - [Supported output formats](#supported-output-formats)
 
 ---
@@ -604,6 +605,39 @@ The `carbone` field reflects backend connectivity:
 | `{ "error": "unauthorized", "message": "..." }` | Reachable but no/invalid API key |
 | `{ "error": "unreachable", "message": "..." }` | Network error, timeout, or unexpected response |
 | `{ "status": "checking" }` | Right after start, until the first check completes |
+
+---
+
+## Logs
+
+In HTTP mode, the server writes one [logfmt](https://brandur.org/logfmt) line per event on stderr, starting with `level=`, so log viewers detect the level:
+
+```
+level=info msg="running in HTTP mode" version=2.2.0 mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
+level=info msg=request method=POST path=/ status=200 ms=412 ip=203.0.113.7 mcp=tools/call tool=render_document proto=2025-11-25 ua=claude-code/2.1 user=sub:42 oauth_client=example-client outcome=ok rid=9f2c1a7b04d6e358
+level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mcp=tools/call tool=convert_document user=key:3445f6f99c76 outcome=error error_type=upstream error="Carbone API request timed out after 60 s." rid=0f7090b8c1d2e3f4
+```
+
+| Level | Meaning |
+|---|---|
+| `info` | A request answered, and server events. |
+| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable. |
+| `error` | A 5xx answer; an upstream outage or an internal bug (`error_type`); a server failure. |
+
+| Field | Meaning |
+|---|---|
+| `ip` | The client's address, found past the internal proxies in X-Forwarded-For. |
+| `mcp`, `tool` | The JSON-RPC method (`batch` for a batch), and the tool a `tools/call` names. |
+| `client`, `proto`, `ua` | The client's name and version (on `initialize` and on every 2026-07-28 request), its `Mcp-Protocol-Version` and its `User-Agent`. |
+| `user` | `sub:<OAuth subject>` or `key:<first 12 hex characters of the API key's SHA-256>`, never a token or a key. |
+| `oauth_client` | OAuth mode: the client ID the token was issued to. |
+| `outcome`, `error` | `ok` or `error` for a tool call or a resource read, with the start of the error's text. A request the MCP SDK refuses (invalid arguments, unknown tool or method) is `error` without text. A few 2025-era methods the SDK refuses itself (e.g. `subscriptions/listen` without a 2026-07-28 claim) are not marked. |
+| `error_type` | `upstream` for a Carbone API outage, `internal` for a bug in this server. |
+| `reason` | Why a 401 was answered: `no-token` or `invalid-token`. |
+| `aborted` | `1` when the client left before the answer was sent. |
+| `rid` | The request's id, also on every other line written while it runs, and returned in the `X-Request-Id` response header. |
+
+Values are cut to 300 characters. Tool arguments and results are not logged, except the first 200 characters of a tool or resource error, with URLs reduced to their host and long tokens redacted. `/health` requests from an internal address (the platform's own probe) are not logged.
 
 ---
 

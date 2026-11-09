@@ -1,10 +1,12 @@
+import { AsyncResource } from 'node:async_hooks';
+import { randomBytes } from 'node:crypto';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { isIP } from 'node:net';
 import { originValidation, toNodeHandler } from '@modelcontextprotocol/node';
-import { createMcpHandler, localhostAllowedOrigins, McpServer, type AuthInfo } from '@modelcontextprotocol/server';
+import { CLIENT_INFO_META_KEY, createMcpHandler, localhostAllowedOrigins, McpServer, ProtocolError, ProtocolErrorCode, type AuthInfo } from '@modelcontextprotocol/server';
 import type { CarboneClient } from '../carbone/client.js';
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
-import { AuthorizationServerUnavailableError, logOAuth } from '../carbone/tokenExchange.js';
+import { AuthorizationServerUnavailableError } from '../carbone/tokenExchange.js';
 import { isBlockedIp } from '../utils/file.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
@@ -15,6 +17,8 @@ import { uploadSealer as createUploadSealer, UPLOAD_PATH } from './uploadTicket.
 import { createJobs, JOB_TOKEN_HEADER, JOB_TTL_SECONDS, WEBHOOK_BODY_TIMEOUT_MS, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_PATH } from './jobs.js';
 import { createDirStore, createObjectStore } from './objectStore.js';
 import { UPLOAD_TICKET_HEADER, UPLOAD_TIMEOUT_MS, createUploadIssuer, createUploadRoute } from './upload.js';
+import { exitWhenFlushed, log, requestLog, withOutcome, type RequestLog } from './log.js';
+import { loggedCaller } from './caller.js';
 
 /** Time for an MCP request body to arrive (the Carbone API max timeout + 5 s, as the server's requestTimeout was). */
 const MCP_BODY_TIMEOUT_MS = 65_000;
@@ -82,6 +86,29 @@ export function extractBearerToken(req: IncomingMessage): string | undefined {
   // a value with other whitespace ("Bearer<TAB>key") carry no Carbone key: they are never forwarded to the Carbone API.
   if (rest.length === 0) return isBearer || /\s/.test(scheme) ? undefined : scheme;
   return isBearer ? rest.join(' ') : undefined;
+}
+
+/** A client-sent value for the log: a string clipped to `max` characters, or undefined. log() sanitizes it. */
+const clip = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : undefined);
+
+/**
+ * What the access line reports about an MCP message: its JSON-RPC method (`batch` for a legacy batch), the tool a
+ * tools/call names, and the client's name/version, sent with initialize and with every 2026-07-28 request (in _meta).
+ * Never its arguments. Exported for tests.
+ */
+export function describeMessage(body: unknown, record: RequestLog): void {
+  if (Array.isArray(body)) {
+    record.mcp = 'batch';
+    return;
+  }
+  const { method, params } = (body ?? {}) as {
+    method?: unknown;
+    params?: { name?: unknown; clientInfo?: { name?: unknown; version?: unknown } | null; _meta?: Record<string, { name?: unknown; version?: unknown } | null> | null };
+  };
+  record.mcp = clip(method, 64);
+  if (method === 'tools/call') record.tool = clip(params?.name, 64);
+  const info = method === 'initialize' ? params?.clientInfo : params?._meta?.[CLIENT_INFO_META_KEY];
+  if (typeof info?.name === 'string') record.client = clip(typeof info.version === 'string' ? `${info.name}/${info.version}` : info.name, 100);
 }
 
 /**
@@ -182,7 +209,8 @@ export async function startHttpServer(options: {
   let nextHealthCheck = 0;
   let lastHealthStatus: string | undefined;
 
-  const refreshHealthInBackground = (): void => {
+  // Bound to startup, outside any request: the check's log line does not carry the rid of the request that started it.
+  const refreshHealthInBackground = AsyncResource.bind((): void => {
     if (Date.now() < nextHealthCheck) return;
     nextHealthCheck = Infinity; // one check at a time
     buildHealthBody(client, version)
@@ -192,20 +220,20 @@ export async function startHttpServer(options: {
         const status = carbone.error ? `${carbone.error}: ${carbone.message}` : `ok (v${carbone.version})`;
         if (status !== lastHealthStatus) {
           lastHealthStatus = status;
-          process.stderr.write(`[carbone-mcp] backend status changed: ${status}\n`);
+          log(carbone.error ? 'warn' : 'info', { msg: 'backend status changed', status });
         }
       })
       .catch(() => { /* buildHealthBody never rejects — errors are in the response body */ })
       .finally(() => { nextHealthCheck = Date.now() + HEALTH_REFRESH_MS; });
-  };
+  });
 
   // ── MCP handler — built once, serves both protocol eras ──────────────────
   // The factory is called for every request: an McpServer serves one exchange at a time.
-  // onerror reports out-of-band failures and rejected requests — message only, never bodies or tokens.
-  // Messages can echo client-sent values (e.g. a requested protocol version), so sanitize like clientIp.
-  const onerror = (err: Error) =>
-    process.stderr.write(`[carbone-mcp] MCP error: ${err.message.replace(/[^\x20-\x7E]/g, '')}\n`);
-  const mcpHandler = createMcpHandler(() => {
+  // onerror reports out-of-band failures and rejected requests: message only, never bodies or tokens. Within a
+  // request, mostly a request the SDK refused (a warning); outside one, a failure (an error). Messages can echo
+  // client-sent values (e.g. a requested protocol version): log() keeps 300 printable ASCII characters.
+  const onerror = (err: Error) => log(requestLog.getStore() ? 'warn' : 'error', { msg: 'MCP error', error: err.message });
+  const mcpHandler = createMcpHandler(({ era }) => {
     const mcpServer = new McpServer(serverInfo(version), serverOptions);
     // HTTP clients are remote: they may neither write outputPath to the server's disk nor read
     // local paths from it (that would expose server files such as /proc/self/environ).
@@ -218,6 +246,13 @@ export async function startHttpServer(options: {
       ...(jobs && { jobs }),
     });
     registerResources(mcpServer, client);
+    // 2025 era: a method this server does not handle gets the SDK's own answer (HTTP 200), with the outcome recorded
+    // for the access line. 2026-07-28 answers it 404 before any handler: the access line counts that 4xx itself.
+    if (era === 'legacy') {
+      mcpServer.server.fallbackRequestHandler = withOutcome(async () => {
+        throw new ProtocolError(ProtocolErrorCode.MethodNotFound, 'Method not found');
+      });
+    }
     return mcpServer;
   }, { onerror });
   // POST bodies are pre-parsed below (bounded by maxBodyBytes), which bypasses the SDK's own 4 MiB
@@ -227,9 +262,40 @@ export async function startHttpServer(options: {
   // listed hostname, otherwise it is answered 403. Non-browser clients send no Origin and pass.
   const validateOrigin = originValidation([...localhostAllowedOrigins(), ...allowedOriginHostnames]);
 
-  const handleRequest = async (req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse) => {
+  // Every request runs with its own log record (src/server/log.ts): the lines written meanwhile carry its rid, and
+  // the tool and resource callbacks record their outcome on it, for the access line.
+  const handleRequest = (req: IncomingMessage, res: ServerResponse) => {
+    const record: RequestLog = { rid: randomBytes(8).toString('hex') };
+    return requestLog.run(record, serve, req, res, record);
+  };
+
+  const serve = async (req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse, record: RequestLog) => {
       const start = Date.now();
-      let pathname: string;
+      // The client's address, past any internal proxy (see clientAddress): the one logged, the one a /health probe is
+      // recognized by, and in OAuth mode the one the failed-token limit applies to.
+      const address = clientAddress(req);
+      let pathname: string | undefined;
+      let quiet = false;
+      res.setHeader('X-Request-Id', record.rid);
+      // The access line, once the response is done or the connection is gone (a client leaving a long render), in
+      // the request's context so that it carries its rid.
+      res.once('close', AsyncResource.bind(() => {
+        if (quiet) return;
+        const status = res.statusCode;
+        // Refused by the SDK or this server, with no callback to record an outcome: an MCP POST answered 4xx or 5xx
+        // (401 excepted: signing in starts with it), or a tools/call or resources/read answered without one (invalid
+        // arguments, unknown tool or resource). One left before its answer is only aborted. A tool result refused by
+        // its output schema is not seen here.
+        const sdkRefused = res.writableFinished && req.method === 'POST' && pathname === mcpPath
+          && (status >= 400 ? status !== 401 : record.mcp === 'tools/call' || record.mcp === 'resources/read');
+        const outcome = record.outcome ?? (sdkRefused ? 'error' : undefined);
+        log(status >= 500 || record.fault ? 'error' : outcome === 'error' ? 'warn' : 'info', {
+          msg: 'request', method: req.method, path: pathname, status, ms: Date.now() - start, ip: address,
+          mcp: record.mcp, tool: record.tool, client: record.client, proto: record.proto, ua: record.ua,
+          user: record.user, oauth_client: record.oauthClient, reason: record.reason,
+          outcome, error_type: record.fault, error: record.error, aborted: res.writableFinished ? undefined : 1,
+        });
+      }));
       try {
         pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
       } catch {
@@ -241,24 +307,12 @@ export async function startHttpServer(options: {
       if (!bodyPaths.includes(pathname) && (req.headers['content-length'] || req.headers['transfer-encoding'])) {
         res.setHeader('Connection', 'close');
       }
-      // OAuth mode: the address the failed-token limit applies to, and the one logged. API-key mode logs, as before,
-      // the first X-Forwarded-For entry (set by reverse proxies such as nginx, but also by the client) or the socket.
-      const address = oauthGate ? clientAddress(req) : undefined;
-      // Sanitize to prevent log injection — keep only printable ASCII characters.
-      const clientIp = (address ?? (req.headers['x-forwarded-for'] as string | undefined)
-        ?.split(',')[0].trim() ?? req.socket.remoteAddress ?? '-')
-        .replace(/[^\x20-\x7E]/g, '');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', `Content-Type, Authorization, Mcp-Protocol-Version, Mcp-Method, Mcp-Name, ${UPLOAD_TICKET_HEADER}`);
-      // Browser clients must be able to read the OAuth challenge, and how long to wait after a 429 or 503.
-      res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Mcp-Session-Id, Retry-After');
-      res.on('finish', () => {
-        process.stderr.write(
-          `[carbone-mcp] ${req.method} ${pathname} ${res.statusCode} ${Date.now() - start}ms ${clientIp}\n`
-        );
-      });
+      // Browser clients must be able to read the OAuth challenge, how long to wait after a 429 or 503, and the request ID.
+      res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Mcp-Session-Id, Retry-After, X-Request-Id');
       try {
 
         // ── CORS preflight ────────────────────────────────────────────────────
@@ -291,6 +345,10 @@ export async function startHttpServer(options: {
 
         // ── Health check ──────────────────────────────────────────────────────
         if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/health') {
+          // The platform's own probes are not logged: those from an internal address, the one the request came from (a
+          // direct connection, which cannot be spoofed) or the one an internal proxy recorded. An external monitor comes
+          // through the proxy, and is logged.
+          quiet = isBlockedIp(address);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(req.method === 'HEAD' ? undefined : JSON.stringify(healthBody));
           refreshHealthInBackground(); // after the response, so starting a check never adds to it
@@ -299,13 +357,14 @@ export async function startHttpServer(options: {
 
         // ── MCP endpoint ──────────────────────────────────────────────────────
         if (pathname === mcpPath) {
+          record.ua = clip(req.headers['user-agent'], 100);
+          record.proto = clip(req.headers['mcp-protocol-version'], 20);
           // Origin first, for every method — the guard answers 403 itself when it returns false
           if (!validateOrigin(req, res)) return;
 
           if (addressSamples > 0) {
             addressSamples--;
-            const forwarded = [req.headers['x-forwarded-for'] ?? ''].flat().join(', ').slice(0, 200);
-            logOAuth(`request from peer ${req.socket.remoteAddress ?? '-'}, X-Forwarded-For "${forwarded}": limited as ${address}`);
+            log('info', { msg: 'OAuth: request address', peer: req.socket.remoteAddress, forwarded: [req.headers['x-forwarded-for'] ?? ''].flat().join(', '), address });
           }
 
           const token = extractBearerToken(req);
@@ -317,22 +376,27 @@ export async function startHttpServer(options: {
             res.once('close', () => gone.abort());
             const auth = await oauthGate.authenticate(req.headers.authorization, gone.signal, address);
             if (auth instanceof Response) {
+              // A refused token gets an error code in its challenge; a request without one, the bare challenge.
+              if (auth.status === 401) record.reason = auth.headers.get('www-authenticate')?.includes('error=') ? 'invalid-token' : 'no-token';
               // The body is unread: when it has not all arrived, close the connection rather than let Node drain it.
               res.writeHead(auth.status, { ...Object.fromEntries(auth.headers), ...(!req.complete && { Connection: 'close' }) });
               res.end(await auth.text());
               return;
             }
             req.auth = auth;
+            record.oauthClient = clip(auth.clientId, 100) || undefined;
           } else if (token) {
             // API-key mode: the Carbone API key is forwarded to the Carbone API as is
             req.auth = { token, clientId: '', scopes: [] };
           }
+          record.user = loggedCaller(req.auth);
 
           // Reject oversized/invalid bodies before allocating McpServer
           const parsedBody = req.method === 'POST' ? await parseBody(req, maxBodyBytes) : undefined;
           // An empty POST body is malformed too, and must not reach the handler: given no body it
           // would try to read the already-consumed request stream again.
           if (req.method === 'POST' && parsedBody === undefined) throw new Error('Invalid JSON body');
+          describeMessage(parsedBody, record);
 
           await handleMcpRequest(req, res, parsedBody);
           return;
@@ -366,7 +430,9 @@ export async function startHttpServer(options: {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not found' }));
       } catch (err) {
-        if (!res.headersSent) {
+        // The client left (mid-body): nothing to answer, and nothing wrong with the server.
+        const gone = req.socket.destroyed;
+        if (!res.headersSent && !gone) {
           if (err instanceof Error && err.message === 'Request body too large') {
             // The unread rest of the body is still in flight: close the connection after answering.
             res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
@@ -390,10 +456,10 @@ export async function startHttpServer(options: {
             res.end(JSON.stringify({ error: 'Internal server error' }));
           }
         }
-        // Sanitized like the access log: printable ASCII only, so a message can't forge log lines.
-        process.stderr.write(
-          `[carbone-mcp] HTTP error: ${(err instanceof Error ? err.message : String(err)).replace(/[^\x20-\x7E]/g, '')}\n`
-        );
+        // A refused request (4xx: body too large, malformed) is a warning; a client gone, information; anything else,
+        // an error. log() keeps printable ASCII only, so a message can't forge log lines.
+        const status = res.statusCode;
+        log(gone ? 'info' : status >= 400 && status < 500 ? 'warn' : 'error', { msg: 'HTTP error', error: err instanceof Error ? err.message : String(err) });
       }
   };
 
@@ -413,17 +479,17 @@ export async function startHttpServer(options: {
   // Graceful shutdown — stop accepting connections, wait for in-flight requests.
   // Force-exit after 10 s to avoid hanging indefinitely on stuck keep-alive connections.
   const shutdown = (signal: string) => {
-    process.stderr.write(`[carbone-mcp] ${signal} received — shutting down gracefully\n`);
+    log('info', { msg: 'shutting down gracefully', signal });
     // Drop idle keep-alive connections immediately so the process doesn't wait for them to time out
     httpServer.closeIdleConnections();
     httpServer.close(() => {
-      process.stderr.write('[carbone-mcp] All connections closed — exiting\n');
+      log('info', { msg: 'all connections closed, exiting' });
       // Closed only now so in-flight requests are not aborted; releases any server instance it still holds.
-      void mcpHandler.close().finally(() => process.exit(0));
+      void mcpHandler.close().finally(() => exitWhenFlushed(0));
     });
     setTimeout(() => {
-      process.stderr.write('[carbone-mcp] Graceful shutdown timed out — forcing exit\n');
-      process.exit(1);
+      log('warn', { msg: 'graceful shutdown timed out, forcing exit' });
+      exitWhenFlushed(1);
     }, 10_000).unref();
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));
@@ -434,22 +500,21 @@ export async function startHttpServer(options: {
     httpServer.listen(port, resolve);
   });
 
-  process.stderr.write(`Carbone MCP Server v${version} running in HTTP mode\n`);
-  process.stderr.write(`MCP endpoint : http://0.0.0.0:${port}${mcpPath}\n`);
-  process.stderr.write(`Health check : http://0.0.0.0:${port}/health\n`);
-  if (options.oauth) {
-    process.stderr.write(`OAuth mode   : resource ${options.oauth.resourceUrl}, authorization server ${options.oauth.issuer}\n`);
-  }
-  if (tickets) {
-    process.stderr.write(`Upload URLs  : ${new URL(UPLOAD_PATH, tickets.publicUrl).href}\n`);
-  }
-  if (jobs && tickets && jobStore) {
-    process.stderr.write(`Async renders: webhook ${new URL(WEBHOOK_PATH, tickets.publicUrl).href}, results in ${'dir' in jobStore ? `directory ${jobStore.dir}` : `bucket ${jobStore.bucket}`}\n`);
+  log('info', {
+    msg: 'running in HTTP mode', version, mcp: `http://0.0.0.0:${port}${mcpPath}`, health: `http://0.0.0.0:${port}/health`,
+    ...(options.oauth && { resource: options.oauth.resourceUrl, issuer: options.oauth.issuer }),
+    ...(tickets && { uploads: new URL(UPLOAD_PATH, tickets.publicUrl).href }),
+    ...(jobs && tickets && jobStore && {
+      webhook: new URL(WEBHOOK_PATH, tickets.publicUrl).href,
+      ...('dir' in jobStore ? { dir: jobStore.dir } : { bucket: jobStore.bucket }),
+    }),
+  });
+  if (jobs && jobStore) {
     // Reading an object that does not exist must answer "none": otherwise every pending job reads as an error.
-    void store!.get('jobs/startup-check').catch((err: unknown) => process.stderr.write(
-      `Async renders: the job store cannot be read (${err instanceof Error ? err.message : String(err)}). ` +
-      'With S3, the access key needs to read, write and list the bucket (a missing object then answers 404, not 403).\n'
-    ));
+    void store!.get('jobs/startup-check').catch((err: unknown) => log('warn', {
+      msg: 'async renders: the job store cannot be read', error: err instanceof Error ? err.message : String(err),
+      hint: 'With S3, the access key needs to read, write and list the bucket (a missing object then answers 404, not 403).',
+    }));
   }
   return httpServer;
 }

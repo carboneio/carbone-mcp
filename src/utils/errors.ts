@@ -7,8 +7,18 @@ import {
   CarboneRateLimitError,
   CarboneValidationError,
 } from '../carbone/errors.js';
+import { requestLog, type RequestLog } from '../server/log.js';
 
 const CONVERSION_MATRIX = 'https://carbone.io/documentation/developer/http-api/generate-reports.html#output-file-type';
+
+/**
+ * HTTP mode: a Carbone outage (upstream) or a bug (internal) is noted for the access line, logged at error level; a
+ * request the client got wrong is not.
+ */
+const fault = (kind: NonNullable<RequestLog['fault']>) => {
+  const record = requestLog.getStore();
+  if (record) record.fault ??= kind;
+};
 
 /** " (Carbone w101)" when the API returned an error code. */
 const codeOf = (error: CarboneError) => (error.code ? ` (Carbone ${error.code})` : '');
@@ -64,6 +74,7 @@ export function formatError(error: unknown): string {
   }
 
   if (error instanceof CarboneConnectionError) {
+    fault('upstream');
     return error.message;
   }
 
@@ -79,6 +90,7 @@ export function formatError(error: unknown): string {
       case 502:
       case 503:
       case 504:
+        fault('upstream');
         return `Carbone service temporarily unavailable${codeOf(error)}: ${error.message}\n\nPlease try again in a moment.`;
     }
     return `Error${codeOf(error)}: ${error.message}`;
@@ -86,8 +98,10 @@ export function formatError(error: unknown): string {
 
   // A timeout while reading the response body (after the request itself succeeded).
   if (error instanceof Error && error.name === 'TimeoutError') {
+    fault('upstream');
     return 'Carbone API request timed out.';
   }
 
+  fault('internal');
   return `Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
 }

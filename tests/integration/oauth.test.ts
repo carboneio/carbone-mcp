@@ -177,7 +177,8 @@ afterAll(async () => {
   // The sweep, over whatever ran in this file (all of it, or a filtered part): no token, secret or
   // Authorization header ever reached stderr.
   for (const secret of secretsSeen) expect(log).not.toContain(secret);
-  expect(log).not.toMatch(/Bearer |Basic |authorization:/i);
+  // The one exception: the help text of the no-API-key tool error, logged with its outcome.
+  expect(log.replace(/ error="Authentication failed: No API key provided\.[^"]*"/g, '')).not.toMatch(/Bearer |Basic |authorization:/i);
 });
 
 const eras = [
@@ -219,7 +220,7 @@ async function expectChallenge(res: Response, metadataUrl = `${RESOURCE}/.well-k
   expect(challenge).toContain(`resource_metadata="${metadataUrl}"`);
   expect(challenge).toContain('scope="doc_rwd"');
   expect(res.headers.get('access-control-allow-origin')).toBe('*');
-  expect(res.headers.get('access-control-expose-headers')).toBe('WWW-Authenticate, Mcp-Session-Id, Retry-After');
+  expect(res.headers.get('access-control-expose-headers')).toBe('WWW-Authenticate, Mcp-Session-Id, Retry-After, X-Request-Id');
   expect((await res.json()).error).toBe('invalid_token');
 }
 
@@ -228,7 +229,7 @@ async function expectBareChallenge(res: Response, metadataUrl = `${RESOURCE}/.we
   expect(res.status).toBe(401);
   expect(res.headers.get('www-authenticate')).toBe(`Bearer scope="doc_rwd", resource_metadata="${metadataUrl}"`);
   expect(res.headers.get('access-control-allow-origin')).toBe('*');
-  expect(res.headers.get('access-control-expose-headers')).toBe('WWW-Authenticate, Mcp-Session-Id, Retry-After');
+  expect(res.headers.get('access-control-expose-headers')).toBe('WWW-Authenticate, Mcp-Session-Id, Retry-After, X-Request-Id');
   expect(await res.text()).toBe('');
 }
 
@@ -466,6 +467,10 @@ describe('OAuth mode: flood protection, behind a reverse proxy', () => {
     expect(await res.json()).toEqual({
       jsonrpc: '2.0', error: { code: -32000, message: expect.stringContaining('authorization server'), data: { error: 'server_error' } }, id: null,
     });
+    // A server failure: its access line, and the HTTP error line it shares its rid with, are errors
+    const rid = res.headers.get('x-request-id');
+    await vi.waitFor(() => expect(log).toMatch(new RegExp(`^level=error msg=request method=POST path=/ status=503 .* rid=${rid}$`, 'm')));
+    expect(log).toMatch(new RegExp(`^level=error msg="HTTP error" .* rid=${rid}$`, 'm'));
     // A token picked to make the authorization server fail cannot stop sign-ins for everyone
     expect((await rawToolsCall(url, from('203.0.113.60', grant()))).status).toBe(200);
     expect((await rawToolsCall(url, from('203.0.113.60', signedIn))).status).toBe(200);
@@ -516,10 +521,33 @@ describe('API-key mode (no MCP_OAUTH_* variable): unchanged', () => {
 // ── Logging ───────────────────────────────────────────────────────────────────
 
 describe('logging', () => {
-  // The check that no secret is logged runs once every test of this file is done (afterAll above).
-  test('stderr is captured, so that end-of-file check reads the real output', async () => {
+  // The check that no secret is logged runs once every test of this file is done (afterAll above): these tests also
+  // show that it reads the real output.
+  test('a 401 says why: no token, or a token refused', async () => {
     const url = await mcpServer({ oauth: { issuer: asUrl, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, resourceUrl: RESOURCE } });
-    expect((await rawToolsCall(url)).status).toBe(401);
-    await vi.waitFor(() => expect(log).toContain('[carbone-mcp] POST / 401'));
+    const unknown = opaque();
+    secretsSeen.add(unknown);
+    const lines = () => log.split('\n').filter((line) => line.includes(' status=401 '));
+    const before = lines().length;
+    expect((await rawToolsCall(url, { Authorization: `Bearer ${unknown}` })).status).toBe(401);
+    expect((await rawToolsCall(url, { Authorization: 'Basic dXNlcjpwYXNz' })).status).toBe(401);
+    await vi.waitFor(() => expect(lines().slice(before).map((line) => / reason=(\S+) /.exec(line)?.[1])).toEqual(['invalid-token', 'no-token']));
+  });
+
+  test('a signed-in call names the OAuth subject and client, never a token, with the user agent and protocol version', async () => {
+    const url = await mcpServer({ oauth: { issuer: asUrl, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, resourceUrl: RESOURCE } });
+    const client = await connect(url, grant({ sub: 'acct-7' }), { pin: MODERN });
+    try {
+      expect((await client.callTool({ name: 'list_tags', arguments: {} })).isError).toBeFalsy();
+    } finally {
+      await client.close();
+    }
+    const line = await vi.waitFor(() => {
+      const found = log.split('\n').find((l) => l.includes(' user=sub:acct-7 ') && l.includes(' mcp=tools/call '));
+      expect(found).toBeDefined();
+      return found!;
+    });
+    expect(line).toMatch(/^level=info /);
+    for (const field of [` ua=${USER_AGENT} `, ` proto=${MODERN} `, ' oauth_client=example-client ', ' outcome=ok ']) expect(line).toContain(field);
   });
 });

@@ -303,7 +303,7 @@ Full descriptions: [Configuration in docs/API.md](docs/API.md#configuration).
 | HTTP `403` `Invalid Origin: <host>` | A browser-based client served from a host other than `localhost`. Add its hostname to `MCP_ALLOWED_ORIGINS`. |
 | HTTP `405` `Method not allowed` when you open the endpoint in a browser | Expected: the endpoint only answers MCP `POST` requests. Check the server with `GET /health`. |
 | HTTP `413` `Request body too large` | One MCP message is over `MCP_MAX_BODY_BYTES`. Pass files by URL, or raise the limit. |
-| `Async renders: the job store cannot be read` at startup | The S3 access key needs to read, write and list the bucket, or `MCP_JOBS_DIR` must be writable. |
+| `async renders: the job store cannot be read` at startup | The S3 access key needs to read, write and list the bucket, or `MCP_JOBS_DIR` must be writable. |
 
 ## Upgrading from 1.x
 

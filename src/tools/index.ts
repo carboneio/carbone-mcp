@@ -6,6 +6,7 @@ import type { IoModes } from './inputForms.js';
 import { chatFileMeta } from './attachments.js';
 import { uploadCallerFrom } from '../server/upload.js';
 import { callerIdFrom } from '../server/caller.js';
+import { withOutcome } from '../server/log.js';
 
 import {
   convertDocumentToolName,
@@ -173,6 +174,9 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     inspectTemplateDescription, inspectTemplateInput, uploadTemplateDescription, uploadTemplateInput,
     downloadTemplateDescription, downloadTemplateInput, downloadToolHints, attachedFileMeta, attachedTemplateMeta,
   } = transportToolsFor(io);
+  // Every tool records its outcome for the HTTP access line (an error's text, never arguments or results).
+  const registerTool = ((name: string, config: never, callback: (...args: never[]) => unknown) =>
+    server.registerTool(name, config, withOutcome(callback) as never)) as McpServer['registerTool'];
 
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
   // badges and help models reason about which tools are read-only, repeatable, or destructive.
@@ -187,7 +191,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   //   result to a webhookUrl. False for tools limited to the account, and for the local capabilities tool.
   // download_template takes per-transport hints (downloadToolHints, see buildTransportTools).
 
-  server.registerTool(
+  registerTool(
     listTemplatesToolName,
     {
       ...titled('List Templates', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
@@ -198,7 +202,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleListTemplates(args, client, callOptionsFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     convertDocumentToolName,
     {
       ...titled('Convert Document', generationHints),
@@ -209,7 +213,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleConvertDocument(args, client, callOptionsFrom(ctx), fileCtx)
   );
 
-  server.registerTool(
+  registerTool(
     renderDocumentToolName,
     {
       ...titled('Generate Document', generationHints),
@@ -223,7 +227,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   // Async renders only (HTTP with MCP_TICKET_SECRET and a job store): reads a result, changes nothing.
   const { jobs } = fileCtx;
   if (jobs) {
-    server.registerTool(
+    registerTool(
       getRenderResultToolName,
       {
         ...titled('Get Render Result', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
@@ -236,7 +240,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
 
   // Runs one render whose document is never fetched: nothing is written locally nor changed in the account,
   // so it is read-only and repeatable on both transports.
-  server.registerTool(
+  registerTool(
     inspectTemplateToolName,
     {
       ...titled('Inspect Template', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }),
@@ -248,7 +252,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleInspectTemplate(args, client, callOptionsFrom(ctx), fileCtx)
   );
 
-  server.registerTool(
+  registerTool(
     listCategoriesToolName,
     {
       ...titled('List Categories', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
@@ -258,7 +262,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (ctx) => handleListCategories({} as never, client, callOptionsFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     listTagsToolName,
     {
       ...titled('List Tags', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
@@ -268,7 +272,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (ctx) => handleListTags({} as never, client, callOptionsFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     uploadTemplateToolName,
     {
       ...titled('Upload Template', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }),
@@ -280,7 +284,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleUploadTemplate(args, client, callOptionsFrom(ctx), fileCtx, uploadCallerFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     updateTemplateMetadataToolName,
     {
       ...titled('Update Template Metadata', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
@@ -291,7 +295,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleUpdateTemplateMetadata(args, client, callOptionsFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     deleteTemplateToolName,
     {
       ...titled('Delete Template', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
@@ -301,7 +305,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleDeleteTemplate(args, client, callOptionsFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     downloadTemplateToolName,
     {
       ...titled('Download Template', downloadToolHints),
@@ -311,7 +315,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (args, ctx) => handleDownloadTemplate(args, client, callOptionsFrom(ctx), fileCtx)
   );
 
-  server.registerTool(
+  registerTool(
     getApiStatusToolName,
     {
       ...titled('API Status', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
@@ -321,7 +325,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     (ctx) => handleGetApiStatus(client, callOptionsFrom(ctx))
   );
 
-  server.registerTool(
+  registerTool(
     getCapabilitiesToolName,
     {
       ...titled('Capabilities', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),

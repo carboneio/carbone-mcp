@@ -1,5 +1,6 @@
 import { parseRetryAfter } from './client.js';
 import { LruCache, tokenCacheKey } from '../utils/lru.js';
+import { log, type LogLevel } from '../server/log.js';
 
 /**
  * OAuth mode only: the MCP server is a confidential client of the authorization server (account.carbone.io).
@@ -53,9 +54,9 @@ export class SubjectTokenRejectedError extends Error {
   }
 }
 
-/** An operational log line, on stderr like the access log: printable ASCII only, and never a token. */
-export function logOAuth(message: string): void {
-  process.stderr.write(`[carbone-mcp] OAuth: ${message.replace(/[^\x20-\x7E]/g, '')}\n`);
+/** An operational log line, through the server's log (printable ASCII only), and never a token. */
+export function logOAuth(message: string, level: LogLevel = 'warn'): void {
+  log(level, { msg: `OAuth: ${message}` });
 }
 
 /** A Retry-After within 1-300 s (5 s when unusable): a far-off one would lock new sign-ins out until a restart. */

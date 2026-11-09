@@ -1,7 +1,8 @@
 import { describe, test, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { IncomingMessage } from 'node:http';
-import { clientAddress, extractBearerToken, parseBody } from '../../../src/server/http.js';
+import { clientAddress, describeMessage, extractBearerToken, parseBody } from '../../../src/server/http.js';
+import type { RequestLog } from '../../../src/server/log.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -149,5 +150,40 @@ describe('parseBody', () => {
     const body = Buffer.from(JSON.stringify({ n: 1 }));
     const req = makeStreamReq(body);
     await expect(parseBody(req, body.length)).resolves.toEqual({ n: 1 });
+  });
+});
+
+// ─── describeMessage ──────────────────────────────────────────────────────────
+
+describe('describeMessage', () => {
+  const described = (body: unknown) => {
+    const record: RequestLog = { rid: '0a1b2c3d' };
+    describeMessage(body, record);
+    const { rid: _, ...fields } = record;
+    return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+  };
+
+  test('initialize: the method and the client name/version', () => {
+    expect(described({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'claude-ai', version: '0.1.0' } } }))
+      .toEqual({ mcp: 'initialize', client: 'claude-ai/0.1.0' });
+    expect(described({ method: 'initialize', params: { clientInfo: { name: 'no-version' } } })).toEqual({ mcp: 'initialize', client: 'no-version' });
+  });
+
+  test('tools/call: the tool name, never the arguments; 2026-07-28: the client from _meta', () => {
+    expect(described({
+      method: 'tools/call',
+      params: { name: 'render_document', arguments: { data: { secret: 'x' } }, _meta: { 'io.modelcontextprotocol/clientInfo': { name: 'c', version: '2' } } },
+    })).toEqual({ mcp: 'tools/call', tool: 'render_document', client: 'c/2' });
+    expect(described({ method: 'tools/list', params: { name: 'ignored' } })).toEqual({ mcp: 'tools/list' });
+  });
+
+  test('client input is clipped, and anything malformed is left out', () => {
+    expect(described({ method: 'x'.repeat(500), params: null })).toEqual({ mcp: 'x'.repeat(64) });
+    expect(described({ method: 'tools/call', params: { name: 'n'.repeat(500) } })).toEqual({ mcp: 'tools/call', tool: 'n'.repeat(64) });
+    expect(described({ method: 'initialize', params: { clientInfo: { name: 'a'.repeat(80), version: 'v'.repeat(80) } } }).client).toHaveLength(100);
+    for (const body of [undefined, null, 42, 'text', { method: 7 }]) expect(described(body)).toEqual({});
+    expect(described([{ method: 'tools/call', params: { name: 'list_tags' } }])).toEqual({ mcp: 'batch' });
+    expect(described({ method: 'initialize', params: { clientInfo: 'x' } })).toEqual({ mcp: 'initialize' });
+    expect(described({ method: 'ping', params: { _meta: null } })).toEqual({ mcp: 'ping' });
   });
 });

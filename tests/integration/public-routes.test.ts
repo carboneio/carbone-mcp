@@ -72,7 +72,7 @@ describe('GET /health never waits for the Carbone API', () => {
     await vi.waitFor(async () => expect((await health()).carbone)
       .toEqual({ error: 'unreachable', message: 'Carbone API request timed out after 60 s.' }));
     expect(stderr).toHaveBeenCalledWith(
-      '[carbone-mcp] backend status changed: unreachable: Carbone API request timed out after 60 s.\n');
+      'level=warn msg="backend status changed" status="unreachable: Carbone API request timed out after 60 s."\n');
   });
 });
 

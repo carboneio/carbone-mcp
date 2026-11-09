@@ -12,6 +12,7 @@ import {
 } from './inputForms.js';
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 import type { Jobs } from '../server/jobs.js';
+import { log } from '../server/log.js';
 
 export const renderDocumentToolName = 'render_document';
 
@@ -433,7 +434,7 @@ export async function handleGetRenderResult(args: { jobId: string }, client: Car
     }
   } catch (error) {
     // The store's own error (a path, a status) stays in the server log.
-    process.stderr.write(`[carbone-mcp] get_render_result: ${error instanceof Error ? error.message : String(error)}\n`);
+    log('warn', { msg: 'get_render_result: the job store cannot be read', error: error instanceof Error ? error.message : String(error) });
     return fail('Could not read the render result: try again in a few seconds.');
   }
 }
