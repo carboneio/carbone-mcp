@@ -61,8 +61,9 @@ export const INPUT_FORMATS_DESCRIPTION =
 /** Converter guidance shared by render_document and convert_document; the details are in get_capabilities. */
 export const CONVERTER_DESCRIPTION =
   'Converter, used whenever the format changes. "L" LibreOffice (default): every format, and the only one with ' +
-  'PDF/A, page ranges and accessibility. "I" Carbone ICE: DOCX and ODT to PDF, the fastest (keep "L" for SmartArt, ' +
-  'complex charts, comments, form fields, equations). "O" OnlyOffice: DOCX, XLSX, PPTX to PDF. "C" Chromium: HTML ' +
+  'PDF/A, page ranges and accessibility. "I" Carbone ICE: DOCX and ODT to PDF, the fastest (keep "L" for WEBP or ' +
+  'EMF/WMF images, SmartArt, complex charts, comments, form fields, equations, bookmarks, endnotes, and ODT tracked ' +
+  'changes or footnotes). "O" OnlyOffice: DOCX, XLSX, PPTX to PDF. "C" Chromium: HTML ' +
   'and SVG to PDF, PNG, JPG, WEBP. Details: get_capabilities.';
 
 /** convertTo guidance shared by both tools. */

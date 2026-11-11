@@ -1,6 +1,6 @@
 # Carbone Formatters — Complete Reference
 
-Read this file when verifying a formatter name, checking its parameters or return value, looking up date/number/currency formatting options, or reviewing deprecated formatters and their modern replacements.
+Read this file when verifying a formatter name, checking its parameters or return value, looking up date/number/currency formatting options (accounting `acc`, rounding of halves and negatives), merging identical XLSX cells with `:mergeCell`, or reviewing deprecated formatters and their modern replacements.
 
 All formatters below are verified from official Carbone documentation. Do NOT use any formatter not listed here.
 
@@ -55,8 +55,8 @@ Example cells read: tag — JSON input → output. Inputs are written as JSON, s
 
 | Formatter | Version | Description | Example |
 |---|---|---|---|
-| `:formatN(precision)` | v1.2.0+ | Format number using `lang` option for separators. `precision` max 40, a larger value is rejected (v5.14.4+) | `{d.price:formatN()}` — `1000.456` → `"1,000.456"` with `lang:"en-us"` |
-| `:round(precision)` | v1.2.0+ | Round correctly (not like toFixed) | `{d.price:round(1)}` — `1.05` → `1.1` |
+| `:formatN(precision, acc)` | v1.2.0+ | Format number using `lang` option for separators. `precision` max 40, a larger value is rejected (v5.14.4+). `acc` (v5.18.0+) writes negatives in parentheses — see "Accounting format" below | `{d.price:formatN()}` — `1000.456` → `"1,000.456"` with `lang:"en-us"` |
+| `:round(precision)` | v1.2.0+ | Round correctly (not like toFixed) — see "Rounding" below | `{d.price:round(1)}` — `1.05` → `1.1` |
 | `:add(value)` | v1.2.0+ | Add two numbers | `{d.price:add(2)}` — `1000.4` → `1002.4` |
 | `:sub(value)` | v1.2.0+ | Subtract | `{d.price:sub(2)}` — `1000.4` → `998.4` |
 | `:mul(value)` | v1.2.0+ | Multiply | `{d.price:mul(2)}` — `1000.4` → `2000.8` |
@@ -77,13 +77,21 @@ Example cells read: tag — JSON input → output. Inputs are written as JSON, s
 ```
 Only `+`, `*`, `-`, `/` are allowed, without extra parentheses. `*` and `/` have higher precedence.
 
+**Rounding** (v5.18.0+): `:round`, `:formatN` and `:formatC` round halves away from zero, negative numbers like positive ones, with or without `useHighPrecisionArithmetic`:
+```
+{d.value:round(0)}     // -2.5 > -3
+{d.value:round(2)}     // -1.005 > -1.01
+{d.value:formatN(2)}   // 1.005 > "1.01" with lang:"en-us"
+{d.value:formatN(2)}   // -0.001 > "0.00"
+```
+
 ---
 
 ## Currency Formatters
 
 | Formatter | Version | Description |
 |---|---|---|
-| `:formatC(precisionOrFormat, targetCurrency)` | v1.2.0+ | Format as currency using `lang` + `currency` options. `precision` max 40 (v5.14.4+) |
+| `:formatC(precisionOrFormat, targetCurrencyOrAcc)` | v1.2.0+ | Format as currency using `lang` + `currency` options. `precision` max 40 (v5.14.4+). The second argument is a target currency code, or `acc` (v5.18.0+) for negatives in parentheses — see "Accounting format" below |
 | `:convCurr(target, source)` | v1.2.0+ | Convert from one currency to another |
 
 **`:formatC` format codes**: `'M'` = currency name in words, `'L'` = symbol + amount, `'LL'` = amount + currency name.
@@ -98,6 +106,15 @@ Only `+`, `*`, `-`, `/` are allowed, without extra parentheses. `*` and `/` have
 {d.amount:formatC('LL')} // 1000 > "2,000.00 dollars"
 ```
 
+**Accounting format `acc`** (v5.18.0+) — `:formatN` and `:formatC` write negative numbers in parentheses, without the minus sign; positive numbers are unchanged. In `:formatC`, `acc` takes the place of the target currency, so the report's `currencyTarget` (or the currency of a preceding `:convCurr`) is used. With `lang:"en-us"` and USD:
+```
+{d.amount:formatN(2, acc)}   // -1234.5 > "(1,234.50)"
+{d.amount:formatC(L, acc)}   // -1234.5 > "($1,234.50)"
+{d.amount:formatC(LL, acc)}  // -1000.456 > "(1,000.46 dollars)"
+{d.amount:formatC(0, acc)}   // -1000.456 > "($1,000)"
+```
+With `lang:"fr-fr"` and EUR: `formatN(2, acc)` → `"(1 234,50)"`, `formatC(L, acc)` → `"(1 234,50 €)"`. In XLSX the cell becomes text; to keep a number, use `:formatN` with the cell format `#,##0.00;(#,##0.00)` (→ `xlsx-tips.md`). In ODS, `acc` is ignored.
+
 **`:convCurr` examples** (same options):
 ```
 {d.amount:convCurr()}            // 10 > 20
@@ -106,7 +123,7 @@ Only `+`, `*`, `-`, `/` are allowed, without extra parentheses. `*` and `/` have
 {d.amount:convCurr('USD','USD')} // 1000 > 1000
 ```
 
-**Currency codes**: `:formatC`, `:convCurr` and `:toWord` accept ISO 4217 codes. Added in v5.16.0: `XAF` (Central African CFA franc, no decimals), `XCG` (Caribbean guilder, which replaces `ANG` in Curaçao and Sint Maarten), `CDF`, `STN`, `SHP`, `SVC`, `MRU`, `SLE`, `VES`, `VED` and `ZWG`.
+**Currency codes**: `:formatC`, `:convCurr` and `:toWord` accept ISO 4217 codes. Added in v5.16.0: `XAF` (Central African CFA franc, no decimals), `XCG` (Caribbean guilder, which replaces `ANG` in Curaçao and Sint Maarten), `CDF`, `STN`, `SHP`, `SVC`, `MRU`, `SLE`, `VES`, `VED` and `ZWG`. A code `:formatC` does not know — in its argument or in the report's `currencyTarget` — fails the render with `formatC: unknown currency "XYZ"` (v5.18.0+).
 
 ---
 
@@ -504,18 +521,19 @@ Tags using `:set` print **nothing**. Execution order is guaranteed within same d
 
 | Formatter | Version | Description |
 |---|---|---|
+| `:mergeCell(parent…)` | v5.18.0+ | XLSX only. Merge the consecutive cells of a column that have the same value into one vertically merged cell: `{d.products[i].category:mergeCell}`. Optional parents merge only within a group: `:mergeCell(.country, .region)`. Must be the last formatter; no pre-release tag needed. Details → `xlsx-tips.md` "Merged cells in a loop" |
 | `:formatR` | v5.0.4+ | Format a country/region code (in the data) to a human-readable name in the report's language. Accepts ISO 3166-1 Alpha-3 (`FRA`), Alpha-2 (`FR`), or Numeric (`250`). Example: `{d.countryCode:formatR}` |
-| `:imageFit(option)` | v3.2.0+ ENTERPRISE | Resize replacement image to placeholder (DOCX/ODT). `fillWidth` (default), `contain`, `fill` |
+| `:imageFit(option)` | v3.2.0+ ENTERPRISE | Resize replacement image to placeholder (DOCX/ODT/PPTX). `fillWidth` (default), `contain`, `fill` |
 | `:autoOrient` | v5.6.0+ ENTERPRISE | Auto-rotate a JPEG image according to its EXIF orientation (camera/smartphone). DOCX only. Use before `:imageFit` — compatible with `contain` and `fillWidth`, not with `fill`. Non-JPEG images are ignored. Example: `{d.photo:autoOrient:imageFit(contain)}` |
-| `:barcode(type, options?)` | v3.4.6+ ENTERPRISE | Insert barcode/QR as image. Write in the alt-text of a placeholder image (DOCX/ODT/PPTX/XLSX/…) or in `<img src="">` for HTML and Markdown templates (Markdown: v5.13.0+). `type`: `qrcode`, `code128`, `ean13`, `ean8`, `pdf417`, and 100+ others. `svg:true` for vector output. Options (second arg, `key:value` pairs): `width`, `height`, `scale` (1–10), `includetext`, `textsize`, `textxalign` (left/center/right/justify), `textyalign` (below/center/above), `rotate` (N/R/L/I), `barcolor` (#RRGGBB), `textcolor` (#RRGGBB), `backgroundcolor` (#RRGGBB), `eclevel` (L/M/Q/H — QR only). Limits (v5.14.4+): `width`/`height` max 1,000 mm and 25 million pixels together with `scale`, `textsize` max 100 pt; a larger value is rejected, not reduced |
+| `:barcode(type, options?)` | v3.4.6+ ENTERPRISE | Insert barcode/QR as image. Write in the alt-text of a placeholder image (DOCX/ODT/PPTX/XLSX/…) or in `<img src="">` for HTML and Markdown templates (Markdown: v5.13.0+). `type`: `qrcode`, `code128`, `ean13`, `ean8`, `pdf417`, and 100+ others. `svg:true` for vector output. Options (second arg, `key:value` pairs): `width`, `height`, `scale` (1–10), `includetext`, `textsize`, `textxalign` (left/center/right/justify), `textyalign` (below/center/above), `rotate` (N/R/L/I), `barcolor` (#RRGGBB), `textcolor` (#RRGGBB), `backgroundcolor` (#RRGGBB), `eclevel` (L/M/Q/H — QR only). `scale` defaults to 3. Limits (v5.14.4+): `width`/`height` max 1,000 mm and `textsize` max 100 pt — a bigger value is ignored, not reduced; above 25 million pixels (`scale` included) the barcode is replaced by the error image |
 | `:chart` | v4.0+ ENTERPRISE | Inject an ECharts v5 chart as an image. Write in the alt-text of a placeholder image (DOCX/ODT/PPTX/XLSX/…) or in `<img src="">` for HTML and Markdown templates (Markdown: v5.13.0+). JSON must contain a full ECharts config with `type:"echarts@v5a"` |
 | `:color(scope, type)` | v4.17.0+ ENTERPRISE | Apply dynamic hex color to text, cells, rows, or shapes — [see full reference](#color-formatter--full-reference-enterprise-v417) |
 | `:appendFile(where?)` | v4.22.0+ ENTERPRISE | Append PDF at end (`'end'`, default) or `'start'` of generated PDF |
-| `:attachFile(name, type)` | v4.23.0+ ENTERPRISE | Attach file inside PDF (Factur-X, ZUGFeRD). Auto-detects Factur-X level when filename is `'factur-x.xml'` |
-| `:appendTemplate(templateIdOrVersionId, position?)` | v5.0.3+ ENTERPRISE On-Premise | Generate another template with current data and append its PDF. `position`: `'end'` (default) or `'start'`. Works in loops. **PDF output only** (silently ignored otherwise). Only `lang`, `currency`, `enum`, `converter`, `translations`, and complement data are forwarded to the nested template. No recursion |
+| `:attachFile(name, type)` | v4.23.0+ ENTERPRISE | Attach file inside PDF (Factur-X, ZUGFeRD). `name` defaults to `'factur-x.xml'`, which auto-detects the Factur-X level. `type` is the PDF relationship: `Data` (default), `Source`, `Alternative`, `Supplement`, `Unspecified`, `FormData`, `Schema` — any other value (a MIME type) is an error |
+| `:appendTemplate(templateIdOrVersionId, position?)` | v5.0.3+ ENTERPRISE On-Premise | Generate another template with current data and append its PDF. `position`: `'end'` (default) or `'start'`. Works in loops. **PDF output only** (silently ignored otherwise). Only `lang`, `timezone`, `currencySource`, `currencyTarget`, `currencyRates`, `enum`, `converter`, `translations`, and complement data are forwarded to the nested template. No recursion |
 | `:defaultURL(url)` | v3.1.6+ ENTERPRISE | Fallback URL if dynamic hyperlink is invalid. Place before `:html` when combined |
-| `:sign` | v5.0.0+ ENTERPRISE BETA | Place signature field; returns position coordinates in API response. Prints nothing |
-| `:transform(axis, unit)` | v4.22.11+ ENTERPRISE | Move shapes on X or Y axis. Requires `{o.preReleaseFeatureIn=4022011}`. axis: `'x'`/`'y'`. unit: `'cm'` `'mm'` `'inch'` `'pt'` `'in'` (`in` added in v5.4.0 for PPTX/ODP) |
+| `:sign` | v5.0.0+ ENTERPRISE BETA | Place signature field; returns position coordinates in API response. Prints nothing. PDF output with the `carbone-version: 5` header; write the tag in Arial/Calibri with the opening `{` in the background color (→ `advanced-features.md`) |
+| `:transform(axis, unit)` | v4.22.11+ ENTERPRISE | Move shapes and pictures on X or Y axis (PPTX/ODP/ODT). In v4, requires `{o.preReleaseFeatureIn=4022011}`. axis: `'x'`/`'y'`. unit: `'cm'` `'mm'` `'in'` (or `'inch'`) `'pt'`. Not on lines or groups (render error) |
 | `:svgUpdate(attrName, selectorVal, selectorType?)` | v5-beta.14+ | Update SVG attribute on matching elements. Tag goes in SVG HTML comment. selectorType: `'id'`, `'id > *'`, `'id *'` (default). Supports: rect, circle, line, ellipse, polygon, polyline, path |
 | `:svgSelectiveUpdate(attrName, attrVal, selectorType?)` | v5-beta.14+ | Select SVG elements by current value and inject attribute. Same selectorType options |
 
@@ -551,7 +569,7 @@ Color must be 6-digit hex, with or without `#`. Invalid values → replaced with
 | `background` | Cell/row/shape background |
 | `border` | Shape border only |
 
-**Limitations:** Cannot use in aliases. Cannot combine with aggregators. PPTX (v5.6.0+): all scope/type combinations supported; `border` for shapes only. For ODP (text, tables, shapes) and ODT (shapes only): a non-default style must already be applied in the template. Complex nested tables with sub-table colors are not fully supported.
+**Limitations:** Cannot use in aliases. Cannot combine with aggregators. PPTX (v5.6.0+): scopes `row`/`cell`/`shape` (not `p`); `border` for shapes only. For ODP (text, tables, shapes) and ODT (shapes only): a non-default style must already be applied in the template. Complex nested tables with sub-table colors are not fully supported.
 
 ## PDF Form Formatters
 

@@ -8,16 +8,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **The server serves the Carbone Skill** through the MCP Skills extension (`io.modelcontextprotocol/skills`, SEP-2640), on stdio and HTTP: `skills/list`, `skills/get`, `resources/read` and `resources/directory/read` on `skill://carbone/...`. Clients that support skills get the template syntax reference with the server, in the version matching its tools. The skill ships in the npm package and the Docker image, so nothing is downloaded at build or run time. See [Carbone Skill](docs/API.md#carbone-skill).
-- `npm run skill:sync -- <version>` and `npm run skill:check` copy and verify the skill from a carbone-agent-plugin release, pinned in `skills.lock.json`.
-- The startup log names the skills served: `skills=carbone@x.x.x` on the HTTP line, `Skills: carbone@x.x.x` in stdio (`none` when the skill could not be loaded).
+- **The server serves the Carbone Skill** (MCP Skills extension): clients that support skills get the template syntax reference with the server, no install needed. See [Carbone Skill](docs/API.md#carbone-skill).
+- `npm run skill:sync` and `npm run skill:check` update and verify the bundled skill.
+- The startup log names the skill served (`skills=carbone@x.x.x`).
 
 ### Changed
 
-- The server instructions and `get_capabilities` name `skill://carbone/SKILL.md` as the Carbone Skill, before its web copy, when the server serves it; otherwise they name the web copy only, as before.
-- `resources/list` also lists `skill://carbone/SKILL.md`.
-- The Docker image's code and skill (`/app/dist`, `/app/skills`) are owned by root: the `node` user the server runs as can read them, not change them.
-- stdio diagnostics on stderr turn control characters into spaces, so a message cannot forge a line or drive the terminal.
+- `resources/list`, the server instructions and `get_capabilities` show `skill://carbone/SKILL.md` when the skill is served.
+- Carbone ICE: the same limitations everywhere, and ODT to PDF is no longer called beta.
+- Upload URLs: `upload_template` now says how to send the file (POST, with the returned headers) and what comes back, for clients that show only the structured result.
+- Docker image: the code and the skill are read-only for the user the server runs as.
+- stdio logs strip control characters.
 
 ---
 

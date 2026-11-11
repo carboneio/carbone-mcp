@@ -146,7 +146,7 @@ export const uploadTemplateOutputSchema = {
     .number()
     .optional()
     .describe('UTC Unix timestamp of deployment; 0 means this version is not explicitly deployed.'),
-  uploadUrl: z.string().optional().describe('requestUploadUrl only: where to POST the file. The template does not exist yet.'),
+  uploadUrl: z.string().optional().describe('requestUploadUrl only: POST the file here as the raw body; the answer is the stored template. Nothing is stored before.'),
   headers: z.record(z.string(), z.string()).optional().describe('requestUploadUrl only: the headers to send with the file.'),
   expiresAt: z.number().optional().describe('requestUploadUrl only: UTC Unix timestamp after which the URL is refused.'),
 };
@@ -159,9 +159,10 @@ const requestUploadUrlSchema = z
   })
   .optional()
   .describe(
-    'Instead of template, when you can run shell commands: the file size and SHA-256. Returns a 10-minute upload URL ' +
-    'for that file only and the curl command to send it; the template is stored when the file arrives. Prefer it to ' +
-    'base64 for any file over a few KB. Not with template, attachedTemplate or sample.'
+    'Instead of template, when you can run shell commands: the file size and SHA-256. Returns uploadUrl and headers, ' +
+    'valid 10 minutes for that file only: POST the file as the raw body with those headers (curl -H \'<name>: <value>\' ' +
+    '--data-binary @<file> <uploadUrl>); the answer is the stored template (id, versionId). Prefer it to base64 for ' +
+    'any file over a few KB. Not with template, attachedTemplate or sample.'
   );
 
 export function uploadTemplateSchemaFor(io: IoModes) {

@@ -86,9 +86,9 @@ IDML templates render to IDML only. Substitutions, formatters, translations and 
 
 ## Format-specific limitations
 
-- **XLSX**: sheet names are capped at 31 characters; dynamic sheet creation is not supported
+- **XLSX**: sheet names are capped at 31 characters; dynamic sheet creation is not supported — design an ODS template and convert the report to XLSX. Formulas, merged cells, charts and pivot tables follow loop rows only with `{o.preReleaseFeatureIn=5018000}` (v5.18.0+); `:mergeCell` is XLSX only (`xlsx-tips.md`)
 - **ODS**: dynamic sheet creation **is** possible — name the sheet tabs with aliases that resolve to a loop (`{$sheet1}` / `{$sheet2}`), see `xlsx-tips.md` "One sheet per array item"
-- **PPTX**: dynamic slide creation is not supported — paginate manually with filters (ODP supports dynamic slide creation)
+- **PPTX**: no slide loops and no table-column (horizontal) loops yet — for one slide per item use an ODP template rendered with `"convertTo": "pptx"`; shapes below a looped table or list do not move (`pptx-tips.md`)
 - **PDF**: see `pdf-templates.md`
 
 ---
@@ -98,7 +98,8 @@ IDML templates render to IDML only. Substitutions, formatters, translations and 
 - **Pixel-perfect PDF with full CSS** → HTML (`html-templates.md`)
 - **Paginated documents, headers/footers, long text** → DOCX or ODT (`docx-tips.md`)
 - **AI-generated content** → Markdown (`markdown-templates.md`)
-- **Spreadsheets with live formulas** → XLSX or ODS (`xlsx-tips.md`)
+- **Spreadsheets with live formulas** → XLSX (formulas follow loop rows with `{o.preReleaseFeatureIn=5018000}`) or ODS (`xlsx-tips.md`)
+- **Presentations** → PPTX, or ODP for one slide per item (`pptx-tips.md`)
 - **An existing fillable form you cannot rebuild** → PDF (`pdf-templates.md`)
 - **A data payload rather than a document** → XML, JSON, CSV or TXT
 - **A format that is not in the list** → use it as-is if it is XML-based or plain text; substitutions, loops, conditions and formatters apply to both

@@ -37,7 +37,7 @@ export function serverInstructionsFor(io: IoModes): string {
       : '- Files: HTTPS URLs or base64 (no local paths). PDF and Office results come back as a one-time download ' +
         'link: give it to the user as is, never open it yourself.\n') +
     (io.allowAsync ? '- Batches and long renders: render_document with async: true, then get_render_result.\n' : '') +
-    (io.allowUploadUrl ? '- A large template: upload_template with requestUploadUrl, then send it with the curl command.\n' : '') +
+    (io.allowUploadUrl ? '- A large template: upload_template with requestUploadUrl, then POST the file to uploadUrl with the returned headers.\n' : '') +
     '- get_capabilities has the formats, converters, options and examples. Docs: https://carbone.io/llms.txt ' +
     '(replace .html with .md on any carbone.io doc URL).';
 }

@@ -1,6 +1,58 @@
 # Carbone Advanced Features Reference
 
-Read this file when the user asks for full details on: the `:color` formatter (scopes, types, limitations, `:bindColor`), the `:html` formatter (full reference — supported elements, CSS, options and themes, page breaks, task-list checkboxes, entities, common patterns), native charts (DOCX, ODT/LibreOffice `bindChart`, ECharts), hyperlink edge cases, SVG templates, ODT dynamic forms, or removing placeholder images when value is empty.
+Read this file when the user asks for full details on: dynamic pictures (where to write the tag in each format, loops of pictures, anchoring, sizing), barcodes (sizing, GS1-128 values, barcode fonts), the `:color` formatter (scopes, types, limitations) and the `{bindColor}` tag, the `:html` formatter (full reference — supported elements, CSS, options and themes, page breaks, task-list checkboxes, entities, common patterns), native charts (DOCX, ODT/LibreOffice `bindChart`, ECharts), hyperlink edge cases, file operations (`:appendFile`, `:appendTemplate`, `:attachFile`), electronic signature fields (`:sign`), moving shapes with `:transform`, SVG templates, ODT dynamic forms, or removing placeholder images when value is empty.
+
+---
+
+## Dynamic pictures — placement, loops and sizing (ENTERPRISE, v3+)
+
+Insert a temporary picture, then write the tag where the format reads it:
+
+| Template | Where to write the tag on the temporary picture |
+|---|---|
+| DOCX, XLSX | Alt text, title or description (Word: right-click > Edit Alt Text) |
+| PPTX | Alt text (right-click > View Alt Text) |
+| ODT | Alternative text (right-click > Properties > Options > Text Alternative) or description |
+| ODS, ODP, ODG | Image title |
+
+The value is a public URL or a Base64 data URI (`data:image/png;base64,...`); accepted image types are `jpeg`, `png`, `gif` and `svg`. The image takes the width of the temporary picture and keeps its own proportions (`fillWidth`); change this with `:imageFit` in DOCX, PPTX and ODT. In XLSX the image is stretched to the size of the temporary picture — give the picture the proportions of the images.
+
+**Loops of pictures** — one temporary picture in the repeated row, with the item's tag in its alt text (`{d.damages[i].photo}`), is enough. Whether the loop repeats it depends on the format:
+- **DOCX**: only a picture **In Line with Text** is repeated; a floating one is replaced once but not repeated.
+- **ODT**: anchor it **As Character**; a loop of floating pictures stops the render with an error — in ODG too. Setup steps → `docx-tips.md` "Pictures in loops".
+- **PPTX**: a loop repeats the picture at the same place; move each copy with `:transform` (see "Transform" below).
+- **ODP**: loop over slides, one slide per item.
+- **XLSX**: a picture tag in a loop stops the render with an error; a picture in the repeated row is not repeated.
+
+---
+
+## Barcodes — sizing, values and fonts (ENTERPRISE, v3.4.6+)
+
+One temporary picture per barcode, with the tag in its alt text (placement per format as for pictures above):
+```
+{d.ean:barcode(ean13, scale:6)}
+{d.url:barcode(qrcode, scale:6)}
+{d.gs1:barcode(gs1-128, scale:6)}
+```
+```json
+{ "ean": "9520012345674", "url": "https://example.com/setup", "gs1": "(01)09520012345674(21)58201734" }
+```
+- Carbone keeps the width of the temporary picture and sets the height from the barcode (XLSX stretches it to the picture). Give the picture the proportions of the barcode — a square for a QR code — or fit it inside with `{d.url:barcode(qrcode, scale:6):imageFit(contain)}`.
+- `scale` sets the resolution, from 1 to 10 (default `3`); `scale:6` keeps the bars sharp in print.
+- GS1-128 values carry their Application Identifiers in parentheses: `(01)` for the GTIN, `(21)` for the serial number.
+
+**Barcodes as font** (former method, 4 types — prefer the image method). Install the font on the computer that edits the template: `ean13` and `ean8` → *Code EAN13*, `code39` → *Code 3 de 9*, `code128` (`ean128` is the same code) → *Code 128*. Write the tag as text and apply the barcode font and size to its opening `{` (or to the whole tag) — the output takes the format of that first character:
+```
+{d.ean13:barcode(ean13)}
+{d.sku:barcode(code39)}
+{d.sku}
+```
+```json
+{ "ean13": "9520012345674", "sku": "LP14-16-512" }
+```
+- EAN values need every digit, check digit included: 13 for `ean13`, 8 for `ean8`. Code 39 accepts uppercase letters, digits, spaces and `- . $ / + %`. An invalid value prints nothing.
+- The EAN font prints the digits under the bars; the Code 39 and Code 128 fonts print bars only — add the value as text, like `{d.sku}` above.
+- Converting the report (to PDF, for example) needs the fonts installed where the conversion runs.
 
 ---
 
@@ -30,24 +82,54 @@ Read this file when the user asks for full details on: the `:color` formatter (s
 {d.textHex:ifEQ('ok'):show(007700):elseShow(FF0000):color(p)}
 ```
 
-**Known limitations:**
+**Rules and limitations:**
+- Overlapping colors: a color applied to the paragraph wins over a color applied to the shape, cell or row
+- `part` (ODT only): place the `:color(part)` tag right next to the text to color, select that text together with its tags, click **Clear Direct Formatting**, then reapply the font style — the cleared span is the colored section
+- HTML: the color is set in the `style` attribute of the selected `<tr>`, `<td>` or `<p>` only
 - Cannot be used in aliases or combined with aggregators
-- PPTX (v5.6.0+): all combinations of `scope` (row, cell, shape) and `type` (text, background, border) are supported; `border` applies to shapes only
+- PPTX (v5.6.0+): scopes `row`, `cell`, `shape` (not `p`) with types `text`, `background`, `border` (`border` on shapes only) — table-cell caveats in `pptx-tips.md`
 - For ODP (text, tables, shapes) and ODT (shapes only): a non-default style must already be applied to the target element in the template
 - Complex nested tables with colors on sub-tables are not fully supported
 
-**`:bindColor` (old method — use `:color` instead)**
-Static color replacement in template: `{bindColor(myColorRef, format) = d.myVar}`
-- `myColorRef` is the placeholder color already applied in the template (used to identify what to replace)
-- `format`: `#hexa`, `hexa`, `color` (named), `rgb` (object), `hsl` (object)
-- With `#hexa` / `hexa`, a data value that is not hexadecimal (3 to 6 hex digits, optional `#`) is ignored and the element keeps its inherited color (v5.14.4+)
-- For DOCX text **background**: only 17 named colors work (`yellow`, `green`, `cyan`, `magenta`, `blue`, `red`, `darkBlue`, `darkCyan`, `darkGreen`, `darkMagenta`, `darkRed`, `darkYellow`, `darkGray`, `lightGray`, `black`, `white`, `transparent`)
+**`{bindColor}` tag (former method — prefer `:color`)** — ODT, ODP, ODS, DOCX:
+```
+{bindColor(myColorRef, format) = d.myVar}
+```
+- `myColorRef` is a hex color applied in the template (case-insensitive, `#` optional). Carbone replaces it on **every** element that uses it — pick a color used nowhere else, and bind each reference color only once
+- Write the tag anywhere: end of the document, header, footer, or below the `[i+1]` row even when `d.myVar` belongs to the loop. It is removed from the report
+- Works on text colors, text backgrounds and table-cell backgrounds; in DOCX also on shape backgrounds and line colors (tag in the document body, not in the shape's alt text; the shape needs an RGB color, not a theme color)
+
+| `format` | Value of `d.myVar` |
+|---|---|
+| `#hexa` | `"#FF0000"` |
+| `hexa` | `"FF0000"` |
+| `color` | `"red"` — one of 17 names: `yellow`, `green`, `cyan`, `magenta`, `blue`, `red`, `darkBlue`, `darkCyan`, `darkGreen`, `darkMagenta`, `darkRed`, `darkYellow`, `darkGray`, `lightGray`, `black`, `white`, `transparent` |
+| `rgb` | `{ "r": 255, "g": 0, "b": 0 }`, each 0–255 |
+| `hsl` | `{ "h": 0, "s": 100, "l": 50 }`, `h` 0–360, `s` and `l` 0–100 (or all three 0–1) |
+
+With `#hexa` / `hexa`, a data value that is not hexadecimal (3 to 6 hex digits, optional `#`) is ignored and the element keeps its inherited color (v5.14.4+).
+
+**Word text highlight** accepts only a color name: apply a highlight in the template, then bind it by name with the `color` format (every name except `transparent`). Text colors, cell backgrounds and text shading (Borders and Shading > Shading) take hex colors:
+```
+{bindColor(lightGray, color) = d.highlight}
+{bindColor(e3e8ee, #hexa) = d.status.background}
+```
+
+**One color per loop row** — fill the cells of the repeated row with the reference color, then bind it to the current item; the tag can sit below the loop:
+```
+{d.accounts[i].customer}   {d.accounts[i].status}     ← cells filled with #E3E8EE
+{d.accounts[i+1].customer}
+{bindColor(e3e8ee, #hexa) = d.accounts[i].color}
+```
+```json
+{ "accounts": [ { "customer": "Acme Corporation", "status": "Overdue", "color": "#FDE8E8" }, { "customer": "Orbit Analytics", "status": "Paid", "color": "#DCFCE7" } ] }
+```
 
 ---
 
 ## Native Charts (ENTERPRISE, v4+)
 
-### DOCX/Word
+### DOCX/Word and PPTX/PowerPoint
 Insert a chart via `Insert > Chart`, edit the embedded Excel spreadsheet with Carbone loop tags directly in cell values:
 ```
 {d.temps[i].date}   {d.temps[i].min}   {d.temps[i].max}
@@ -60,6 +142,10 @@ Aliases work inside chart cells too — declare `{#income = d.income_type_summar
 {$income[i].itg_nm}
 {$income[i+1].itg_nm}
 ```
+Remove the chart when the array is empty: `{d.regions:ifEM:drop(chart)}` in its alt text.
+
+### XLSX/Excel
+A native chart whose series use the loop cells grows with the rows under `{o.preReleaseFeatureIn=5018000}` (v5.18.0+): draw the series over the `[i]` and `[i+1]` rows → `xlsx-tips.md`.
 
 ### ODT/LibreOffice
 Insert a chart, edit the Data Table. Use `{bindChart(refValue) = d.tag}` in the Categories column to bind a JSON value to a chart reference value:
@@ -226,6 +312,76 @@ The `:html` formatter supports named, decimal, and hexadecimal HTML entities:
 {d.url:defaultURL(.urlOnError)}          ← dynamic fallback
 {d.content:defaultURL(.urlOnError):html} ← place before :html
 ```
+
+---
+
+## File operations — details (ENTERPRISE)
+
+The three tags print nothing and act only when the report is rendered to PDF (`"convertTo": "pdf"`); other output formats ignore them. `:appendFile` and `:attachFile` take a URL or a Base64 data URI. An empty or undefined value is skipped.
+
+**`:appendFile(where)`** (v4.22.0+) — in a loop, one PDF per item, appended in loop order. Each appended page keeps its own size and orientation (an A3 landscape datasheet stays A3 landscape). A URL that fails or a file that is not a valid PDF stops the render.
+```
+{d.products[i].name}
+{d.products[i].model} {d.products[i].datasheet:appendFile}
+{d.products[i+1].name}
+```
+```json
+{ "products": [ { "name": "Solar panel 425 W", "model": "DS425-108M10T-03", "datasheet": "https://example.com/datasheets/ds425.pdf" } ] }
+```
+
+**`:appendTemplate(templateOrVersionId, position)`** (v5.0.3+) — pass the ID of a stored template (renders its latest deployed version) or a version ID (pins that version). Each loop item becomes the `{d}` of the nested template, which reads `{d.orderId}`, `{d.customer}` directly:
+```
+{d.orders[i]:appendTemplate(1550932030872181245)}{d.orders[i+1]}
+{d:appendTemplate(110212, 'start')}      ← whole data, prepended instead of appended
+```
+A nested template that uses `:appendTemplate` itself fails with `Circular dependency detected in appendTemplate formatter`.
+
+**`:attachFile(name, type)`** (v4.23.0+) — embeds a file inside the PDF, e.g. the XML of a Factur-X or ZUGFeRD invoice:
+```
+{d.invoiceXml:attachFile('factur-x.xml')}
+{d.invoiceXml:attachFile('factur-x.xml', 'Alternative')}
+```
+- `name` defaults to `factur-x.xml`. With that name, Carbone detects the Factur-X conformance level from the XML and produces a PDF/A-3B, unless another PDF version is requested
+- `type` is the PDF relationship of the attachment, not a MIME type: `Data` (default), `Source`, `Alternative`, `Supplement`, `Unspecified`, `FormData` or `Schema`
+
+---
+
+## Electronic signature fields — `:sign` (ENTERPRISE, BETA, v5+)
+
+`:sign` marks where a person signs, dates or initials the document; the tag prints nothing. The value can be any JSON — store what the e-signature provider needs to invite the signer:
+```
+{d.client.signer:sign}
+Date {d.client.signedOn:sign}
+```
+```json
+{ "client": {
+    "signer":   { "type": "signature", "name": "Emma Johnson", "email": "emma.johnson@bluebird.example" },
+    "signedOn": { "type": "date",      "name": "Emma Johnson", "email": "emma.johnson@bluebird.example" } } }
+```
+Render to PDF (`"convertTo": "pdf"`) with the `carbone-version: 5` header. The render response lists every field in `data.signatures`: `data` (the tag value as sent, missing when undefined), `page` (first page = 1), `x` and `y` in points (1/72 inch) from the top-left corner of the page, `y` growing down. The array does not follow reading order — match fields by `data`. Other output formats return no positions and keep the markers.
+
+- Write each `:sign` tag in **Arial or Calibri**: Carbone replaces it with a marker (`ʕ` + three digits) and looks for it in the PDF. With a font that lacks `ʕ` (Georgia, for example) the render fails with `Signature position No. 000 was not found in the generated PDF`
+- Give the opening `{` of each tag the background color (white on a white page): the marker takes the format of that first character, so it does not show in the PDF. This also gives the exact `x` of a tag written after text on the same line
+- Leave room below and to the right of each tag — the provider draws the field from the tag position
+- Never remove a tag whose value is set with a condition: the render fails. To skip a field, leave its value undefined
+- Up to 999 fields per document; a tag in a loop gives one field per item
+
+---
+
+## Transform — move shapes and pictures (ENTERPRISE, v4.22.11+)
+
+`:transform(axis, unit)` moves a shape or a picture from its position in the template by the value of the tag: `x` moves it right (negative: left), `y` moves it down (negative: up). Units: `cm`, `mm`, `in` (or `inch`), `pt`. Templates: PPTX, ODP, ODT (PDF by conversion). Carbone v5 needs no pre-release tag; v4 needs `{o.preReleaseFeatureIn=4022011}`.
+
+Write the tag in the alt text of the shape or picture, or in the shape's own text; it prints nothing. Several tags can share one alt text — chain `:mul` to turn data into a distance, here 10 mm right per effort point and 8 mm up per impact point:
+```
+{d.initiatives[i].effort:mul(10):transform(x, mm)} {d.initiatives[i].impact:mul(-8):transform(y, mm)}
+```
+```json
+{ "initiatives": [ { "name": "Instant payouts", "effort": 4, "impact": 9 }, { "name": "Smart retries", "effort": 2, "impact": 7 } ] }
+```
+- When a loop spans several shapes, the shape holding the `[i+1]` tag must be **above** the `[i]` shapes in the layer order (right-click > Bring to Front)
+- A `:transform` tag on a line or a group stops the render with an error — draw lines as thin rectangles and ungroup the shapes to move
+- PPTX walkthroughs (one copy per loop index, a full matrix with colored shapes) → `pptx-tips.md`
 
 ---
 

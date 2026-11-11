@@ -1,6 +1,6 @@
 # Carbone DOCX/ODT — Section & Layout Tips
 
-Read this file when the user asks about Carbone tags in Word/LibreOffice headers and footers, why a header tag throws "missing i+1", how to display a loop value in a header or footer, about floating text boxes used to bridge sections, how to insert a dynamic page break inside a loop without leaving a trailing blank page, how to keep merged cells/rows inside a table loop, or how to draw a horizontal (newspaper-column) repetition in a LibreOffice table.
+Read this file when the user asks about Carbone tags in Word/LibreOffice headers and footers, why a header tag throws "missing i+1", how to display a loop value in a header or footer, about floating text boxes used to bridge sections, about page numbers, repeated table headers or a table of contents, how to loop over list items or repeat a heading with its table, how to generate one page per item or insert a page break inside a loop without a trailing blank page, where to put `showBegin`/`showEnd` so a removed block leaves no empty paragraph, why a loop does not repeat a picture, how to keep merged cells/rows inside a table loop, or how to draw a horizontal (newspaper-column) repetition in a LibreOffice table.
 
 ---
 
@@ -15,7 +15,7 @@ What you can put inside a single section (header, body, or footer), without cros
 - Aggregators (print one value, no loop needed) — `{d.list[].field:aggStrD}`, `{d.list[].qty:aggSum}`
 - A self-contained loop — both `[i]` and `[i+1]` in the same section
 
-For dynamic per-page headers/footers in **PDF output**, use HTML templates with `<carbone-pdf-header>` / `<carbone-pdf-footer>` instead — see `references/html-templates.md`.
+An HTML template converted to PDF also takes a header and footer with tags (`<carbone-pdf-header>` / `<carbone-pdf-footer>`, see `references/html-templates.md`), but it is identical on every page — a different first-page or odd/even header needs DOCX or ODT.
 
 ---
 
@@ -68,7 +68,60 @@ Caveats:
 
 ---
 
-## Dynamic page break in a loop — no trailing blank page
+## Page numbers, repeated table headers, table of contents
+
+Build these with the editor, not with tags. Carbone updates them in every generated report, computed on each of its pages:
+
+| Need | Word | LibreOffice |
+|---|---|---|
+| Page number / page count | Insert → Page Number, or the `PAGE` and `NUMPAGES` fields | Insert → Field → Page Number / Page Count |
+| Table header row on every page | Right-click the header row → Table Properties → Row → "Repeat as header row at the top of each page" | Right-click the header row → Table Properties → Text Flow → "Repeat heading" |
+| Table of contents | References → Table of Contents | Insert → Table of Contents and Index |
+
+Fields and tags mix freely, e.g. a footer `{d.customer}, {d.statement.period}  Page PAGE of NUMPAGES`. The table of contents lists the generated headings with their page numbers.
+
+---
+
+## Loops beyond table rows — list items, a heading with its table, columns
+
+**List items.** Write `[i]` and `[i+1]` in two consecutive items of the same bulleted or numbered list; Word numbers the generated items. For an array of strings the tag has no attribute:
+```
+• {d.deliverables[i]}
+• {d.deliverables[i+1]}
+
+1. {d.milestones[i].name}    {d.milestones[i].date}
+2. {d.milestones[i+1].name}
+```
+```json
+{ "deliverables": ["40 laptops imaged", "Onboarding session"],
+  "milestones": [{ "name": "Kick-off meeting", "date": "December 1" }] }
+```
+
+**A heading and its table per item.** A loop repeats everything between its `[i]` and `[i+1]` tags, whole tables included. Put the outer `[i]` in the heading, the inner loop in the table, and the outer `[i+1]` in a paragraph after the table:
+```
+{d.categories[i].name}                                   ← heading paragraph
+| {d.categories[i].items[i].name}   | {d.categories[i].items[i].amount:formatC} |
+| {d.categories[i].items[i+1].name} |                                           |
+| Subtotal                          | {d.categories[i].subtotal:formatC}        |
+{d.categories[i+1].name}                                 ← paragraph after the table
+```
+
+**Horizontal loop column width.** In a horizontal loop (one table column per item), every generated column takes the width of the `[i]` column — size that column for the number of columns the data will produce. Syntax → `references/loops-advanced.md` "Horizontal loop".
+
+---
+
+## One page per item — page breaks in a loop
+
+For certificates, letters or payslips, repeat the whole page: write the first `[i]` tag in the first paragraph of the page and set **Page break before** on that paragraph (Word: Paragraph → Line and Page Breaks; LibreOffice: Paragraph → Text Flow → Breaks → Page / Before). End the page with the `[i+1]` paragraph:
+```
+Acme Corporation   No. {d.attendees[i].number}     ← first paragraph, "Page break before"
+{d.attendees[i].name}
+{d.course.name}
+{d.attendees[i+1].name}                            ← last paragraph of the page
+```
+The loop starts at the paragraph holding the first `[i]` tag; paragraphs above it print once. The break leads each item, so no blank page trails the last one.
+
+### Manual page break inside the loop
 
 **Problem**: a manual page break placed inside a body loop repeats on every iteration, so a blank page trails the last item. **Fix**: drop the break on the last iteration only.
 
@@ -85,15 +138,40 @@ Emit this tag on the paragraph that holds the page break:
 
 Shorter form (filtered loop tag): `{d.list[i, i=-1].id:drop(p)}` — `[i, i=-1]` matches only the last element, so the paragraph is dropped there. The tag must read an attribute that is always present (here `id`): on an object with no attribute, or a missing one, nothing is dropped.
 
-**No-tag alternative**: set "Page break before" on the loop's first paragraph (Word: Paragraph → Line and Page Breaks; LibreOffice: Paragraph → Text Flow → Breaks → Page / Before). The break then leads each item, so none trails the last.
-
 Swap `list` for the real array path (it appears twice).
+
+---
+
+## Conditional blocks — no empty paragraph left behind
+
+Write the begin tag at the **end of the paragraph above** the block, and the end tag at the **end of the last paragraph** of the block. When the condition is false, the block is removed without leaving an empty paragraph, and a numbered list (contract clauses) is renumbered. A begin tag at the start of a paragraph leaves an empty paragraph in the report.
+```
+The customer pays {d.fee:formatC} per month.{d.plan:ifEQ('Enterprise'):showBegin}
+3. Premium support
+A dedicated engineer answers within one hour.{d.plan:showEnd}{d.region:ifEQ('EU'):showBegin}
+4. Data processing
+Personal data is processed in the European Union.{d.region:showEnd}
+5. Term
+```
+```json
+{ "fee": 2490, "plan": "Enterprise", "region": "US" }
+```
+One paragraph can close a block and open the next. `:hideBegin` / `:hideEnd` follow the same placement.
+
+---
+
+## Pictures in loops — anchor the picture in line
+
+A loop repeats a temporary picture only when it is anchored to the text. One picture in the repeated row is enough, with `{d.damages[i].photo}` in its alt text.
+
+- **Word**: Picture Format → Wrap Text → **In Line with Text**. With any other wrapping the picture floats: it is replaced once, but a loop does not repeat it.
+- **LibreOffice**: Anchor → **As Character**. A floating picture (To Page, To Paragraph, To Character) is replaced once, but a loop of floating pictures stops the render with an error.
 
 ---
 
 ## Keep merged cells inside a table loop (nest a table in a table)
 
-**There is no Carbone tag for this.** Carbone drops a merged cell that shares a table with a row loop — the merged column is flattened into rows. The fix is a layout one: put the loop in an inner table so the merge lives in the outer table.
+**There is no Carbone tag for this in DOCX/ODT** (`:mergeCell` is XLSX only). Carbone drops a merged cell that shares a table with a row loop — the merged column is flattened into rows. The fix is a layout one: put the loop in an inner table so the merge lives in the outer table.
 
 1. Outer table: one row, two or more columns. Merged-cell content goes in the first column.
 2. Next column: insert an **inner** table and put the loop there, one inner row per item — first inner row `{d.rows[i].ref}` `{d.rows[i].qty}`, second inner row `{d.rows[i+1].ref}`.
@@ -102,6 +180,8 @@ Swap `list` for the real array path (it appears twice).
    - **LibreOffice**: inner table → Table Properties → Borders → padding/spacing = `0`.
 
 The outer cell never loops, so its merge survives; only the inner table repeats.
+
+`:drop(col)` has the same limit: a column that contains merged cells cannot be removed.
 
 ---
 
@@ -114,4 +194,4 @@ This flows a flat list **down the page across newspaper-style columns** — a pa
 3. Table Properties → Text Flow → **uncheck** "Allow table to split across pages and columns" (keeps each block whole so it flows into the next column).
 4. Optional: a second section above for fixed column titles.
 
-To grow a **table** sideways (one column per item) — a real tag pattern that works in any format — see `references/loops-advanced.md` "Horizontal loop". For a two-dimensional grid (rows **and** columns at once), use the bidirectional loop → same file, "Bidirectional loop".
+To grow a **table** sideways (one column per item) — a real tag pattern that works in any table format except PPTX — see `references/loops-advanced.md` "Horizontal loop". For a two-dimensional grid (rows **and** columns at once), use the bidirectional loop → same file, "Bidirectional loop".

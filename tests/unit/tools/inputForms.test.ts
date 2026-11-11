@@ -1,10 +1,12 @@
 import { describe, test, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { convertDocumentDescriptionFor, convertDocumentSchemaFor } from '../../../src/tools/convert.js';
 import { OutputFormatSchema } from '../../../src/validation/formats.js';
 import { renderDocumentDescriptionFor, renderDocumentSchemaFor } from '../../../src/tools/render.js';
 import { uploadTemplateSchemaFor, downloadTemplateSchemaFor } from '../../../src/tools/templates.js';
 import { handleGetCapabilities } from '../../../src/tools/info.js';
+import { serverInstructionsFor } from '../../../src/server/serverInfo.js';
 import { transportToolsFor } from '../../../src/tools/index.js';
 
 const STDIO = { allowLocalPath: true, allowFileOutput: true };
@@ -133,6 +135,39 @@ describe('converter I (Carbone ICE) wording', () => {
     // v5.16.0: a DOCX with tracked changes is rendered as its current version, so it is no longer unsupported.
     expect(capabilities).toMatch(/tracked changes is rendered as its current version/);
     expect(capabilities).toMatch(/bookmarks and endnotes/);
+  });
+
+  test('the tool schemas, get_capabilities and docs/API.md give the same limits, and never call ODT beta', async () => {
+    const capabilities = (await handleGetCapabilities(STDIO)).content[0]!.text;
+    const iceLine = (text: string) => text.split('\n').find((line) => /Carbone ICE/.test(line)) ?? '';
+    const texts = {
+      convert: desc(convertDocumentSchemaFor(STDIO).converter),
+      render: desc(renderDocumentSchemaFor(STDIO).converter),
+      capabilities: iceLine(capabilities),
+      docs: iceLine(readFileSync(new URL('../../../docs/API.md', import.meta.url), 'utf8')),
+    };
+    const LIMITS = ['WEBP', 'EMF/WMF', 'SmartArt', 'complex charts', 'comments', 'form fields', 'equations', 'bookmarks', 'endnotes', 'tracked changes', 'footnotes'];
+    for (const [where, text] of Object.entries(texts)) {
+      for (const limit of LIMITS) expect(text, `${where}: ${limit}`).toContain(limit);
+      expect(text, where).not.toMatch(/beta/i);
+    }
+    // get_capabilities and the docs say it in the same words (the docs link to the .html page)
+    const limitsSentence = (line: string) => line.slice(line.indexOf('A DOCX with tracked changes'), line.indexOf('A missing font'));
+    expect(limitsSentence(texts.docs)).toBe(limitsSentence(texts.capabilities.replaceAll('\\`', '`')));
+  });
+});
+
+describe('requestUploadUrl wording: clients may show only the structured result, so the model learns how to send the file beforehand', () => {
+  test('the input, the server instructions and get_capabilities give the method, the headers and the answer', async () => {
+    const io = { ...HTTP, allowUploadUrl: true };
+    const input = desc(uploadTemplateSchemaFor(io).requestUploadUrl);
+    expect(input).toContain('POST the file as the raw body with those headers');
+    expect(input).toContain('--data-binary @<file> <uploadUrl>');
+    expect(input).toContain('the answer is the stored template (id, versionId)');
+    expect(serverInstructionsFor(io)).toContain('then POST the file to uploadUrl with the returned headers');
+    const capabilities = (await handleGetCapabilities(io)).content[0]!.text;
+    expect(capabilities).toContain('POST the file as the raw body to `uploadUrl` with the returned `headers`: the answer is the stored template');
+    for (const text of [input, serverInstructionsFor(io), capabilities]) expect(text).not.toContain('curl command');
   });
 });
 

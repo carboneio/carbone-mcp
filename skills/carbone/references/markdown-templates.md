@@ -1,6 +1,6 @@
 # Carbone Markdown Templates Reference
 
-Read this file when the user asks about Markdown templates, loops in Markdown tables, barcodes or charts in Markdown, converting Markdown to PDF/DOCX/ODT, or Markdown template limitations.
+Read this file when the user asks about Markdown templates, loops in Markdown tables, styling a Markdown report with a Word/LibreOffice style template (`{o.styleSource}`: fonts, page size, margins, header, footer), barcodes or charts in Markdown, converting Markdown to PDF/DOCX/ODT, or Markdown template limitations.
 
 Version: 5.0+ | Free feature
 Output formats: PDF, DOCX, ODT, PNG, JPG, MD
@@ -10,6 +10,7 @@ Markdown templates support substitutions, repetitions, formatters, translations,
 ## Contents
 
 - [Basics](#basics)
+- [Style template — `{o.styleSource}`](#style-template--ostylesource)
 - [Loops](#loops)
 - [Conditions](#conditions)
   - [Inline conditions](#inline-conditions)
@@ -42,15 +43,46 @@ Membership: {d.membershipLevel}
 
 ---
 
-## Loops
+## Style template — `{o.styleSource}`
 
-**Loops in Markdown are only supported inside tables.** Place the loop tags inside table cells, with the `[i+1]` end marker in the next row (which is removed from output).
+A Markdown report can take the look of a DOCX or ODT template (v5.8.0+): text styles, page, header and footer. Upload the style template to Carbone, then write `{o.styleSource=ID}` anywhere in the Markdown, for example on the first line. `ID` is its template ID (latest deployed version) or a version ID (one exact version):
 
 ```markdown
-| ID | Name | Role |
-| -- | ---- | ---- |
-| {d.users[i].id} | {d.users[i].name} | {d.users[i].role} |
-| {d.users[i+1]} | | |
+{o.styleSource=1550916316474926631}
+
+# Quarterly report
+
+Results for {d.quarter}, published on {d.publishedAt:formatD('LL')}.
+```
+
+The style template sets:
+- **Text styles**: `Heading 1`, `Heading 2`… for the headings, `Body Text` for paragraphs and list items, `Table Heading` and `Table Contents` for the text in table cells. In Word, create the last two as paragraph styles with these exact names.
+- **Page**: size, margins, header and footer, with their pictures and page numbers.
+
+The style template is a Carbone template too: its tags receive the data of the report, like `{d.quarter}` in its header. Its body is not copied into the report.
+
+The style is applied when the Markdown is converted to PDF. Table borders are not part of the style: tables keep thin black borders.
+
+---
+
+## Loops
+
+**Loops in Markdown are only supported inside tables.** Start the repeated row with its first tag (no leading `|`), and put the `[i+1]` end tag alone on the next line — that line is removed from the output.
+
+```markdown
+ID | Name | Role
+-- | ---- | ----
+{d.users[i].id} | {d.users[i].name} | {d.users[i].role}
+{d.users[i+1]}
+```
+
+Data `{"users": [{"id": 1, "name": "Alice", "role": "Admin"}, {"id": 2, "name": "Bob", "role": "Editor"}]}` →
+
+```markdown
+ID | Name | Role
+-- | ---- | ----
+1 | Alice | Admin
+2 | Bob | Editor
 ```
 
 ---
@@ -204,8 +236,8 @@ To escape: break the tag syntax — `<!-- d.user.name -->`.
 | `:drop` / `:keep` via HTML blocks | ⚠️ Coming soon |
 | Page breaks | ⚠️ Coming soon |
 | Table of Contents | ⚠️ Coming soon |
-| Custom CSS stylesheet for the whole template | ⚠️ Not supported — inline `style` on a raw HTML element (`<span>`, `<div>`) works; for document-wide styling use `{o.styleSource=templateOrVersionId}` or an HTML template |
-| PDF conversion options (paper size, margins, headers, footers) | ⚠️ Not supported — use HTML templates instead |
+| Custom CSS stylesheet for the whole template | ⚠️ Not supported — inline `style` on a raw HTML element (`<span>`, `<div>`) works; for document-wide styling use a [style template](#style-template--ostylesource) or an HTML template |
+| PDF conversion options (paper size, margins, headers, footers) | ⚠️ Not supported — set the page, header and footer with a [style template](#style-template--ostylesource), or use an HTML template for full control |
 
 ---
 
@@ -228,4 +260,4 @@ curl --request POST 'https://api.carbone.io/render/template?download=true' \
 `converter: "L"` = LibreOffice engine (use for Markdown → PDF/DOCX/ODT).
 Supported `convertTo` values: `pdf`, `docx`, `odt`, `jpg`, `png`, `md`.
 
-> For advanced PDF layout control (paper size, margins, headers, footers), use an HTML template instead.
+> For the paper size, margins, header and footer, use a [style template](#style-template--ostylesource), or an HTML template for advanced PDF layout control.

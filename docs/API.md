@@ -81,7 +81,7 @@ Render this SVG chart as a sharp PNG (converter C, Scale 2) so I can check it
 
 **`converter` options** (used whenever the format changes, not only for PDF):
 - `L`: LibreOffice (default), DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- `I`: Carbone ICE, DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default `L` for documents with those. ODT to PDF is in beta and also ignores tracked changes and footnotes. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
+- `I`: Carbone ICE, DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default `L` for documents with those. From ODT, tracked changes and footnotes are ignored too. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
 - `O`: OnlyOffice, DOCX, XLSX, PPTX → PDF
 - `C`: Chromium, HTML, XHTML → PDF, PNG, JPG, WEBP with full CSS/JS, and SVG → PDF, PNG, JPG, WEBP (Carbone v5.17.0+); 100 MB max. Image size and sharpness come from `formatOptions` (see below)
 
@@ -432,8 +432,8 @@ Other clients ignore `_meta`: they see an optional parameter and leave it empty.
 
 A file too large to pass as base64 can be sent outside the MCP messages, by an assistant that can run shell commands (Claude Code, Cursor, VS Code, or a code sandbox allowed to reach the server). The server must run over HTTP with `MCP_TICKET_SECRET` set.
 
-1. `upload_template` with `requestUploadUrl: { "size": <bytes>, "sha256": "<hex>" }` (and any other field: `name`, `category`, `versioning`, `expireAt`…) returns a URL, an `X-Upload-Token` header and the command to send the file. Nothing is stored yet.
-2. The file is sent with `curl -H 'X-Upload-Token: …' --data-binary @<file> <url>`. The server streams it to Carbone as it arrives and answers with the stored template, as `upload_template` would (`id`, `versionId`, …).
+1. `upload_template` with `requestUploadUrl: { "size": <bytes>, "sha256": "<hex>" }` (and any other field: `name`, `category`, `versioning`, `expireAt`…) returns `uploadUrl` and `headers` (an `X-Upload-Token`), and the command to send the file in its text. Nothing is stored yet.
+2. The file is POSTed as the raw body with those headers: `curl -H 'X-Upload-Token: …' --data-binary @<file> <uploadUrl>`. The server streams it to Carbone as it arrives and answers with the stored template, as `upload_template` would (`id`, `versionId`, …).
 
 The URL accepts only the file it was issued for: a different size or SHA-256 is refused, and nothing is stored. It is valid for 10 minutes, or until the caller's sign-in expires if that comes first. Sending the same file again within that time stores no new template when `versioning` is `false`; otherwise it stores another copy (a new Template ID, or a new version of `id` when given). It runs at most 2 uploads at once per caller (the signed-in user or the API key) and 1 per URL, and drops an upload whose first bytes take over 5 seconds, or arriving slower than 1 MiB per 30 seconds.
 

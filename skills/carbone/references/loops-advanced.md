@@ -34,7 +34,7 @@ Creates rows AND columns simultaneously:
 ---
 
 ## Horizontal loop (grow a table sideways)
-A normal table loop grows **downward** — `[i]` in one row, the `[i+1]` end-marker in the row below. To grow **sideways** (one new **column** per item), put `[i]` in one column and the `[i+1]` end-marker in the column immediately to its right, on the same row. Format-agnostic — works in any table (DOCX, ODT, XLSX, ODS, PPTX, HTML, Markdown):
+A normal table loop grows **downward** — `[i]` in one row, the `[i+1]` end-marker in the row below. To grow **sideways** (one new **column** per item), put `[i]` in one column and the `[i+1]` end-marker in the column immediately to its right, on the same row. Works in DOCX, ODT, XLSX, ODS, HTML and Markdown tables — not in PPTX yet:
 ```
 {d.products[i].name}    {d.products[i+1].name}
 {d.products[i].price}   {d.products[i+1].price}

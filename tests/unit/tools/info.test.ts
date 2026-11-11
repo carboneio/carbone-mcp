@@ -89,10 +89,12 @@ describe('handleGetCapabilities', () => {
 
   test('names the Carbone Skill resource only when this server serves it; the web copy always', () => {
     const served = result(handleGetCapabilities({ ...STDIO_IO, skill: true })).text;
+    expect(served).toContain('| carbone://status        | Check Carbone API health and version             |\n| skill://carbone/SKILL.md| The Carbone Skill: template syntax reference     |\n\n---');
     expect(served).toContain('- On this server:       skill://carbone/SKILL.md (MCP resource');
     expect(served).toContain('carbone.io/documentation/developer/ai/skills.md');
 
     const notServed = result(handleGetCapabilities(STDIO_IO)).text;
+    expect(notServed).toContain('| carbone://status        | Check Carbone API health and version             |\n\n---');
     expect(notServed).not.toContain('skill://');
     expect(notServed).toContain('carbone.io/documentation/developer/ai/skills.md');
   });

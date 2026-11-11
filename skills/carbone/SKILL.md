@@ -8,14 +8,14 @@ description: >
   {$alias} {t()} {o.} or any :formatter chain; a template error such as a missing [i+1]; whether a
   format supports a feature or what it converts to; filling a PDF form (AcroForm); adding a chart,
   barcode or dynamic image to a document; writing a number or an amount in words; dynamic Excel
-  formulas; upgrading between Carbone versions;
+  formulas or merged cells; upgrading between Carbone versions;
   and any request to build an invoice, contract or report from JSON, mail-merge data into a document,
   fill a template with data, or convert a document (HTML or Markdown to PDF, DOCX to PDF).
 license: Apache-2.0
 metadata:
   author: carboneio
-  version: "2.1.0"
-  carbone_version: "5.17.0"
+  version: "2.2.0"
+  carbone_version: "5.18.0"
   repository: https://github.com/carboneio/carbone-agent-plugin
 ---
 
@@ -46,7 +46,7 @@ Carbone is a **declarative** templating engine. You provide a template (DOCX, XL
 | `{o.option=value}` | Carbone in-template option (removed from output) |
 
 ### Special `{o.}` options
-Common: `{o.timezone=Europe/Paris}` `{o.lang=en-US}` `{o.converter=L}` `{o.useHighPrecisionArithmetic=true}` `{o.exportFormattedValuesAsText=true}` (XLSX only) `{o.hardRefresh=true}` (force converter even when input/output format match — useful for XLSX formula refresh) `{o.preReleaseFeatureIn=VERSION}` (opt-in pre-release features).
+Common: `{o.timezone=Europe/Paris}` `{o.lang=en-US}` `{o.converter=L}` `{o.useHighPrecisionArithmetic=true}` `{o.exportFormattedValuesAsText=true}` (XLSX only) `{o.hardRefresh=true}` (force converter even when input/output format match — useful for XLSX formula refresh) `{o.preReleaseFeatureIn=VERSION}` (opt-in pre-release features — e.g. `5018000`: XLSX formulas, merged cells, charts and pivot tables follow loop rows).
 Full in-template option list → `references/in-template-options.md`.
 
 ---
@@ -169,14 +169,14 @@ For the **complete formatter reference**, read `references/formatters.md`.
 
 **Text**: `:lowerCase` `:upperCase` `:ucFirst` `:ucWords` `:prepend(text)` `:append(text)` `:replace(old,new)` `:substr(start,end)` `:ellipsis(max)` `:convCRLF` `:html` `:print(msg)` `:t`
 
-**Number**: `:formatN(precision)` (uses `lang` option for separators) `:add(x)` `:sub(x)` `:mul(x)` `:div(x)` `:mod(x)` `:abs` `:round(n)` `:ceil` `:floor`
+**Number**: `:formatN(precision, acc)` (uses `lang` option for separators; `acc` = negatives in parentheses, v5.18.0+) `:add(x)` `:sub(x)` `:mul(x)` `:div(x)` `:mod(x)` `:abs` `:round(n)` `:ceil` `:floor`
 
 **Math formula** — formatters accept simple expressions (no parentheses, `*`/`/` before `+`/`-`):
 ```
 {d.val:add(.otherQty + .vat * d.sub.price - 10 / 2)}
 ```
 
-**Currency**: `:formatC(precisionOrFormat, targetCurrency)` `:convCurr(target, source)`
+**Currency**: `:formatC(precisionOrFormat, targetCurrencyOrAcc)` (`{d.x:formatC(L, acc)}` — `-1234.5` → `"($1,234.50)"`) `:convCurr(target, source)`
 
 **Number in words**: `:toWord(type, precision, keywords…)` — `W` cardinal (default), `O` ordinal, `C` amount with currency, in the `lang` language (v5.16.0+)
 
@@ -211,7 +211,7 @@ Switch-case pattern:
   ... content hidden if cancelled ...
 {d.status:hideEnd}
 ```
-Recommendation: use only line breaks (`Shift+Enter`) between Begin/End tags to avoid extra blank lines.
+Recommendation: use only line breaks (`Shift+Enter`) between Begin/End tags — or, in DOCX, end each tag's paragraph with it (`references/docx-tips.md`) — to avoid extra blank lines.
 
 ### 6c. Smart conditions — drop/keep elements (ENTERPRISE, v4+)
 Drops the containing document element when condition is true. The tag prints **nothing**.
@@ -285,7 +285,7 @@ Insert a placeholder image in the template, then write the Carbone tag in the im
 ```
 Supports public URLs and Base64 Data URIs. Templates: DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, HTML, Markdown (PDF as output only — a PDF form template has no pictures).
 
-**`:imageFit(option)`** — controls how the replacement image is resized to fit the placeholder (DOCX/ODT only):
+**`:imageFit(option)`** — controls how the replacement image is resized to fit the placeholder (DOCX, PPTX, ODT — XLSX always stretches it to the placeholder):
 - `fillWidth` (default) — fills the full width while keeping aspect ratio
 - `contain` — fits within the placeholder box while keeping aspect ratio
 - `fill` — stretches to fill the entire placeholder box
@@ -293,7 +293,7 @@ Supports public URLs and Base64 Data URIs. Templates: DOCX, XLSX, PPTX, ODT, ODS
 ```
 {d.myImage:imageFit(contain)}
 ```
-If the image URL is missing or invalid, Carbone inserts a default SVG (square with a cross).
+If the image URL is missing or invalid, Carbone inserts a default SVG (square with a cross). Where to write the tag in each format, and loops of pictures → `references/advanced-features.md`.
 
 ### 8b. Barcodes (ENTERPRISE, v3.4.6+)
 Insert a placeholder image, write in its **alternative text** (in HTML and Markdown templates, put the tag in `<img src="">` instead — Markdown since v5.13.0):
@@ -303,8 +303,8 @@ Insert a placeholder image, write in its **alternative text** (in HTML and Markd
 {d.code:barcode(qrcode, svg:true)}              ← vector SVG, better print quality
 {d.code:barcode(ean13, width:200, height:100)}  ← custom dimensions (mm)
 ```
-Common barcode options (second argument, `key:value` format): `width`, `height`, `scale` (1–10), `includetext` (true/false), `textsize`, `textxalign` (left/center/right/justify), `textyalign` (below/center/above), `rotate` (N/R/L/I), `barcolor` (#RRGGBB), `textcolor` (#RRGGBB), `backgroundcolor` (#RRGGBB), `eclevel` (L/M/Q/H — QR only). Limits: `width`/`height` max 1,000 mm (25 million pixels with `scale`), `textsize` max 100 pt — a larger value is rejected (v5.14.4+).
-Carbone supports 107 barcode types. If the barcode value is missing or invalid, Carbone inserts a default SVG (square with a cross).
+Common barcode options (second argument, `key:value` format): `width`, `height`, `scale` (1–10), `includetext` (true/false), `textsize`, `textxalign` (left/center/right/justify), `textyalign` (below/center/above), `rotate` (N/R/L/I), `barcolor` (#RRGGBB), `textcolor` (#RRGGBB), `backgroundcolor` (#RRGGBB), `eclevel` (L/M/Q/H — QR only). `scale` defaults to 3. Limits (v5.14.4+): `width`/`height` max 1,000 mm and `textsize` max 100 pt — a bigger value is ignored; above 25 million pixels (`scale` included) the barcode is replaced by the error image.
+Carbone supports 107 barcode types. If the barcode value is missing or invalid, Carbone inserts a default SVG (square with a cross). Sizing, GS1-128 values and barcode fonts → `references/advanced-features.md`.
 
 ### 8c. Colors (ENTERPRISE, v4.17+)
 `:color(scope, type)` — injects color from data into the document element. The tag prints nothing. Color must be 6-digit hex (e.g. `FF0000` or `#FF0000`). Scopes: `p`, `row`, `cell`, `shape`, `part`. Types: `text` (default), `highlight`, `background`, `border`. Templates: DOCX, ODT, ODS, ODP, PPTX, HTML, Markdown, SVG (PDF as output only, not a PDF template).
@@ -312,7 +312,7 @@ Carbone supports 107 barcode types. If the barcode value is missing or invalid, 
 {d.statusColor:color(row, background)}
 {d.textHex:ifEQ('ok'):show(007700):elseShow(FF0000):color(p)}
 ```
-For full scope/type tables, limitations, and `:bindColor` (legacy) → read `references/advanced-features.md`.
+For full scope/type tables, limitations, and the `{bindColor}` tag (legacy) → read `references/advanced-features.md`.
 
 ### 8d. HTML content rendering (ENTERPRISE, v5+)
 `:html` renders an HTML string as native document formatting in ODT, DOCX, HTML, and Markdown templates (PDF reached via conversion). Quick example: `{d.richContent:html}` or `{d.notes:convCRLF:html}` (convert `\n` to `<br>` first).
@@ -332,29 +332,26 @@ Append PDF files at the end (or start) of the generated PDF:
 {d.products[i].datasheet:appendFile}           ← append at end (default)
 {d.products[i].datasheet:appendFile('start')}  ← append at start
 ```
-Attach a file inside a PDF (Factur-X, ZUGFeRD):
+Attach a file inside a PDF (Factur-X, ZUGFeRD) — `:attachFile(name, type)`, `name` defaults to `factur-x.xml`; the optional `type` is the PDF relationship `Data` (default), `Source`, `Alternative`, `Supplement`, `Unspecified`, `FormData` or `Schema`, never a MIME type:
 ```
-{d.xmlUrl:attachFile('invoice.xml', 'text/xml')}
+{d.invoiceXml:attachFile('factur-x.xml')}
 ```
 
 **`:appendTemplate(templateIdOrVersionId, position?)`** (v5.0.3+) — generate another stored template with the current data and append its PDF output. Each iterated array item becomes the root `{d.}` of the nested template. The tag prints nothing.
 ```
 {d.orders[i]:appendTemplate(110212)} {d.orders[i+1]}
 ```
-**PDF output only** — silently ignored if the final render format is DOCX/XLSX/ODT/etc. Only the following render options are forwarded to the nested template: `lang`, `currency`, `enum`, `converter`, `translations`, and complement data (`{c.}`). Other options (`timezone`, `hardRefresh`, `useHighPrecisionArithmetic`, `exportFormattedValuesAsText`, `preReleaseFeatureIn`, …) are **not** forwarded. A nested template cannot itself call `:appendTemplate` (no recursion).
+**PDF output only** — silently ignored if the final render format is DOCX/XLSX/ODT/etc. Only the following render options are forwarded to the nested template: `lang`, `timezone`, `currencySource`, `currencyTarget`, `currencyRates`, `converter`, `enum`, `translations`, and complement data (`{c.}`). Other options (`hardRefresh`, `useHighPrecisionArithmetic`, `exportFormattedValuesAsText`, `preReleaseFeatureIn`, …) are **not** forwarded. A nested template cannot itself call `:appendTemplate` (no recursion).
 
 ### 8h. Digital signatures (ENTERPRISE, BETA — v5+)
-Places a signature field. Tag prints nothing; returns position coordinates in the API response:
+Marks a signature field; the tag prints nothing. Render to PDF with the `carbone-version: 5` header: the response gives each field's value, page and x/y. Write the tag in Arial or Calibri, opening `{` in the background color — rules → `references/advanced-features.md`:
 ```
 {d.signatureBuyer:sign}
 ```
 
-### 8i. Transform / move shapes (ENTERPRISE, v4.22.11+ — requires `{o.preReleaseFeatureIn=4022011}`)
-Move shapes/images on X or Y axis in ODP/PPTX/ODT:
-```
-{d.offset:transform('x', 'cm')}
-```
-Units: `cm`, `mm`, `inch`, `pt`, `in` (`in` added in v5.4.0 for PPTX/ODP). Write inside the shape's alt text or inside the shape itself.
+### 8i. Transform / move shapes (ENTERPRISE, v5+ / v4.22.11+ with `{o.preReleaseFeatureIn=4022011}`)
+Move a shape or picture on the X or Y axis in PPTX/ODP/ODT, from its alt text or its text (prints nothing; positive = right/down): `{d.offset:transform(x, cm)}`. Units: `cm`, `mm`, `in` (or `inch`), `pt`. Never on a line or a group (render error).
+Repeated shapes and layer order → `references/pptx-tips.md`; full rules → `references/advanced-features.md`.
 
 ### 8j. SVG templates
 SVG files can be used as Carbone input templates. Write tags inside HTML comments (`<!-- {d.value:svgUpdate(...)} -->`). Use `:svgUpdate(attrName, selectorValue, selectorType)` to update attributes, or `:svgSelectiveUpdate` to select and inject. Full syntax → `references/advanced-features.md`.
@@ -363,7 +360,7 @@ SVG files can be used as Carbone input templates. Write tags inside HTML comment
 ODT editable text fields and clickable checkboxes (LibreOffice only). Checkbox alternatives that work in any format: `{d.value:ifEQ(true):show(☑):elseShow(☐)}` (unicode) or emoji. Full setup steps → `references/advanced-features.md`.
 
 ### 8l. Native Charts (ENTERPRISE, v4+)
-Three chart types: native DOCX charts (loop tags in the embedded Excel sheet), ODT/LibreOffice charts (`{bindChart(refValue) = d.tag}` in the Data Table), and ECharts via `:chart` formatter in the alt text of a placeholder image — or in `<img src="">` for HTML and Markdown templates (Markdown since v5.13.0). If the chart config is missing or malformed, Carbone inserts a default SVG (square with a cross). For full syntax and examples → read `references/advanced-features.md`.
+Four chart types: native DOCX/PPTX charts (loop tags in the embedded Excel sheet), native XLSX charts whose series cover the loop rows (they grow with `{o.preReleaseFeatureIn=5018000}`, `references/xlsx-tips.md`), ODT/LibreOffice charts (`{bindChart(refValue) = d.tag}` in the Data Table), and ECharts via `:chart` formatter in the alt text of a placeholder image — or in `<img src="">` for HTML and Markdown templates (Markdown since v5.13.0). If the chart config is missing or malformed, Carbone inserts a default SVG (square with a cross). For full syntax and examples → read `references/advanced-features.md`.
 
 > **Missing/invalid image or barcode/chart value**: Carbone always inserts a default SVG placeholder (square with a cross). Use `{d.field:ifEM():drop(img)}` in the same alt-text to remove the element entirely when the value is absent.
 
@@ -385,16 +382,16 @@ Text editors auto-replace straight quotes `'` with "smart quotes" — **Carbone 
 Only the font style and size of the **first `{` character** applies to the output. You can make the rest of the tag tiny (e.g. size 1pt) to reduce visual clutter in the template.
 
 ### Template type choice
-- **PDF with high styling control**: use HTML — full CSS, custom paper size, margins, headers/footers via `<carbone-pdf-options>`
+- **PDF with high styling control**: use HTML — full CSS, paper size and margins via `<carbone-pdf-options>`, one header/footer for every page via `<carbone-pdf-header>`/`<carbone-pdf-footer>`
 - **PDF from a document template**: use DOCX or ODT — better pagination, text overflow handling
-- **Presentations**: PPTX uses absolute positioning — loops don't auto-create new slides; paginate manually with filters. ODP (LibreOffice) supports dynamic slide creation
-- **Spreadsheets**: formulas recalculate after Carbone injection; use `:formatN` so tags output native numbers not strings — this is also how percentage/currency/date cell formats apply (`:formatN` is the only way to force native-number output in XLSX/ODS; see `references/xlsx-tips.md`). ODS can generate one sheet per array item via aliases in the sheet tab names — XLSX cannot
+- **Presentations**: PPTX uses absolute positioning — shapes below a looped table or list don't move, and loops can't create slides or table columns (paginate manually with filters, or use an ODP template rendered with `"convertTo": "pptx"` — `references/pptx-tips.md`)
+- **Spreadsheets**: formulas recalculate after Carbone injection; use `:formatN` so tags output native numbers not strings — this is also how percentage/currency/accounting/date cell formats apply (`:formatN` is the only way to force native-number output in XLSX/ODS; `:formatC`, `:formatD` and `:formatN(2, acc)` write text; see `references/xlsx-tips.md`). ODS can generate one sheet per array item via aliases in the sheet tab names — XLSX cannot (convert the ODS report to XLSX)
 - **An existing fillable form you cannot rebuild**: use the PDF itself as the template — form filling only (`references/pdf-templates.md`)
 
 Known input formats: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, HTML, MD, CSV, TXT, XML, SVG, ODG, IDML — plus any other XML-based or text file (see the format-agnostic principle above). All support the core language; enterprise features are format-specific and vary a lot — check `references/format-support.md` before promising images, colors, `:html`, charts or barcodes in a given format.
 
 ### XLSX/ODS — formula rules
-Carbone tags and Excel formulas must be in **separate cells**. For totals after loop injection, prefer Carbone aggregators: `{d.items[].qty:aggSum:formatN}`. For `INDIRECT`+`ROW` and `MATCH`/`INDEX` patterns → read `references/xlsx-tips.md`.
+Carbone tags and Excel formulas must be in **separate cells**. XLSX + `{o.preReleaseFeatureIn=5018000}` (v5.18.0+): formulas, merged cells, conditional formatting, tables, charts and pivot tables follow the loop rows like an Excel row insertion — draw ranges over the `[i]` and `[i+1]` rows (`=SUM(D4:D5)` becomes `=SUM(D4:D13)`). ODS, or XLSX without the tag: use aggregators `{d.items[].qty:aggSum:formatN}` or `INDIRECT`+`ROW`. `{d.rows[i].country:mergeCell}` merges identical consecutive values of a column (XLSX only, no tag needed). Details → `references/xlsx-tips.md`.
 
 ### Removing the trailing comma/separator in a loop
 Place the separator in its own paragraph alongside a drop tag. The tag drops that paragraph only for the last item (`i=-1`); for all earlier items the paragraph is kept:
@@ -418,10 +415,10 @@ Alternatives when you only need a flat string — no loop required:
 Use lowercase `i` for loop iterators — `{d.array[i].field}` / `{d.array[i+1]}`. Carbone also accepts uppercase `I`, but lowercase is the convention in all official documentation and avoids confusion with alias names.
 
 ### Floating elements in loops
-Avoid floating images, shapes, or text boxes inside Carbone loops. Set their anchor to **"In line with text"** to prevent invalid output.
+Avoid floating images, shapes, or text boxes inside Carbone loops. Set pictures **In Line with Text** (DOCX) or anchor them **As Character** (ODT): a floating picture is not repeated (DOCX) or stops the render (ODT). PPTX/ODP/XLSX → `references/advanced-features.md`.
 
-### `{bindColor}` pitfall with loops
-If the same reference color is used in **multiple places or multiple loops** in the template, Carbone may inject the wrong value into the wrong location and corrupt the document. Every reference color used with `{bindColor}` must appear in **exactly one location** in the template.
+### `{bindColor}` reference colors
+Carbone replaces a reference color on **every** element that uses it, and each reference color can be bound only **once** — pick a color used nowhere else in the template. In a loop, fill the repeated row with it and bind it to the item: `{bindColor(e3e8ee, #hexa) = d.accounts[i].color}` gives one color per row.
 
 ### Deprecated formatters
 Full list of deprecated formatters and their modern replacements → `references/formatters.md` (sections "Legacy condition formatters" and "Other deprecated formatters").
@@ -484,9 +481,10 @@ Read these when the user's question goes beyond what SKILL.md covers:
 - `references/pdf-templates.md` — fillable PDF (AcroForm) as a template: the three tag-placement methods, `:fill`/`:check`/`:fillField`, unsupported features, gotchas. Read when user asks about PDF templates or filling PDF form fields.
 - `references/format-support.md` — the 15 input formats, which enterprise feature works in which, output formats, CSV/TXT/XML and IDML templates, format-specific limitations. Read when user asks which format to use or whether a feature works in a given format.
 - `references/in-template-options.md` — all `{o.}` in-template options with descriptions and version requirements, plus how `preReleaseFeatureIn` version codes work (including v4 compatibility mode). Read when user asks about timezone, lang, converter, or pre-release flags.
-- `references/advanced-features.md` — full `:color` reference, `:html` options and page breaks, hyperlink edge cases, SVG templates, ODT forms, native charts. Read when user asks about color formatting, SVG, ODT forms, or ECharts.
-- `references/xlsx-tips.md` — computing totals in Excel/ODS when Carbone injects rows: `INDIRECT`+`ROW`, aggregators, `MATCH`/`INDEX`, line breaks inside a cell. Read when user asks about Excel formulas in spreadsheet templates.
-- `references/docx-tips.md` — DOCX/ODT header/body/footer section rules, cross-section loop values, the floating-text-box pattern, dynamic page break in a loop without a trailing blank page, keeping merged cells inside a table loop, horizontal (newspaper-column) repetition in LibreOffice tables. Read when user asks about tags in Word headers/footers, a "missing i+1" error in a header, page breaks inside loops, merged cells in loops, or horizontal table repetition.
+- `references/advanced-features.md` — dynamic pictures per format (tag placement, loops), barcode sizing and fonts, full `:color` reference and `{bindColor}`, `:html` options and page breaks, hyperlink edge cases, file operations, `:sign` rules, `:transform`, SVG templates, ODT forms, native charts. Read when user asks about pictures, barcodes, color formatting, file operations, signatures, transform, SVG, ODT forms, or ECharts.
+- `references/xlsx-tips.md` — XLSX/ODS: formulas, merged cells, tables, charts and pivot tables that follow loop rows (`5018000`), `:mergeCell`, native numbers vs text (cell number formats, accounting), aggregator totals, `INDIRECT`+`ROW` and `MATCH`/`INDEX` without the tag, frozen panes, pictures and sheet names in XLSX, line breaks in a cell, one sheet per item (ODS). Read when user asks about Excel formulas, totals, merged cells or number formats in spreadsheet templates.
+- `references/docx-tips.md` — DOCX/ODT section rules, cross-section loop values, floating text boxes, page numbers/table headers/TOC, list and heading-plus-table loops, one page per item, page breaks in loops, `showBegin`/`showEnd` placement, picture anchoring in loops, merged cells in loops, LibreOffice newspaper columns. Read when user asks about Word headers/footers, "missing i+1" in a header, page numbers, list or page loops, empty paragraphs left by blocks, pictures not repeating, merged cells, or horizontal repetition.
+- `references/pptx-tips.md` — PowerPoint templates: where tags go, fixed positions, bullet and nested-table loops, one slide per item via ODP, moving repeated shapes with `:transform`, `:drop` placement, PPTX `:color` limits, native charts. Read when user designs or debugs a PPTX template.
 - `references/upgrade-guide.md` — upgrading Carbone versions: breaking changes, `carbone-version` header, `templateId` vs `versionId`. Read when user asks about upgrading or migration.
 - `references/practical-examples.md` — real-world combinations: conditional visibility (optional blocks, table/row hiding, NaN guard, range checks, checkboxes), date formatting, aggregation patterns, complement data, chained formatters, `..` in formatter args. Read when user asks for practical examples, real-world patterns, or complex conditional logic.
 

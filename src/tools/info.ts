@@ -77,7 +77,7 @@ ${io.allowAsync ? '| get_render_result          | The download link of a render 
 | carbone://categories    | List all template categories                     |
 | carbone://tags          | List all template tags                           |
 | carbone://status        | Check Carbone API health and version             |
-
+${io.skill ? `| ${CARBONE_SKILL_URI}| The Carbone Skill: template syntax reference     |\n` : ''}
 ---
 
 ## Common Use Cases
@@ -104,7 +104,7 @@ Use \`convert_document\` for a pure conversion: no data is sent, so Carbone tags
 
 **Converter engines** (\`converter\`, used whenever the format changes, not only for PDF):
 - \`L\` LibreOffice (default): DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- \`I\` Carbone ICE: DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over \`O\` for DOCX from v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default \`L\` for documents with those. ODT to PDF is in beta and also ignores tracked changes and footnotes. A missing font is replaced by Noto Sans (https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations)
+- \`I\` Carbone ICE: DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over \`O\` for DOCX from v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default \`L\` for documents with those. From ODT, tracked changes and footnotes are ignored too. A missing font is replaced by Noto Sans (https://carbone.io/documentation/developer/http-api/generate-reports.md#converters-carbone-ice-limitations)
 - \`O\` OnlyOffice: DOCX, XLSX, PPTX → PDF
 - \`C\` Chromium: HTML, XHTML → PDF, PNG, JPG, WEBP with full CSS/JS, and SVG → PDF, PNG, JPG, WEBP (v5.17.0+); 100 MB max
 - PDF options: \`L\` supports all of them; \`O\`, \`C\` and \`I\` apply Security (passwords, permissions) and Watermarks.
@@ -191,7 +191,7 @@ Valid outputs depend on the input format: see the conversion matrix above. \`doc
 
 ## 4. Stored Templates
 
-- \`upload_template\`: pass the file in \`template\`${io.allowUploadUrl ? ' (or, for a large file when you can run shell commands, \`requestUploadUrl\` with its size and SHA-256: you get a URL and a curl command)' : ''}; give it a \`name\` (list_templates shows and searches it). A result \`deployedAt\` of 0 means the version is not explicitly deployed: if another version of the same Template ID is deployed, renders by Template ID keep using that one.
+- \`upload_template\`: pass the file in \`template\`${io.allowUploadUrl ? ' (or, for a large file when you can run shell commands, \`requestUploadUrl\` with its size and SHA-256, then POST the file as the raw body to \`uploadUrl\` with the returned \`headers\`: the answer is the stored template)' : ''}; give it a \`name\` (list_templates shows and searches it). A result \`deployedAt\` of 0 means the version is not explicitly deployed: if another version of the same Template ID is deployed, renders by Template ID keep using that one.
 - Rendering by Template ID uses the version with the most recent \`deployedAt\`. To deploy a version, call \`update_template_metadata\` with templateId = its Version ID and deployedAt = 42000000000 (now).
 - \`update_template_metadata\` with a Template ID patches only its currently deployed version; with a Version ID, that exact version.
 - Deletion: \`delete_template\` takes effect immediately (no longer listed, downloadable or renderable). \`expireAt\` schedules a deletion at a Unix timestamp instead; 0 means never (on update, 0 cancels a scheduled deletion).

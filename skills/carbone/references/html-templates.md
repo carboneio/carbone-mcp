@@ -1,6 +1,6 @@
 # Carbone HTML Templates Reference
 
-Read this file when the user asks about HTML templates, HTML to PDF conversion, inline CSS injection, PDF output options (page size, margins, orientation, headers/footers), ECharts or barcode embedding, `:html` in HTML context, or `<carbone-pdf-options>` / `<carbone-pdf-header/footer>`.
+Read this file when the user asks about HTML templates, HTML to PDF conversion, inline CSS injection, PDF output options (page size, margins, orientation, headers/footers), a different header/footer on the cover page, ECharts or barcode embedding, `:html` in HTML context, or `<carbone-pdf-options>` / `<carbone-pdf-header/footer>`.
 
 Version: 5.0+ | Free feature | Renderer: Chromium-based (pixel-perfect PDF)
 
@@ -53,6 +53,7 @@ Carbone tags work anywhere inside an HTML document — in text, attributes, CSS 
 **CSS limitations:**
 - **Any inline CSS** is supported via the `style="..."` attribute — the template is rendered by Chromium, so the full CSS specification applies.
 - External stylesheets and `<style>` blocks are also supported.
+- Carbone downloads the images, stylesheets and fonts of the page before the PDF conversion. A resource that cannot be downloaded is not loaded.
 - **Animated CSS is not supported** — `transition`, `animation`, `@keyframes` and similar properties are ignored. The output is a static PDF.
 
 ⚠️ **Do not confuse with the `:html` formatter** (used to inject HTML strings inside templates):
@@ -139,9 +140,9 @@ HTML supports: `table`, `col`, `row`, `p`, `div`, `span`. The N-consecutive argu
 <tr><td>{d[i+1].name}</td></tr>
 ```
 
-Second parameter drops N consecutive elements:
+A count drops or keeps several paragraphs or rows — `:drop(p, 3)` removes the paragraph of the tag and the next two:
 ```html
-{d.text:ifEM:drop(p, 3)}
+<p>{d.text}{d.text:ifEM:drop(p, 3)}</p>
 ```
 
 ### 4. Conditional blocks — `:showBegin` / `:showEnd` / `:hideBegin` / `:hideEnd`
@@ -184,7 +185,7 @@ Required JSON structure for `chartOptions`:
 }
 ```
 
-Supported versions: `echarts@v5a` (recommended — optimized for SVG output), `echarts@v5` (legacy).
+Supported versions: `echarts@v5` (default) and `echarts@v5a` (optimized for SVG compatibility).
 Chart styling must be defined within the JSON. No external JS dependencies.
 
 ---
@@ -238,7 +239,7 @@ Then insert a break element:
 ```html
 <p class="page-break"></p>
 ```
-Only works in PDF output, ignored in HTML.
+Only works in PDF output, ignored in HTML and image output.
 
 ---
 
@@ -275,6 +276,11 @@ Use the `<carbone-pdf-header>` and `<carbone-pdf-footer>` custom elements. Carbo
 - `<span class="pageNumber">` — current page number
 - `<span class="totalPages">` — total pages
 - Headers/footers are PDF-only; ignored in HTML output and when the output is an image (PNG, JPG, WebP)
+- They render in the PDF even when they are hidden or commented out in the HTML template
+
+**Same header and footer on every page.** A `<carbone-pdf-header>` or `<carbone-pdf-footer>` cannot be turned off or changed on a specific page: a CSS rule like `.pageNumber:first-child { display: none; }` is ignored, with no error. For a cover page without footer:
+1. **Two HTML templates** — the cover without `<carbone-pdf-footer>`, the body with it — joined with `:appendTemplate` (SKILL.md §8g), e.g. `{d:appendTemplate(110212)}` in the cover, where `110212` is the body template's ID. Page numbering restarts at 1 in the appended template.
+2. **A DOCX, PPTX or XLSX template** — Office headers and footers can differ on the first page, on odd and even pages, or per section, in a single template.
 
 ---
 
@@ -296,7 +302,7 @@ Insert `<carbone-pdf-options/>` in the template with attribute-based options:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `landscape` | boolean | false | Landscape orientation |
-| `display-header-footer` | boolean | false | Show header/footer |
+| `display-header-footer` | boolean | false | Show header/footer — `true` by default when the template has a header or footer |
 | `print-background` | boolean | true | Print background graphics |
 | `scale` | number | 1 | Webpage render scale |
 | `paper-size` | string | A4 | Letter, Legal, Tabloid, Ledger, A0–A6 |
@@ -306,8 +312,8 @@ Insert `<carbone-pdf-options/>` in the template with attribute-based options:
 | `margin-bottom` | number | 0.5 | Bottom margin in inches |
 | `margin-left` | number | 0.5 | Left margin in inches |
 | `margin-right` | number | 0.5 | Right margin in inches |
-| `page-ranges` | string | all | e.g. `"1-5, 8, 11-13"`; a plain range `"1-5"` or a single page `"2"` also works (v5.15.0+) |
-| `prefer-css-page-size` | boolean | false | Use CSS-defined page size |
+| `page-ranges` | string | all | e.g. `"1-5, 8, 11-13"`; a plain range `"1-5"` or a single page `"2"` also works (v5.15.0+). Invalid ranges are ignored; a start page greater than its end page returns an error |
+| `prefer-css-page-size` | boolean | false | Use CSS-defined page size; when `false`, the content is scaled to fit the paper size |
 | `generate-tagged-pdf` | boolean | false | Tagged PDF/UA for accessibility |
 
 ---
