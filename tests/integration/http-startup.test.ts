@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { getDefaultEnvironment } from '@modelcontextprotocol/client/stdio';
@@ -43,6 +44,15 @@ async function startupLog(env: Record<string, string>): Promise<string> {
     child.kill();
   }
 }
+
+describe('HTTP startup: the running line', () => {
+  test('names the skills served, as name@version, and logs no skills warning', async () => {
+    const { version } = JSON.parse(readFileSync(new URL('../../skills.lock.json', import.meta.url), 'utf8')) as { version: string };
+    const log = await startupLog({});
+    expect(log).toMatch(new RegExp(`^level=info msg="running in HTTP mode" version=\\S+ skills=carbone@${version.replaceAll('.', '\\.')} `, 'm'));
+    expect(log).not.toContain('msg=skills');
+  }, 15_000);
+});
 
 describe('HTTP startup: shared server key warning', () => {
   test('warns once when CARBONE_API_KEY is set and client keys are not required — without printing the key', async () => {

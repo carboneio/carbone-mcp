@@ -28,6 +28,8 @@ export interface FileContext {
   uploads?: UploadIssuer;
   /** HTTP with MCP_TICKET_SECRET and an object store: runs render_document's async renders. */
   jobs?: Jobs;
+  /** The Carbone Skill is served: get_capabilities names its URI. */
+  skill?: boolean;
 }
 
 /**

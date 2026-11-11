@@ -3,6 +3,7 @@
 import type { McpServerOptions } from '@modelcontextprotocol/server';
 import { CARBONE_ICON_SVG, CARBONE_ICON_PNG } from './icons.js';
 import { type IoModes, STDIO_IO } from '../tools/inputForms.js';
+import { CARBONE_SKILL_URI } from './skills.js';
 
 export function serverInfo(version: string) {
   return {
@@ -29,7 +30,8 @@ export function serverInstructionsFor(io: IoModes): string {
     '- convert_document changes a file\'s format; render_document merges JSON into a template ({d.field} tags).\n' +
     '- Unsure which data a template expects? Call inspect_template first.\n' +
     '- Carbone tags are their own language (not Mustache or Jinja): never guess the syntax. The Carbone Skill is the ' +
-    'reference: https://carbone.io/documentation/developer/ai/skills.md\n' +
+    // The served copy first (matches these tools, no web access needed); never a resource that isn't served.
+    `reference: ${io.skill ? `the ${CARBONE_SKILL_URI} resource, or ` : ''}https://carbone.io/documentation/developer/ai/skills.md\n` +
     (io.allowFileOutput
       ? '- Files: local paths, HTTPS URLs or base64. PDF and Office results are saved to a temp file.\n'
       : '- Files: HTTPS URLs or base64 (no local paths). PDF and Office results come back as a one-time download ' +

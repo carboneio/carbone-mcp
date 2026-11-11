@@ -87,6 +87,16 @@ describe('handleGetCapabilities', () => {
     expect(text).toContain('10 minute');
   });
 
+  test('names the Carbone Skill resource only when this server serves it; the web copy always', () => {
+    const served = result(handleGetCapabilities({ ...STDIO_IO, skill: true })).text;
+    expect(served).toContain('- On this server:       skill://carbone/SKILL.md (MCP resource');
+    expect(served).toContain('carbone.io/documentation/developer/ai/skills.md');
+
+    const notServed = result(handleGetCapabilities(STDIO_IO)).text;
+    expect(notServed).not.toContain('skill://');
+    expect(notServed).toContain('carbone.io/documentation/developer/ai/skills.md');
+  });
+
   test('documents convertTo parameter for output format', () => {
     const { text } = result(handleGetCapabilities(STDIO_IO));
 

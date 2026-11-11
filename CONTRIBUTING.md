@@ -50,7 +50,18 @@ The server writes its diagnostics to stderr. Claude Desktop saves them in `mcp-s
 tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
 ```
 
-A successful start logs `Carbone MCP Server v<version> started (stdio)`. In HTTP mode, `GET /health` reports the server and Carbone API status ([Health endpoint](docs/API.md#health-endpoint)).
+A successful start logs `Carbone MCP Server v<version> started (stdio)`, then the Carbone API URL and the skills served (`Skills: carbone@x.x.x`, or `none`). In HTTP mode, `GET /health` reports the server and Carbone API status ([Health endpoint](docs/API.md#health-endpoint)).
+
+## Updating the Carbone Skill
+
+`skills/carbone/` is a copy of a [carbone-agent-plugin](https://github.com/carboneio/carbone-agent-plugin) release, served over MCP (`src/server/skills.ts`). It is committed so that every build (CI, Docker, a self-hosted build behind a proxy, a source ZIP) works without downloading it. Never edit it by hand: change the skill in carbone-agent-plugin, release it, then:
+
+```bash
+npm run skill:sync -- x.x.x   # download vx.x.x's carbone.skill, replace skills/carbone/, pin it in skills.lock.json
+npm run skill:check           # what CI runs: the folder must match the pinned release, byte for byte
+```
+
+Commit `skills/` and `skills.lock.json` together. A skill change reaches users with the next carbone-mcp release, and MCP clients ask them to approve the changed skill again, so ship it on purpose. `agents/openai.yaml` (Codex display metadata) is left out.
 
 ## Code Style
 

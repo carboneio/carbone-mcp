@@ -204,6 +204,31 @@ test('resources/read: ok, a read that fails, and an unknown resource; an unknown
   expect(field(await lineOf(unknownMethod), 'error')).toBe('"Method not found"');
 });
 
+test('the Carbone Skill: skills/list and a file read are info lines, a file the skill does not have is outcome=error', async () => {
+  const listed = newKey();
+  const read = newKey();
+  const unknown = newKey();
+  expect(await (await rawCall(listed, { method: 'skills/list', params: {} })).text()).toContain('skill://carbone/SKILL.md');
+  expect(await (await rawCall(read, { method: 'resources/read', params: { uri: 'skill://carbone/references/formatters.md' } })).text())
+    .toContain('formatC');
+  // Codex's agents/openai.yaml is in the release, but not served
+  await rawCall(unknown, { method: 'resources/read', params: { uri: 'skill://carbone/agents/openai.yaml' } });
+  const lineOf = (key: string) => vi.waitFor(() => {
+    expect(linesOf(key)).toHaveLength(1);
+    return linesOf(key)[0];
+  });
+  const listLine = await lineOf(listed);
+  expect(listLine).toMatch(/^level=info /);
+  expect(field(listLine, 'mcp')).toBe('skills/list');
+  expect(field(listLine, 'outcome')).toBeUndefined();
+  const readLine = await lineOf(read);
+  expect(readLine).toMatch(/^level=info /);
+  expect(field(readLine, 'outcome')).toBe('ok');
+  const unknownLine = await lineOf(unknown);
+  expect(unknownLine).toMatch(/^level=warn /);
+  expect(field(unknownLine, 'outcome')).toBe('error');
+});
+
 test(`${MODERN}: an unknown method keeps the SDK's 404, and is an error on the access line`, async () => {
   const key = newKey();
   const _meta = { [PROTOCOL_VERSION_META_KEY]: MODERN, [CLIENT_INFO_META_KEY]: { name: 'raw', version: '0' }, [CLIENT_CAPABILITIES_META_KEY]: {} };

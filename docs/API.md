@@ -22,6 +22,7 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 **Discovery**
 - [get\_api\_status](#get_api_status)
 - [get\_capabilities](#get_capabilities)
+- [Carbone Skill](#carbone-skill) (`skill://carbone/SKILL.md`)
 
 **Server**
 - [File inputs](#file-inputs)
@@ -392,6 +393,21 @@ Returns a full overview of supported formats, features, and usage examples. No p
 
 ---
 
+## Carbone Skill
+
+The server serves the [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html), the template syntax reference for AI assistants, through the MCP Skills extension (`io.modelcontextprotocol/skills`, [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension)). A client that supports the extension finds it with `skills/list` and loads it when a template needs writing or fixing, without installing anything else.
+
+| | |
+|---|---|
+| Skill | `skill://carbone/SKILL.md`, and its references under `skill://carbone/references/` |
+| Methods | `skills/list`, `skills/get`, `resources/read`, and `resources/directory/read` (`directoryRead: true`) |
+| Version | The [carbone-agent-plugin](https://github.com/carboneio/carbone-agent-plugin) release pinned in `skills.lock.json`, the same as the skill's `metadata.version`: each server release ships the skill matching its tools |
+| Transports | stdio and HTTP, both protocol eras |
+
+The skill is part of the npm package and the Docker image: nothing is downloaded at build or run time, so it works the same on mcp.carbone.io, on a self-hosted server and offline. Clients without the extension can still read `skill://carbone/SKILL.md` as an ordinary resource: the server instructions and `get_capabilities` name it before its web copy. If the skill cannot be loaded (the startup log then says `skills=none`), they name the web copy only, so a model never looks for a resource that is not there.
+
+---
+
 ## File inputs
 
 `file` (`convert_document`) and `template` (`render_document`, `inspect_template`, `upload_template`) accept three forms:
@@ -593,7 +609,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "2.0.0" },
+  "mcp":    { "version": "2.4.0" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -614,7 +630,7 @@ The `carbone` field reflects backend connectivity:
 In HTTP mode, the server writes one [logfmt](https://brandur.org/logfmt) line per event on stderr, starting with `level=`, so log viewers detect the level:
 
 ```
-level=info msg="running in HTTP mode" version=2.2.0 mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
+level=info msg="running in HTTP mode" version=2.4.0 skills=carbone@x.x.x mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
 level=info msg=request method=POST path=/ status=200 ms=412 ip=203.0.113.7 mcp=tools/call tool=render_document proto=2025-11-25 ua=claude-code/2.1 user=sub:42 oauth_client=example-client outcome=ok rid=9f2c1a7b04d6e358
 level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mcp=tools/call tool=convert_document user=key:3445f6f99c76 outcome=error error_type=upstream error="Carbone API request timed out after 60 s." rid=0f7090b8c1d2e3f4
 ```
@@ -622,11 +638,12 @@ level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mc
 | Level | Meaning |
 |---|---|
 | `info` | A request answered, and server events. |
-| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable. |
+| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable, a skill not served (`msg=skills`, at startup). |
 | `error` | A 5xx answer; an upstream outage or an internal bug (`error_type`); a server failure. |
 
 | Field | Meaning |
 |---|---|
+| `skills` | On the startup line: the skills served, as `name@version` ([Carbone Skill](#carbone-skill)), or `none`. |
 | `ip` | The client's address, found past the internal proxies in X-Forwarded-For. |
 | `mcp`, `tool` | The JSON-RPC method (`batch` for a batch), and the tool a `tools/call` names. |
 | `client`, `proto`, `ua` | The client's name and version (on `initialize` and on every 2026-07-28 request), its `Mcp-Protocol-Version` and its `User-Agent`. |

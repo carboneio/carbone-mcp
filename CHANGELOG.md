@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.4.0] - 2026-11-11
+
+### Added
+
+- **The server serves the Carbone Skill** through the MCP Skills extension (`io.modelcontextprotocol/skills`, SEP-2640), on stdio and HTTP: `skills/list`, `skills/get`, `resources/read` and `resources/directory/read` on `skill://carbone/...`. Clients that support skills get the template syntax reference with the server, in the version matching its tools. The skill ships in the npm package and the Docker image, so nothing is downloaded at build or run time. See [Carbone Skill](docs/API.md#carbone-skill).
+- `npm run skill:sync -- <version>` and `npm run skill:check` copy and verify the skill from a carbone-agent-plugin release, pinned in `skills.lock.json`.
+- The startup log names the skills served: `skills=carbone@x.x.x` on the HTTP line, `Skills: carbone@x.x.x` in stdio (`none` when the skill could not be loaded).
+
+### Changed
+
+- The server instructions and `get_capabilities` name `skill://carbone/SKILL.md` as the Carbone Skill, before its web copy, when the server serves it; otherwise they name the web copy only, as before.
+- `resources/list` also lists `skill://carbone/SKILL.md`.
+- The Docker image's code and skill (`/app/dist`, `/app/skills`) are owned by root: the `node` user the server runs as can read them, not change them.
+- stdio diagnostics on stderr turn control characters into spaces, so a message cannot forge a line or drive the terminal.
+
+---
+
 ## [2.3.1] - 2026-11-09
 
 ### Added
@@ -463,6 +480,9 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.4.0]: https://github.com/carboneio/carbone-mcp/compare/v2.3.1...v2.4.0
+[2.3.1]: https://github.com/carboneio/carbone-mcp/compare/v2.3.0...v2.3.1
+[2.3.0]: https://github.com/carboneio/carbone-mcp/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/carboneio/carbone-mcp/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/carboneio/carbone-mcp/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/carboneio/carbone-mcp/compare/v2.1.2...v2.1.3

@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
-import { serverInfo, SERVER_INSTRUCTIONS } from '../../../src/server/serverInfo.js';
+import { serverInfo, serverInstructionsFor, SERVER_INSTRUCTIONS } from '../../../src/server/serverInfo.js';
+import { STDIO_IO } from '../../../src/tools/inputForms.js';
 
 describe('serverInfo', () => {
   test('returns the server identity with the given version', () => {
@@ -37,8 +38,18 @@ describe('SERVER_INSTRUCTIONS', () => {
   });
 
   test('presents the Carbone Skill and the docs as references, without asking to load them', () => {
-    expect(SERVER_INSTRUCTIONS).toContain('developer/ai/skills.md');
-    expect(SERVER_INSTRUCTIONS).toContain('llms.txt');
-    expect(SERVER_INSTRUCTIONS).not.toMatch(/\bload(s|ed|ing)?\b/i);
+    for (const instructions of [SERVER_INSTRUCTIONS, serverInstructionsFor({ ...STDIO_IO, skill: true })]) {
+      expect(instructions).toContain('developer/ai/skills.md');
+      expect(instructions).toContain('llms.txt');
+      expect(instructions).not.toMatch(/\bload(s|ed|ing)?\b/i);
+    }
+  });
+
+  test('names the served Carbone Skill first (SEP-2640 lets instructions point to it), never a skill it does not serve', () => {
+    expect(serverInstructionsFor({ ...STDIO_IO, skill: true })).toContain(
+      'The Carbone Skill is the reference: the skill://carbone/SKILL.md resource, or https://carbone.io/documentation/developer/ai/skills.md\n',
+    );
+    expect(SERVER_INSTRUCTIONS).toContain('The Carbone Skill is the reference: https://carbone.io/documentation/developer/ai/skills.md\n');
+    expect(SERVER_INSTRUCTIONS).not.toContain('skill://');
   });
 });

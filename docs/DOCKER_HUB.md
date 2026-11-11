@@ -13,7 +13,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "mcp": { "version": "2.3.1" },
+  "mcp": { "version": "2.4.0" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -37,6 +37,7 @@ docker run -d --name carbone-mcp -p 127.0.0.1:3000:3000 -e CARBONE_API_KEY=your_
 - Adds passwords, watermarks and PDF/A to PDFs, with a choice of converter: LibreOffice, OnlyOffice, Chromium or Carbone ICE
 - Generates up to 100 documents per request, collected by the assistant (async renders) or delivered to your webhook, with translations, time zones and currency conversion
 - Manages a template library: upload, version, categorize, deploy and download templates
+- Serves the Carbone Skill, the template syntax reference for AI assistants, to MCP clients that support skills (included in the image, no download)
 
 ## Docker Compose
 
@@ -185,8 +186,8 @@ More in the [Security section of the README](https://github.com/carboneio/carbon
 | Tag | Description |
 |---|---|
 | `latest` | Latest stable release |
-| `2.3.1` | Specific version |
-| `2.3` | Latest patch of 2.3 |
+| `2.4.0` | Specific version |
+| `2.4` | Latest patch of 2.4 |
 | `2` | Latest minor of v2 |
 
 Supported platforms: `linux/amd64`, `linux/arm64`
