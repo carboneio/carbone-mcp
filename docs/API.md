@@ -609,7 +609,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "2.4.0" },
+  "mcp":    { "version": "2.4.1" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -630,7 +630,7 @@ The `carbone` field reflects backend connectivity:
 In HTTP mode, the server writes one [logfmt](https://brandur.org/logfmt) line per event on stderr, starting with `level=`, so log viewers detect the level:
 
 ```
-level=info msg="running in HTTP mode" version=2.4.0 skills=carbone@x.x.x mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
+level=info msg="running in HTTP mode" version=2.4.1 skills=carbone@x.x.x mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
 level=info msg=request method=POST path=/ status=200 ms=412 ip=203.0.113.7 mcp=tools/call tool=render_document proto=2025-11-25 ua=claude-code/2.1 user=sub:42 oauth_client=example-client outcome=ok rid=9f2c1a7b04d6e358
 level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mcp=tools/call tool=convert_document user=key:3445f6f99c76 outcome=error error_type=upstream error="Carbone API request timed out after 60 s." rid=0f7090b8c1d2e3f4
 ```

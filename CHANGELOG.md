@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.4.1] - 2026-11-12
+
+### Changed
+
+- The Carbone Skill served by the server moves to v2.3.0: new guides for CSV, TXT, XML, SVG and IDML templates, and fixes across the other references.
+
+---
+
 ## [2.4.0] - 2026-11-11
 
 ### Added
@@ -481,6 +489,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.4.1]: https://github.com/carboneio/carbone-mcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/carboneio/carbone-mcp/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/carboneio/carbone-mcp/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/carboneio/carbone-mcp/compare/v2.2.0...v2.3.0

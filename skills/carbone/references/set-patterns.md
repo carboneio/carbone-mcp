@@ -145,7 +145,7 @@ Origin – {d.product_data.origin}
 {d.list[i, attr!='supplier', attr!='origin', attr!='is_certified', attr!='item_grade'].attr} – {d.list[i, attr!='supplier', attr!='origin', attr!='is_certified', attr!='item_grade'].val}
 {d.list[i+1, attr!='supplier', attr!='origin', attr!='is_certified', attr!='item_grade'].attr}
 ```
-Note: uses `..list` (relative path — one level up from `product_data`). The `!=` operator is valid in array filters alongside `>`, `<`, `>=`, `<=`, `=`.
+Note: uses `..list` (relative path — one level up from `product_data`). The `!=` operator is valid in array filters alongside `>`, `<` and `=` (there is no `>=` or `<=`).
 
 ---
 

@@ -1,6 +1,6 @@
 # Carbone Loops — Advanced Reference
 
-Advanced loop patterns. Read this file when the user asks about: filtering with negative index or OR logic, bidirectional or horizontal loops, sorting, distinct values, lookup (JOIN), parallel loops, loops on primitive arrays or nested arrays, object attribute search, or row repetition.
+Read this file when the user asks about: nested loops (one line per child, or a group row), filtering with negative index or OR logic, bidirectional or horizontal loops, sorting, distinct values, lookup (JOIN), parallel loops, loops on primitive arrays or nested arrays, object attribute search, or row repetition.
 
 ---
 
@@ -145,7 +145,14 @@ Maximum: 400 repetitions. Row is duplicated `qty` times; rows with `qty=0` are s
 
 ## Nested loops (multi-level)
 
-**Two-level loop** — both the inner and outer loop-end rows are required. Each end row carries only the `[i+1]` for the level it closes:
+**Flattened rows** — when every repeated row is an inner item (one line per child, the parent's fields repeated on each), one combined end tag closes both loops. Read the parent with `..` (its full path `{d.orders[i].id}` prints only once per parent); a parent without children prints nothing:
+```
+{d.orders[i].items[i]..id},{d.orders[i].items[i].sku},{d.orders[i].items[i].qty}
+{d.orders[i+1].items[i+1]}
+```
+`{ "orders": [ { "id": "SO-1", "items": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 6 } ] }, { "id": "SO-2", "items": [ { "sku": "C", "qty": 1 } ] } ] }` → `SO-1,A,2` / `SO-1,B,6` / `SO-2,C,1`.
+
+**Two-level loop with a group row** (a row printed once per parent) — both the inner and outer loop-end rows are required. Each end row carries only the `[i+1]` for the level it closes:
 ```
 {d.bundles[i].components[i].code}
 {d.bundles[i].components[i].qty:formatN(2)}
