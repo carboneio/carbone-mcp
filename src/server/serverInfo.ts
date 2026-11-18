@@ -30,6 +30,7 @@ export function serverInstructionsFor(io: IoModes): string {
     'converts files.\n\n' +
     '- convert_document changes a file\'s format; render_document merges JSON into a template ({d.field} tags).\n' +
     '- Unsure which data a template expects? Call inspect_template first.\n' +
+    '- New to Carbone, or starting a template? find_template_examples has ready-to-render templates with their data.\n' +
     '- Carbone tags are their own language (not Mustache or Jinja): never guess the syntax. The Carbone Skill is the ' +
     // The served copy first (matches these tools, no web access needed); never a resource that isn't served.
     `reference: ${io.skill ? `the ${CARBONE_SKILL_URI} resource, or ` : ''}https://carbone.io/documentation/developer/ai/skills.md\n` +

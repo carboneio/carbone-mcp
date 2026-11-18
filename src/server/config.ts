@@ -253,7 +253,7 @@ function parseEnabledTools(value: string | undefined, name: string): ReadonlySet
   const unknown = [...entries].find((entry) => !(TOOL_NAMES as readonly string[]).includes(entry));
   if (unknown !== undefined) {
     const quoted = JSON.stringify(unknown).replace(/[^\x20-\x7E]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
-    throw new Error(`${name}: unknown tool ${quoted.length > 28 ? `${quoted.slice(0, 24)}..."` : quoted} (valid: ${TOOL_NAMES.join(', ')})`);
+    throw new Error(`${name}: unknown tool ${quoted.length > 28 ? `${quoted.slice(0, 24)}..."` : quoted} (valid: ${DISABLEABLE_TOOLS.join(',')})`);
   }
   return new Set(DISABLEABLE_TOOLS.filter((tool) => !entries.has(tool)));
 }

@@ -28,7 +28,7 @@ export async function readTemplatesResource(
 export const TEMPLATE_BY_ID_URI_TEMPLATE = 'carbone://templates/{id}';
 
 export const templateByIdResourceDescription =
-  'One stored template, with its version history, by Template ID (digits) or Version ID (64 hex characters).';
+  'One stored template, with its version history, by Template ID or Version ID (64 hex characters).';
 
 export async function readTemplateByIdResource(
   uri: URL,

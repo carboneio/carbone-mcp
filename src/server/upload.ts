@@ -4,7 +4,7 @@ import type { CarboneClient } from '../carbone/client.js';
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
 import { formatError } from '../utils/errors.js';
 import { describeUpload } from '../tools/templates.js';
-import { type ToolName, NO_TOOLS, withoutTools } from '../tools/toolNames.js';
+import { type ToolName, NO_TOOLS, errorWithoutTools } from '../tools/toolNames.js';
 import { AuthorizationServerUnavailableError } from '../carbone/tokenExchange.js';
 import { callerIdFrom } from './caller.js';
 import { UPLOAD_PATH, type UploadCredential, type UploadFields, type UploadTicket, type UploadTicketSealer } from './uploadTicket.js';
@@ -242,7 +242,7 @@ export function createUploadRoute(options: {
       const status = err instanceof CarboneAuthError ? 401
         : err instanceof CarboneError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode
         : 502;
-      sendJson(res, req, status, { error: withoutTools(formatError(err), options.disabledTools ?? NO_TOOLS) });
+      sendJson(res, req, status, { error: errorWithoutTools(formatError(err), options.disabledTools ?? NO_TOOLS) });
     } finally {
       clearInterval(watchdog);
       clearTimeout(firstBytes);

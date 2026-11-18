@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import {
-  CONVERTERS, CONVERTER_DESCRIPTION, INPUT_FORMATS_DESCRIPTION, OUTPUT_FORMAT_DESCRIPTION, OutputFormatSchema, integer,
-} from '../validation/formats.js';
+  CONVERTERS, CONVERTER_DESCRIPTION, INPUT_FORMATS_DESCRIPTION, OUTPUT_FORMAT_DESCRIPTION, OutputFormatSchema, integer, templateIdInput } from '../validation/formats.js';
 import { resolveFileInput, resolveJsonInput } from '../utils/file.js';
 import { deliver, oneTimeLinkResult, wantsLink, withReportName, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
@@ -64,12 +63,10 @@ export const renderDocumentDescription = renderDocumentDescriptionFor(STDIO_IO);
 
 export function renderDocumentSchemaFor(io: IoModes) {
   return {
-    templateId: z
-      .string()
-      .min(1)
+    templateId: templateIdInput()
       .optional()
       .describe(
-        'A stored template, from list_templates or upload_template (never guess one): its Template ID (digits, renders ' +
+        'A stored template, from list_templates or upload_template (never guess one): its Template ID (renders ' +
         'the deployed version) or a Version ID (64 hex characters, pins that version). Exclusive with template.'
       ),
 

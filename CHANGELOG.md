@@ -4,20 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased]
+## [2.5.0] - 2026-11-18
 
 ### Added
 
-- **`MCP_ENABLED_TOOLS`**: choose which tools the AI can use, for example a read-only agent that cannot change or delete your templates. The other tools disappear completely for the AI. Unset, every tool is available, as before. See [Choosing the tools](docs/API.md#choosing-the-tools).
+- **`find_template_examples`**: a new tool to find a ready-to-run Carbone example (invoice, label, report, e-invoice, slides...) by keyword, use case, format or feature. Each example gives the AI the exact arguments to generate it with `render_document`, so trying Carbone takes one sentence: "show me what Carbone can do with an Excel budget". The examples come from [carbone.io/examples](https://carbone.io/examples/), refreshed once a day. With `MCP_ENABLED_TOOLS` set, add it to the list to offer it. See [find_template_examples](docs/API.md#find_template_examples).
+- **`MCP_ENABLED_TOOLS`**: choose which tools the AI can use, for example a read-only agent that cannot change or delete your templates. The other tools disappear completely for the AI. Unset, every tool is available, as before. See [Choosing the tools](docs/API.md#choosing-the-tools) ([#9](https://github.com/carboneio/carbone-mcp/issues/9)).
 
 ### Fixed
 
 - A file the server can't use (a local path, an unreachable URL, a file too large, broken JSON) now gets a clear `Invalid input` answer, instead of `Unexpected error`, which looked like a server bug.
 - Server logs no longer report these mistakes, or a render the user cancels, as errors. Real server problems are still logged as errors.
+- Template IDs are no longer limited to digits in `list_templates`, `upload_template` and `update_template_metadata`, so a Carbone-compatible backend that uses other IDs (UUIDs, for example) works again, as up to 2.1.4 ([#13](https://github.com/carboneio/carbone-mcp/issues/13)).
 - When Carbone answers a render or conversion without a download link, the tool now reports Carbone's error (or that Carbone gave no link) instead of `Cannot read properties of undefined`.
 
 ### Security
 
+- Template ID and Version ID inputs are limited to 256 characters (real IDs have at most 64).
 - Updated `hono`, a dependency of the MCP SDK, to fix five moderate security advisories.
 
 ---
@@ -507,6 +510,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.5.0]: https://github.com/carboneio/carbone-mcp/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/carboneio/carbone-mcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/carboneio/carbone-mcp/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/carboneio/carbone-mcp/compare/v2.3.0...v2.3.1

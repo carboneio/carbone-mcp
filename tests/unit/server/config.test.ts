@@ -352,7 +352,7 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).toThrow('unknown tool "list\\u200btags"');
       vi.stubEnv('MCP_ENABLED_TOOLS', 'x'.repeat(500));
       const error = (() => { try { loadConfig(); } catch (e) { return (e as Error).message; } })()!;
-      expect(error).toMatch(/^MCP_ENABLED_TOOLS: unknown tool "x{23}\.\.\." \(valid: convert_document, .*, get_capabilities\)$/);
+      expect(error).toMatch(/^MCP_ENABLED_TOOLS: unknown tool "x{23}\.\.\." \(valid: convert_document,.*,find_template_examples\)$/);
       expect(error.length).toBeLessThan(300);
     });
   });

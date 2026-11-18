@@ -3,7 +3,7 @@ import type { McpServer, StandardSchemaWithJSON, ToolAnnotations } from '@modelc
 import { callOptionsFrom, type CarboneClient } from '../carbone/client.js';
 import type { FileContext } from './output.js';
 import type { IoModes } from './inputForms.js';
-import { type ToolName, NO_TOOLS, withoutTools } from './toolNames.js';
+import { type ToolName, NO_TOOLS, errorWithoutTools, withoutTools } from './toolNames.js';
 import { chatFileMeta } from './attachments.js';
 import { uploadCallerFrom } from '../server/upload.js';
 import { callerIdFrom } from '../server/caller.js';
@@ -79,6 +79,14 @@ import {
   handleGetCapabilities,
 } from './info.js';
 
+import {
+  findTemplateExamplesToolName,
+  findTemplateExamplesDescription,
+  findTemplateExamplesSchema,
+  findTemplateExamplesOutputSchema,
+  handleFindTemplateExamples,
+} from './examples.js';
+
 // Tool schemas wrapped with z.object() once, at module scope: registerTools() runs for every HTTP request
 // (a fresh McpServer each time), and the SDK deprecates passing raw shapes to registerTool.
 const listTemplatesInput           = z.object(listTemplatesSchema);
@@ -94,6 +102,8 @@ const deleteTemplateInput          = z.object(deleteTemplateSchema);
 const getRenderResultInput         = z.object(getRenderResultSchema);
 const getApiStatusOutput           = z.object(getApiStatusOutputSchema);
 const inspectTemplateOutput        = z.object(inspectTemplateOutputSchema);
+const findTemplateExamplesInput   = z.object(findTemplateExamplesSchema);
+const findTemplateExamplesOutput  = z.object(findTemplateExamplesOutputSchema);
 
 /**
  * A tool input schema that validates with `full` but is listed as `shown`: a field left out of `shown` is still
@@ -122,11 +132,11 @@ function withDescriptions(schema: StandardSchemaWithJSON, edit: (text: string) =
   } } };
 }
 
-/** An error result with its texts passed through `edit` (kept as is if that leaves nothing, e.g. a file the user named after a tool). */
+/** An error result with its texts passed through `edit` (see errorWithoutTools). */
 function withErrorText(result: unknown, edit: (text: string) => string): unknown {
   const { isError, content } = (result ?? {}) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
   if (!isError || !content) return result;
-  return { ...(result as object), content: content.map((item) => (item.type === 'text' ? { ...item, text: edit(item.text!) || item.text } : item)) };
+  return { ...(result as object), content: content.map((item) => (item.type === 'text' ? { ...item, text: edit(item.text!) } : item)) };
 }
 
 /**
@@ -212,7 +222,7 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       description: cut(config.description),
       ...(config.inputSchema && { inputSchema: withDescriptions(config.inputSchema, cut) }),
       ...(config.outputSchema && { outputSchema: withDescriptions(config.outputSchema, cut) }),
-    } as never, (async (...args: never[]) => withErrorText(await handler(...args), cut)) as never);
+    } as never, (async (...args: never[]) => withErrorText(await handler(...args), (text) => errorWithoutTools(text, disabledTools))) as never);
   }) as McpServer['registerTool'];
   fileCtx = { ...fileCtx, disabledTools };
 
@@ -361,6 +371,18 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
       outputSchema: getApiStatusOutput,
     },
     (ctx) => handleGetApiStatus(client, callOptionsFrom(ctx))
+  );
+
+  // Reads Carbone's public examples catalog (a fixed carbone.io file, cached): sends nothing of the user's, so not open-world.
+  registerTool(
+    findTemplateExamplesToolName,
+    {
+      ...titled('Template Examples', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
+      description: findTemplateExamplesDescription,
+      inputSchema: findTemplateExamplesInput,
+      outputSchema: findTemplateExamplesOutput,
+    },
+    (args) => handleFindTemplateExamples(args)
   );
 
   registerTool(

@@ -257,7 +257,7 @@ describe('RenderDocumentSchema', () => {
   });
 });
 
-describe('Template ID fields are digits only (the API refuses the rest with a 400 from Carbone v5.16.0)', () => {
+describe('Template ID fields take any non-empty value: the backend checks the format (#13)', () => {
   const ListTemplatesSchema = z.object(listTemplatesSchema);
   const cases: Array<[string, (id: string) => { success: boolean; error?: z.ZodError }]> = [
     ['upload_template id',                   (id) => UploadTemplateSchema.safeParse({ template: 'data', id })],
@@ -266,18 +266,14 @@ describe('Template ID fields are digits only (the API refuses the rest with a 40
     ['update_template_metadata id (deprecated)',  (id) => UpdateTemplateSchema.safeParse({ templateId: 'sha-v1', id })],
   ];
 
-  test('accepts a 64-bit Template ID', () => {
-    for (const [field, parse] of cases) expect(parse('1530905183164918624').success, field).toBe(true);
+  test('accepts a Carbone Template ID, and the IDs of a Carbone-compatible backend (a UUID)', () => {
+    for (const [field, parse] of cases) {
+      for (const id of ['1530905183164918624', '3f2b9c1e-6d4a-4f7e-9a51-2c8e0b7d4a10']) expect(parse(id).success, `${field}: ${id}`).toBe(true);
+    }
   });
 
-  test('refuses an empty string, spaces, hex and a Version ID, naming the field', () => {
-    for (const [field, parse] of cases) {
-      for (const bad of ['', ' 12 ', '0x1F', 'a'.repeat(64)]) {
-        const result = parse(bad);
-        expect(result.success, `${field}: ${JSON.stringify(bad)}`).toBe(false);
-        expect(result.error!.issues[0]!.message).toMatch(/Template ID \(64-bit format, digits only/);
-      }
-    }
+  test('refuses only an empty string, like every other Template ID field', () => {
+    for (const [field, parse] of cases) expect(parse('').success, field).toBe(false);
   });
 });
 
@@ -423,5 +419,43 @@ describe('DownloadTemplateSchema', () => {
 
   test('rejects empty templateId', () => {
     expect(() => DownloadTemplateSchema.parse({ templateId: '' })).toThrow();
+  });
+});
+
+describe('Template ID and Version ID inputs', async () => {
+  const { TEMPLATE_ID_MAX_LENGTH } = await import('../../../src/validation/formats.js');
+  const t = await import('../../../src/tools/templates.js');
+  const { renderDocumentSchema } = await import('../../../src/tools/render.js');
+  const { inspectTemplateSchema } = await import('../../../src/tools/inspect.js');
+  const fields: [string, z.ZodType][] = [
+    ['render_document.templateId', renderDocumentSchema.templateId],
+    ['inspect_template.templateId', inspectTemplateSchema.templateId],
+    ['list_templates.id', t.listTemplatesSchema.id],
+    ['list_templates.versionId', t.listTemplatesSchema.versionId],
+    ['upload_template.id', t.uploadTemplateSchema.id],
+    ['update_template_metadata.templateId', t.updateTemplateMetadataSchema.templateId],
+    ['update_template_metadata.moveToTemplateId', t.updateTemplateMetadataSchema.moveToTemplateId],
+    ['update_template_metadata.id', t.updateTemplateMetadataSchema.id],
+    ['delete_template.templateId', t.deleteTemplateSchema.templateId],
+    ['download_template.templateId', t.downloadTemplateSchema.templateId],
+  ];
+
+  test.each(fields)('%s accepts every real ID format', (_, field) => {
+    for (const id of ['1234567890123456789', 'a'.repeat(64), '0b3c7a52-9f1e-4d5c-8a2b-6e7f8091a2b3']) {
+      expect(field.safeParse(id).success).toBe(true);
+    }
+  });
+
+  test.each(fields)('%s is bounded and never empty', (_, field) => {
+    expect(field.safeParse('x'.repeat(TEMPLATE_ID_MAX_LENGTH)).success).toBe(true);
+    expect(field.safeParse('x'.repeat(TEMPLATE_ID_MAX_LENGTH + 1)).success).toBe(false);
+    expect(field.safeParse('x'.repeat(1_000_000)).success).toBe(false);
+    expect(field.safeParse('').success).toBe(false);
+  });
+
+  test('the bound is advertised to clients as maxLength', () => {
+    for (const [name, field] of fields) {
+      expect(z.toJSONSchema(field, { io: 'input' }), name).toMatchObject({ maxLength: TEMPLATE_ID_MAX_LENGTH });
+    }
   });
 });

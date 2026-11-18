@@ -10,6 +10,7 @@ import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { serverInfo, serverOptionsFor } from './server/serverInfo.js';
 import { loadServedSkills, servedSkills, servesCarboneSkill } from './server/skills.js';
+import { exampleCatalog } from './tools/examples.js';
 import { STDIO_IO } from './tools/inputForms.js';
 import { TOOL_NAMES } from './tools/toolNames.js';
 
@@ -47,6 +48,7 @@ async function main() {
   }
 
   const skills = await loadServedSkills((message) => diagnostic(`skills: ${message}`));
+  exampleCatalog.warn = (error) => diagnostic(`examples catalog not refreshed: ${error}`);
   const skill = servesCarboneSkill(skills);
 
   // stdio mode (default) — one client, key from env var. serveStdio serves both 2026-07-28 and

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CarboneClient, CallOptions } from '../carbone/client.js';
 import type { TemplateDebugInfo } from '../carbone/types.js';
-import { INPUT_FORMATS_DESCRIPTION } from '../validation/formats.js';
+import { INPUT_FORMATS_DESCRIPTION, templateIdInput } from '../validation/formats.js';
 import { resolveFileInput } from '../utils/file.js';
 import { formatError } from '../utils/errors.js';
 import type { FileContext } from './output.js';
@@ -25,9 +25,7 @@ export const inspectTemplateDescription = inspectTemplateDescriptionFor(STDIO_IO
 
 export function inspectTemplateSchemaFor(io: IoModes) {
   return {
-    templateId: z
-      .string()
-      .min(1)
+    templateId: templateIdInput()
       .optional()
       .describe('Template ID (its deployed version) or Version ID, from list_templates. Exclusive with template.'),
     template: z

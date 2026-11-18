@@ -4,7 +4,7 @@ import type { UploadTemplateResult } from '../carbone/types.js';
 import { resolveFileInput } from '../utils/file.js';
 import { deliverDocument, type FileContext } from './output.js';
 import { formatError } from '../utils/errors.js';
-import { INPUT_FORMATS_DESCRIPTION, integer } from '../validation/formats.js';
+import { INPUT_FORMATS_DESCRIPTION, integer, templateIdInput } from '../validation/formats.js';
 import { type IoModes, STDIO_IO, fieldIf, inputForms, outputPathDescription } from './inputForms.js';
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 import type { UploadCaller } from '../server/upload.js';
@@ -37,19 +37,12 @@ export const listTemplatesOutputSchema = {
   nextCursor: z.string().optional().describe('Cursor to pass to the next list_templates call.'),
 };
 
-/**
- * A Template ID (64-bit) is written with digits only; the API refuses anything else with a 400 from v5.16.0
- * (an empty string, a Version ID, ' 12 ', '0x1F'...). Checked here so the message names the field.
- */
-const templateId64 = (role: string) =>
-  z.string().regex(/^\d+$/, `${role} must be a Template ID (64-bit format, digits only, e.g. "1530905183164918624"), not a Version ID (SHA-256).`);
 
 export const listTemplatesSchema = {
-  id: templateId64('id')
+  id: templateIdInput()
     .optional()
-    .describe('Filter by Template ID (64-bit format, digits only). Cannot be a Version ID.'),
-  versionId: z
-    .string()
+    .describe('Filter by Template ID. Cannot be a Version ID.'),
+  versionId: templateIdInput()
     .optional()
     .describe('Filter by Version ID (SHA-256 format).'),
   category: z
@@ -184,9 +177,9 @@ export function uploadTemplateSchemaFor(io: IoModes) {
         'Display name, shown and searched by list_templates (max 200 characters).' +
         (acceptsChatAttachments(io) ? ' Defaults to the attached file name.' : '')
       ),
-    id: templateId64('id')
+    id: templateIdInput()
       .optional()
-      .describe('Template ID (digits) to add this upload to as a new version; omitted: a new template. Never a Version ID.'),
+      .describe('Template ID to add this upload to as a new version; omitted: a new template. Never a Version ID.'),
     versioning: z
       .boolean()
       .optional()
@@ -387,19 +380,17 @@ export const updateTemplateMetadataOutputSchema = {
 };
 
 export const updateTemplateMetadataSchema = {
-  templateId: z
-    .string()
-    .min(1)
+  templateId: templateIdInput()
     .describe('The version to change: a Version ID, or a Template ID for its deployed version.'),
-  moveToTemplateId: templateId64('moveToTemplateId')
+  moveToTemplateId: templateIdInput()
     .optional()
     .describe(
-      'Only when the user asks to move a version: moves it to this other Template ID (digits). Not the template to ' +
+      'Only when the user asks to move a version: moves it to this other Template ID. Not the template to ' +
       'change (that is templateId).'
     ),
   // DEPRECATED: the 1.6.0 name of moveToTemplateId, kept so existing callers keep working, but not listed in
   // tools/list (src/tools/index.ts), so models never see it. Passing both with different values is rejected.
-  id: templateId64('id').optional(),
+  id: templateIdInput().optional(),
   name: z.string().max(200).optional().describe('New name (max 200 characters).'),
   comment: z.string().max(200).optional().describe('New comment (max 200 characters).'),
   category: z.string().max(200).optional().describe('New category (max 200 characters).'),
@@ -479,9 +470,7 @@ export const deleteTemplateDescription =
   'user first: it cannot be undone. To schedule a deletion instead, use update_template_metadata with expireAt.';
 
 export const deleteTemplateSchema = {
-  templateId: z
-    .string()
-    .min(1)
+  templateId: templateIdInput()
     .describe('Template ID (every version) or Version ID (that version only), from list_templates.'),
 };
 
@@ -594,9 +583,7 @@ export const downloadTemplateDescription = downloadTemplateDescriptionFor(STDIO_
 
 export function downloadTemplateSchemaFor(io: IoModes) {
   return {
-    templateId: z
-      .string()
-      .min(1)
+    templateId: templateIdInput()
       .describe('Template ID (its deployed version) or Version ID, from list_templates.'),
     sample: z
       .boolean()

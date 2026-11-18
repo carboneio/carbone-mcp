@@ -91,3 +91,12 @@ export const OutputFormatSchema = z.union([
       ),
   }),
 ]);
+
+/** Longer than any real Template or Version ID (19 digits, 64 hex characters, a UUID): a bound on what reaches the backend. */
+export const TEMPLATE_ID_MAX_LENGTH = 256;
+
+/**
+ * A Template ID or Version ID given as input. Its format is the backend's to check: Carbone answers 400 with a clear
+ * message (w124, w125), and a Carbone-compatible backend may use other IDs (#13).
+ */
+export const templateIdInput = () => z.string().min(1).max(TEMPLATE_ID_MAX_LENGTH);

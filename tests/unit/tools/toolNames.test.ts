@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { NO_TOOLS, toolOfResource, withoutTools } from '../../../src/tools/toolNames.js';
+import { NO_TOOLS, errorWithoutTools, toolOfResource, withoutTools } from '../../../src/tools/toolNames.js';
 
 const without = (text: string, ...tools: Parameters<typeof withoutTools>[1] extends ReadonlySet<infer T> ? T[] : never) =>
   withoutTools(text, new Set(tools));
@@ -148,4 +148,21 @@ test('toolOfResource: the tool a resource URI or URI template is read through', 
   expect(toolOfResource('carbone://status')).toBe('get_api_status');
   expect(toolOfResource('skill://carbone/SKILL.md')).toBeUndefined();
   expect(toolOfResource('carbone://other')).toBeUndefined();
+});
+
+describe('errorWithoutTools', () => {
+  const off = new Set(['list_templates'] as const);
+
+  test("filters the server's own wording, and never empties an error", () => {
+    expect(errorWithoutTools('Not found.\n\nCheck the ID with the list_templates tool.', off)).toBe('Not found.');
+    expect(errorWithoutTools('Unexpected error: cannot read list_templates.json', off)).toBe('Unexpected error: cannot read list_templates.json');
+  });
+
+  // An error echoing a huge input (an invalid URL of megabytes) must not cost CPU: it is passed through unfiltered.
+  test('passes a long error text through at once, unfiltered', () => {
+    const text = `Invalid input: Invalid URL: https://x/${'a'.repeat(8_000_000)} list_templates`;
+    const start = performance.now();
+    expect(errorWithoutTools(text, off)).toBe(text);
+    expect(performance.now() - start).toBeLessThan(50);
+  });
 });

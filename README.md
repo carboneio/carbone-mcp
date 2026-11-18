@@ -164,6 +164,7 @@ Details: [file inputs](docs/API.md#file-inputs) and [output delivery](docs/API.m
 | `delete_template` | Deletes a template or one of its versions, immediately |
 | `download_template` | Downloads a template's original file, or the sample data stored with it |
 | `get_api_status` | Checks the Carbone API's health and version |
+| `find_template_examples` | Finds a ready-to-run example (template, data and result) to try Carbone or start a template, with the arguments to generate it |
 | `get_capabilities` | Summarizes the formats, features and usage examples |
 
 Every parameter, with examples: [docs/API.md](docs/API.md).

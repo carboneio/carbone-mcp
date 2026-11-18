@@ -20,6 +20,7 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 - [download\_template](#download_template)
 
 **Discovery**
+- [find\_template\_examples](#find_template_examples)
 - [get\_api\_status](#get_api_status)
 - [get\_capabilities](#get_capabilities)
 - [Carbone Skill](#carbone-skill) (`skill://carbone/SKILL.md`)
@@ -379,6 +380,45 @@ Offered only when the server runs [async renders](#async-renders). Returns the r
 
 ---
 
+## `find_template_examples`
+
+Find a ready-to-run example from [carbone.io/examples](https://carbone.io/examples/): a real template with its JSON data, the document it produces, and a page that explains its tags. There are two kinds: the **gallery** (complete business documents: invoices, labels, reports, e-invoices, slides...) and the **format guides** (one feature of one format, for beginners).
+
+```
+Show me what Carbone can do with an Excel budget
+Find an invoice example with a barcode and generate it as a PDF
+How do I make a loop in a PowerPoint template? Show me an example
+```
+
+All parameters are optional. Without any, the tool returns the newest examples and the list of use cases.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `query` | string | Keywords, e.g. `invoice barcode`, `excel chart`, `shipping label`. "Word", "Excel" and "PowerPoint" match their formats |
+| `useCase` | string | `finance`, `logistics`, `reports`, `compliance`, `tickets`, `planning`, `presentations`, `publishing` |
+| `templateFormat` | string | Template format, e.g. `docx`, `xlsx`, `html` |
+| `resultFormat` | string | Generated format, e.g. `pdf`, `xlsx`, or a label such as `edi` |
+| `level` | string | `beginner`, `intermediate` or `advanced` |
+| `kind` | string | `gallery` or `format-guide` |
+| `id` | string | One example, by its id |
+| `limit` | integer | 1 to 25 results (default 8) |
+
+**Output:** each example with its files (template, data, expected result, a preview image of the result), its page in Markdown, and `renderArguments`: the `render_document` arguments that fill the template with its data, to pass unchanged. The result keeps the template's format. The structured output has `total` (all matches) and `examples`.
+
+**Converting is optional.** When the example shows another format (a DOCX template shown as a PDF), `conversion` says what to add for it, for information: `convertTo`, and a converter only when one is advised. The default converter, `L` (LibreOffice), has the widest compatibility; `C` (Chromium) is advised for HTML and SVG templates; from DOCX or ODT to PDF, `I` (Carbone ICE) is the fastest, and the result says so.
+
+**What the AI can do with an example:**
+
+1. **Try Carbone:** `render_document` with its `renderArguments` generates the document. Nothing is stored in your account (it counts as one document generation). Add a conversion only if you want another format. To just show what an example looks like, its preview image is enough: no render needed.
+2. **Fill it with your data:** `inspect_template` on its template URL lists the tags and a sample dataset, the shape your data takes.
+3. **Learn a feature:** search it (`barcode`, `chart`, `loop`, `translations`), then read the example's page.
+4. **Proof the template:** `convert_document` on its template URL shows it with its tags as written.
+5. **Make it yours:** `upload_template` with its template URL stores it in your account; edit it in Word, Excel or PowerPoint, then upload it again.
+
+**The catalog:** the server downloads `https://carbone.io/examples/examples.json` on the first call, then checks it once a day, without making a call wait. An unchanged file is not downloaded again (`ETag`) nor reloaded (same SHA-256). If a check fails for any reason (network, DNS, HTTP error, unexpected content), the server keeps the copy it has and tries again 10 minutes later. Only files on carbone.io are offered. The tool is read-only and sends nothing about you or your templates.
+
+---
+
 ## `get_api_status`
 
 Check Carbone API health and current version. No parameters.
@@ -585,7 +625,7 @@ By default, every tool is available. Set `MCP_ENABLED_TOOLS` to offer only some 
 A read-only agent, for example, can render and convert documents and browse templates, but not upload, edit or delete them:
 
 ```bash
-MCP_ENABLED_TOOLS=convert_document,render_document,get_render_result,inspect_template,list_templates,list_categories,list_tags,download_template,get_api_status
+MCP_ENABLED_TOOLS=convert_document,render_document,get_render_result,inspect_template,list_templates,list_categories,list_tags,download_template,get_api_status,find_template_examples
 ```
 
 What to know:
@@ -634,7 +674,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "2.4.1" },
+  "mcp":    { "version": "2.5.0" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -655,7 +695,7 @@ The `carbone` field reflects backend connectivity:
 In HTTP mode, the server writes one [logfmt](https://brandur.org/logfmt) line per event on stderr, starting with `level=`, so log viewers detect the level:
 
 ```
-level=info msg="running in HTTP mode" version=2.4.1 skills=carbone@x.x.x mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
+level=info msg="running in HTTP mode" version=2.5.0 skills=carbone@x.x.x mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
 level=info msg=request method=POST path=/ status=200 ms=412 ip=203.0.113.7 mcp=tools/call tool=render_document proto=2025-11-25 ua=claude-code/2.1 user=sub:42 oauth_client=example-client outcome=ok rid=9f2c1a7b04d6e358
 level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mcp=tools/call tool=convert_document user=key:3445f6f99c76 outcome=error error_type=upstream error="Carbone API request timed out after 60 s." rid=0f7090b8c1d2e3f4
 ```
@@ -663,7 +703,7 @@ level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mc
 | Level | Meaning |
 |---|---|
 | `info` | A request answered, and server events. |
-| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable, a skill not served (`msg=skills`, at startup). |
+| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable, a skill not served (`msg=skills`, at startup), the examples catalog not refreshed (`msg="examples catalog not refreshed"`). |
 | `error` | A 5xx answer; an upstream outage or an internal bug (`error_type`); a server failure. |
 
 | Field | Meaning |

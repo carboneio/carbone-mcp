@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Client } from '@modelcontextprotocol/client';
@@ -48,6 +48,25 @@ describe('MCP registration surface (in-process, no API key)', () => {
     await client.close();
   });
 
+  test('find_template_examples answers within its outputSchema, from the carbone.io catalog', async () => {
+    const example = (id: string) => ({
+      id, title: `Example ${id}`, description: 'A test example.', markdownUrl: `https://carbone.io/examples/${id}/index.md`,
+      templateExtension: 'html', resultExtension: 'pdf', difficultyLevel: 'simple', documentTags: [], featureUsed: [],
+      files: { template: `https://carbone.io/examples/${id}/template.html`, data: `https://carbone.io/examples/${id}/data.json` },
+    });
+    const fetch = vi.fn(async () => Response.json({ version: 1, generatedAt: 'now', useCases: [], examples: [example('one')] }));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      // The client checks structuredContent against the listed outputSchema.
+      const result = await client.callTool({ name: 'find_template_examples', arguments: { query: 'example' } });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({ total: 1, examples: [{ id: 'one', conversion: { convertTo: 'pdf', converter: 'C' } }] });
+      expect(fetch).toHaveBeenCalledWith('https://carbone.io/examples/examples.json', expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('initialize advertises identity, two icons, capabilities, and instructions', () => {
     const info = client.getServerVersion();
     expect(info?.name).toBe('carbone-mcp');
@@ -65,9 +84,9 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(client.getInstructions()).toContain(CARBONE_SKILL_URI);
   });
 
-  test('tools/list exposes all 12 tools with titles, annotations, and outputSchema', async () => {
+  test('tools/list exposes all 13 tools with titles, annotations, and outputSchema', async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
 
     const convert = tools.find((t) => t.name === 'convert_document');
     expect(convert?.title).toBe('Convert Document');
@@ -94,7 +113,7 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(Object.fromEntries(tools.map((t) => [t.name, t.annotations?.openWorldHint]))).toEqual({
       render_document: true, convert_document: true, inspect_template: true, upload_template: true,
       list_templates: false, list_categories: false, list_tags: false, update_template_metadata: false,
-      delete_template: false, download_template: false, get_api_status: false, get_capabilities: false,
+      delete_template: false, download_template: false, get_api_status: false, find_template_examples: false, get_capabilities: false,
     });
   });
 
@@ -300,11 +319,14 @@ describe('structured output passes SDK output-schema validation (live API respon
     expect(moved.isError).toBeFalsy();
     expect(lastUpdate).toMatchObject({ templateId: 'sha-v1', id: '1234567890' });
 
-    // Still validated like moveToTemplateId: digits only, never a Version ID.
-    const invalid = await client.callTool({
-      name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: 'not-a-template-id' },
+    // Validated like moveToTemplateId: any non-empty value reaches the API, which checks the format (#13).
+    const uuid = await client.callTool({
+      name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: '3f2b9c1e-6d4a-4f7e-9a51-2c8e0b7d4a10' },
     });
-    expect(invalid.isError).toBe(true);
+    expect(uuid.isError).toBeFalsy();
+    expect(lastUpdate).toMatchObject({ id: '3f2b9c1e-6d4a-4f7e-9a51-2c8e0b7d4a10' });
+    const empty = await client.callTool({ name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: '' } });
+    expect(empty.isError).toBe(true);
 
     const conflict = await client.callTool({
       name: 'update_template_metadata', arguments: { templateId: 'sha-v1', id: '1', moveToTemplateId: '2' },

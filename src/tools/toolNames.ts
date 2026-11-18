@@ -5,7 +5,7 @@
 export const TOOL_NAMES = [
   'convert_document', 'render_document', 'get_render_result', 'inspect_template', 'list_templates', 'list_categories',
   'list_tags', 'upload_template', 'update_template_metadata', 'delete_template', 'download_template', 'get_api_status',
-  'get_capabilities',
+  'find_template_examples', 'get_capabilities',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -144,4 +144,12 @@ export function withoutTools(text: string, disabled: ReadonlySet<ToolName>): str
   // What went may leave blank lines in a row, or at the end: one blank line at most, and the text ends as it did.
   const joined = out.join('\n').replace(/\n{3,}/g, '\n\n');
   return /\n$/.test(text) ? joined : joined.replace(/\n+$/, '');
+}
+
+/** Longer error texts echo what the caller sent: they are not filtered, so a huge input costs no CPU here. */
+const MAX_FILTERED_ERROR = 8192;
+
+/** An error text without what names a disabled tool; kept as is when that would leave nothing, or when it is long. */
+export function errorWithoutTools(text: string, disabled: ReadonlySet<ToolName>): string {
+  return text.length > MAX_FILTERED_ERROR ? text : withoutTools(text, disabled) || text;
 }

@@ -65,6 +65,7 @@ ${io.allowAsync ? '| get_render_result          | The download link of a render 
 | delete_template            | Delete a template (takes effect immediately)             |
 | download_template          | Download the original template file                      |
 | get_api_status             | Check Carbone API health and current version             |
+| find_template_examples     | Ready-to-run example templates, with their data          |
 | get_capabilities           | This overview                                            |
 
 **Results:** ${defaultDelivery(io)}
@@ -197,6 +198,18 @@ Valid outputs depend on the input format: see the conversion matrix above. \`doc
 - \`update_template_metadata\` with a Template ID patches only its currently deployed version; with a Version ID, that exact version.
 - Deletion: \`delete_template\` takes effect immediately (no longer listed, downloadable or renderable). \`expireAt\` schedules a deletion at a Unix timestamp instead; 0 means never (on update, 0 cancels a scheduled deletion).
 - \`download_template\` with \`sample: true\` returns the JSON sample data stored with a template.
+
+---
+
+## 5. Ready-made examples (\`find_template_examples\`)
+
+\`find_template_examples\` searches Carbone's examples: real templates with their JSON data and the document they produce, by keyword (\`query\`), \`useCase\`, \`templateFormat\`, \`resultFormat\`, \`level\` or \`kind\` (\`gallery\`: complete business documents; \`format-guide\`: one feature of one format). Each comes with the URLs of its files and of its page, which explains its tags. What they are good for:
+
+1. Try Carbone in one call: \`render_document\` with the example's \`renderArguments\`, unchanged, fills the template with its data and stores nothing in the account; the result keeps the template's format. Each example also has a \`preview\` image of its result, to show before rendering anything. Converting is optional (\`convertTo\`, e.g. \`"pdf"\`), and so is the converter (default \`L\`, LibreOffice, the widest compatibility): \`C\` (Chromium) is advised for HTML and SVG templates, \`I\` (Carbone ICE) is the fastest from DOCX or ODT to PDF.
+2. Fill one with the user's data: \`inspect_template\` on its template URL lists the tags and a matching sample dataset, the shape the user's data takes for \`render_document\`.
+3. Learn a feature: search it (\`"barcode"\`, \`"chart"\`, \`"loop"\`, \`"translations"\`), then read the example's page (Markdown) for the tags it uses.
+4. Proof a template: \`convert_document\` on its template URL to PDF shows the layout with the tags as written.
+5. \`upload_template\`: make it the user's own, with its template URL and a \`name\`; \`render_document\` then renders it by the returned Template ID. To change the layout, the user edits the file (\`download_template\` gets it back) and uploads it again.
 
 ---
 

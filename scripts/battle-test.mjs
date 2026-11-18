@@ -178,6 +178,22 @@ async function run() {
     check('get_api_status structuredContent.version', typeof (await call('get_api_status', {})).structuredContent?.version === 'string');
     check('get_capabilities overview', text(await call('get_capabilities', {})).includes('Carbone'));
 
+    // ── find_template_examples: renderArguments fill the template (its own format); the conversion is optional ──
+    console.log('\n[find_template_examples]');
+    const example = async (args) => (await call('find_template_examples', { ...args, limit: 1 })).structuredContent?.examples?.[0];
+    const invoice = await example({ query: 'invoice barcode', templateFormat: 'docx', resultFormat: 'pdf' });
+    check('DOCX example: renderArguments without convertTo, an optional PDF conversion without converter',
+      !!invoice && !('convertTo' in invoice.renderArguments) && invoice.conversion?.convertTo === 'pdf' && !invoice.conversion.converter);
+    check('… renders as given, to DOCX', isBinaryDoc(await call('render_document', invoice?.renderArguments ?? {}), 'wordprocessingml', 'docx'));
+    check('… with its conversion, to PDF', isPdf(await call('render_document', { ...invoice?.renderArguments, ...invoice?.conversion })));
+    const html = await example({ templateFormat: 'html', resultFormat: 'pdf' });
+    check('HTML example: converter C advised for its PDF conversion', html?.conversion?.converter === 'C');
+    check('… with its conversion, to PDF', isPdf(await call('render_document', { ...html?.renderArguments, ...html?.conversion })));
+    const sheet = await example({ templateFormat: 'xlsx', resultFormat: 'xlsx' });
+    check('XLSX → XLSX example: no conversion', !!sheet && !sheet.conversion);
+    check('… renders as given', isBinaryDoc(await call('render_document', sheet?.renderArguments ?? {}), 'spreadsheetml', 'xlsx'));
+    check('no match lists the use cases', /Use cases: /.test(text(await call('find_template_examples', { query: 'zzzz-nothing' }))));
+
     // ── convert: converters × formatOptions × outputs × delivery ──────────────────
     console.log('\n[convert_document]');
     for (const conv of ['L', 'C', 'O']) check(`converter ${conv} → PDF`, isPdf(await call('convert_document', { file: INV, convertTo: 'pdf', converter: conv })));
