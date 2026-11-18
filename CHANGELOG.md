@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- A file the server can't use (a local path, an unreachable URL, a file too large, broken JSON) now gets a clear `Invalid input` answer, instead of `Unexpected error`, which looked like a server bug.
+- Server logs no longer report these mistakes, or a render the user cancels, as errors. Real server problems are still logged as errors.
+
+### Security
+
+- Updated `hono`, a dependency of the MCP SDK, to fix five moderate security advisories.
+
+---
+
 ## [2.4.1] - 2026-11-12
 
 ### Changed

@@ -5,6 +5,7 @@ import {
   TEXT_OUTPUT_FORMATS,
 } from '../../../src/utils/file.js';
 import { OUTPUT_FORMATS } from '../../../src/validation/formats.js';
+import { InputError } from '../../../src/utils/errors.js';
 
 // Mock node:fs/promises at the top level so vi.mock hoisting works correctly
 vi.mock('node:fs/promises', () => ({
@@ -706,6 +707,33 @@ describe('security — SSRF and local-file guards', () => {
 
     await expect(resolveFileInput('https://example.com/innocent.docx'))
       .rejects.toThrow(/Unsupported URL scheme/);
+  });
+
+  describe('error kinds: the input is at fault (logged as client input) or our side is (logged as internal)', () => {
+    const errno = (code: string) => Object.assign(new Error(code), { code });
+    const failWith = (url: string, error: Error) => fakeNet.routes.set(url, { status: 0, error });
+
+    test.each<[string, () => Promise<unknown>]>([
+      ['local path in HTTP mode', () => resolveFileInput('./secret.txt')],
+      ['internal address', () => { stubDns('10.0.0.1'); return resolveFileInput('https://intranet.example/a.docx'); }],
+      ['file too large', () => resolveFileInput('A'.repeat(100), { maxBytes: 10 })],
+      ['remote 404', () => { route('https://example.com/missing.docx', 404); return resolveFileInput('https://example.com/missing.docx'); }],
+      ['invalid JSON', () => resolveJsonInput('{bad', 'data')],
+      ['unknown host', () => { vi.mocked(lookup).mockRejectedValueOnce(errno('ENOTFOUND')); return resolveFileInput('https://nope.example/a.docx'); }],
+      ['connection refused', () => { failWith('https://example.com/down.docx', errno('ECONNREFUSED')); return resolveFileInput('https://example.com/down.docx'); }],
+    ])('%s is an input error', async (_, call) => {
+      await expect(call()).rejects.toBeInstanceOf(InputError);
+    });
+
+    test.each<[string, () => Promise<unknown>]>([
+      ['our resolver down', () => { vi.mocked(lookup).mockRejectedValueOnce(errno('EAI_AGAIN')); return resolveFileInput('https://example.com/a.docx'); }],
+      ['out of file descriptors', () => { failWith('https://example.com/a.docx', errno('EMFILE')); return resolveFileInput('https://example.com/a.docx'); }],
+    ])('%s is not an input error, and names the code', async (_, call) => {
+      const error = await call().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(InputError);
+      expect((error as Error).message).toMatch(/\((EAI_AGAIN|EMFILE)\)/);
+    });
   });
 
   test('refuses to read a local path unless the caller opts in (HTTP mode)', async () => {

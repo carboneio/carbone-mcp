@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { formatError } from '../../../src/utils/errors.js';
+import { formatError, InputError } from '../../../src/utils/errors.js';
 import { requestLog, type RequestLog } from '../../../src/server/log.js';
 import {
   CarboneAuthError,
@@ -124,7 +124,16 @@ describe('formatError notes a fault for the HTTP access line', () => {
       Object.assign(new Error('body'), { name: 'TimeoutError' })]) expect(faultOf(error)).toBe('upstream');
     expect(faultOf(new TypeError('x is undefined'))).toBe('internal');
     for (const error of [new CarboneAuthError(), new CarboneValidationError('bad'), new CarboneNotFoundError(), new CarboneRateLimitError(),
-      new CarboneGenerationError('w101', 'w101'), new CarboneError('Bad request', 400)]) expect(faultOf(error)).toBeUndefined();
+      new CarboneGenerationError('w101', 'w101'), new CarboneError('Bad request', 400), new InputError('local path')]) expect(faultOf(error)).toBeUndefined();
+  });
+
+  test('a call the client cancelled is not a fault', () => {
+    expect(faultOf(new DOMException('The operation was aborted', 'AbortError'))).toBeUndefined();
+    expect(formatError(new DOMException('aborted', 'AbortError'))).toBe('Request cancelled.');
+  });
+
+  test('an input error is reported as invalid input, not as an unexpected error', () => {
+    expect(formatError(new InputError('Pass an HTTPS URL.'))).toBe('Invalid input: Pass an HTTPS URL.');
   });
 
   test('outside an HTTP request (stdio), nothing is noted', () => {
