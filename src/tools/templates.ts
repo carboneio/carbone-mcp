@@ -8,6 +8,7 @@ import { INPUT_FORMATS_DESCRIPTION, integer } from '../validation/formats.js';
 import { type IoModes, STDIO_IO, fieldIf, inputForms, outputPathDescription } from './inputForms.js';
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 import type { UploadCaller } from '../server/upload.js';
+import { type ToolName, NO_TOOLS, withoutTools } from './toolNames.js';
 
 // The Carbone API's rule: non-empty strings whose list, without duplicates, is at most 100 characters as JSON.
 // The caps keep the work bounded: 100 tags, checked before the items (one error rather than one per invalid
@@ -23,7 +24,7 @@ const tagsSchema = z
 
 // ─── list_templates ──────────────────────────────────────────────────────────
 
-export const listTemplatesToolName = 'list_templates';
+export const listTemplatesToolName = 'list_templates' satisfies ToolName;
 
 export const listTemplatesDescription =
   'List stored templates, with filters and pagination. Each result has an id (Template ID; null for a template ' +
@@ -119,7 +120,7 @@ export async function handleListTemplates(
 
 // ─── upload_template ─────────────────────────────────────────────────────────
 
-export const uploadTemplateToolName = 'upload_template';
+export const uploadTemplateToolName = 'upload_template' satisfies ToolName;
 
 /** upload_template: which inputs carry the file depends on the transport. */
 export function uploadTemplateDescriptionFor(io: IoModes): string {
@@ -232,7 +233,7 @@ export const uploadTemplateSchema = uploadTemplateSchemaFor(STDIO_IO);
  * The text and structured result of a stored upload, for upload_template and for the upload URL route (whose JSON
  * response has the same fields). The API returns different shapes depending on whether versioning is enabled.
  */
-export function describeUpload(result: UploadTemplateResult, name: string | undefined): { text: string; structuredContent: Record<string, unknown> } {
+export function describeUpload(result: UploadTemplateResult, name: string | undefined, disabledTools: ReadonlySet<ToolName> = NO_TOOLS): { text: string; structuredContent: Record<string, unknown> } {
   const lines: string[] = ['Template uploaded successfully!', ''];
   const structuredContent: Record<string, unknown> = name ? { name } : {};
   if ('id' in result) {
@@ -249,9 +250,9 @@ export function describeUpload(result: UploadTemplateResult, name: string | unde
       structuredContent['deployedAt'] = result.deployedAt;
       lines.push(result.deployedAt > 0
         ? `Deployed at : ${result.deployedAt} (renders by Template ID use the most recently deployed version)`
-        : 'Deployed at : 0 (not explicitly deployed: if another version of this Template ID is deployed, ' +
+        : withoutTools('Deployed at : 0 (not explicitly deployed: if another version of this Template ID is deployed, ' +
           'renders by Template ID keep using it). To use this version, deploy it with update_template_metadata ' +
-          '(templateId = this Version ID, deployedAt = 42000000000), or render it by its Version ID.');
+          '(templateId = this Version ID, deployedAt = 42000000000), or render it by its Version ID.', disabledTools));
     }
   } else {
     // Legacy / versioning disabled response
@@ -355,7 +356,7 @@ export async function handleUploadTemplate(
     });
     const result: UploadTemplateResult = await client.uploadTemplate({ ...args, name, template }, options);
 
-    const { text, structuredContent } = describeUpload(result, name);
+    const { text, structuredContent } = describeUpload(result, name, fileCtx?.disabledTools);
     return { content: [{ type: 'text' as const, text }], structuredContent };
   } catch (error) {
     return {
@@ -367,7 +368,7 @@ export async function handleUploadTemplate(
 
 // ─── update_template_metadata ────────────────────────────────────────────────
 
-export const updateTemplateMetadataToolName = 'update_template_metadata';
+export const updateTemplateMetadataToolName = 'update_template_metadata' satisfies ToolName;
 
 export const updateTemplateMetadataDescription =
   'Change ONE template version: name, comment, category, tags, deployment (deployedAt), scheduled deletion ' +
@@ -471,7 +472,7 @@ export async function handleUpdateTemplateMetadata(
 
 // ─── delete_template ─────────────────────────────────────────────────────────
 
-export const deleteTemplateToolName = 'delete_template';
+export const deleteTemplateToolName = 'delete_template' satisfies ToolName;
 
 export const deleteTemplateDescription =
   'Delete a stored template now: a Template ID removes every version, a Version ID only that one. Confirm with the ' +
@@ -504,7 +505,7 @@ export async function handleDeleteTemplate(
 
 // ─── list_categories ─────────────────────────────────────────────────────────
 
-export const listCategoriesToolName = 'list_categories';
+export const listCategoriesToolName = 'list_categories' satisfies ToolName;
 
 export const listCategoriesDescription =
   'List the template categories in use, for the category filter of list_templates or upload_template.';
@@ -541,7 +542,7 @@ export async function handleListCategories(
 
 // ─── list_tags ────────────────────────────────────────────────────────────────
 
-export const listTagsToolName = 'list_tags';
+export const listTagsToolName = 'list_tags' satisfies ToolName;
 
 export const listTagsDescription =
   'List the tags in use across templates. To find the templates with a tag, call list_templates and keep the ' +
@@ -579,7 +580,7 @@ export async function handleListTags(
 
 // ─── download_template ───────────────────────────────────────────────────────
 
-export const downloadTemplateToolName = 'download_template';
+export const downloadTemplateToolName = 'download_template' satisfies ToolName;
 
 export function downloadTemplateDescriptionFor(io: IoModes): string {
   return 'Download a stored template\'s original file (DOCX, XLSX, HTML...), or with sample: true the sample dataset ' +

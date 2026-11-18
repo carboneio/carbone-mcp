@@ -4,10 +4,11 @@ import { formatError } from '../utils/errors.js';
 import { INPUT_FORMATS, OUTPUT_FORMATS } from '../validation/formats.js';
 import { type IoModes, defaultDelivery, inputFormsShort, jsonRefForms } from './inputForms.js';
 import { CARBONE_SKILL_URI } from '../server/skills.js';
+import { type ToolName, NO_TOOLS, withoutTools } from './toolNames.js';
 
 // ─── get_api_status ───────────────────────────────────────────────────────────
 
-export const getApiStatusToolName = 'get_api_status';
+export const getApiStatusToolName = 'get_api_status' satisfies ToolName;
 
 export const getApiStatusDescription =
   'Check Carbone API health and version. Returns the current API version and a status message. ' +
@@ -39,7 +40,7 @@ export async function handleGetApiStatus(client: CarboneClient, options?: CallOp
 
 // ─── get_capabilities ─────────────────────────────────────────────────────────
 
-export const getCapabilitiesToolName = 'get_capabilities';
+export const getCapabilitiesToolName = 'get_capabilities' satisfies ToolName;
 
 export const getCapabilitiesDescription =
   'Returns a summary of all Carbone capabilities: supported formats, features, tool usage examples, ' +
@@ -221,8 +222,8 @@ ${io.skill ? `- On this server:       ${CARBONE_SKILL_URI} (MCP resource, the ve
 - GitHub repository:    https://github.com/carboneio/carbone-agent-plugin
 `;
 
-export function handleGetCapabilities(io: IoModes) {
+export function handleGetCapabilities(io: IoModes, disabledTools: ReadonlySet<ToolName> = NO_TOOLS) {
   return {
-    content: [{ type: 'text' as const, text: capabilitiesText(io) }],
+    content: [{ type: 'text' as const, text: withoutTools(capabilitiesText(io), disabledTools) }],
   };
 }

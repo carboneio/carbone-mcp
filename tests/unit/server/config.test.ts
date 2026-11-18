@@ -1,6 +1,7 @@
 import { describe, test, expect, afterEach, vi } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TOOL_NAMES } from '../../../src/tools/toolNames.js';
 import { loadConfig } from '../../../src/server/config.js';
 import { CarboneClient } from '../../../src/carbone/client.js';
 
@@ -303,6 +304,56 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).toThrow(
         `Invalid MCP_ALLOWED_ORIGINS entry "${entry}". Must be a hostname without scheme, port, path or wildcard`
       );
+    });
+  });
+
+  // ── MCP_ENABLED_TOOLS ──────────────────────────────────────────────────
+  describe('MCP_ENABLED_TOOLS', () => {
+    // compose.yml passes it empty when unset: empty must serve every tool, never none.
+    test.each([undefined, '', ' , ,, '])('serves every tool when %j', (value) => {
+      stubStdio();
+      vi.stubEnv('MCP_ENABLED_TOOLS', value);
+      expect(loadConfig().disabledTools).toEqual(new Set());
+    });
+
+    test('leaves out every tool not listed: one a later version adds stays off', () => {
+      stubHttp();
+      vi.stubEnv('MCP_ENABLED_TOOLS', ' render_document,list_templates , ,inspect_template,render_document,');
+      const enabled = new Set(['render_document', 'list_templates', 'inspect_template', 'get_capabilities']);
+      expect(loadConfig().disabledTools).toEqual(new Set(TOOL_NAMES.filter((tool) => !enabled.has(tool))));
+    });
+
+    test('listing every tool leaves none out; get_render_result is a valid name on stdio too (it only exists over HTTP)', () => {
+      stubStdio();
+      vi.stubEnv('MCP_ENABLED_TOOLS', TOOL_NAMES.join(','));
+      expect(loadConfig().disabledTools).toEqual(new Set());
+      vi.stubEnv('MCP_ENABLED_TOOLS', 'get_render_result');
+      expect(loadConfig().disabledTools.has('get_render_result' as never)).toBe(false);
+    });
+
+    test('get_capabilities is always served, listed or not', () => {
+      stubStdio();
+      vi.stubEnv('MCP_ENABLED_TOOLS', 'list_tags');
+      expect(loadConfig().disabledTools.has('get_capabilities' as never)).toBe(false);
+      vi.stubEnv('MCP_ENABLED_TOOLS', 'get_capabilities');
+      expect(loadConfig().disabledTools.size).toBe(TOOL_NAMES.length - 1);
+    });
+
+    // A typo must never turn a tool off without notice: the server does not start.
+    test.each(['render_documnet', 'Render_Document'])('refuses the unknown name "%s", listing the valid ones', (entry) => {
+      stubStdio();
+      vi.stubEnv('MCP_ENABLED_TOOLS', `list_tags,${entry}`);
+      expect(() => loadConfig()).toThrow(new RegExp(`unknown tool "${entry}".*valid: convert_document`));
+    });
+
+    test('the error shows invisible characters, and stays under the 300 characters a log value keeps', () => {
+      stubStdio();
+      vi.stubEnv('MCP_ENABLED_TOOLS', `list\u200btags,${'x'.repeat(500)}`);
+      expect(() => loadConfig()).toThrow('unknown tool "list\\u200btags"');
+      vi.stubEnv('MCP_ENABLED_TOOLS', 'x'.repeat(500));
+      const error = (() => { try { loadConfig(); } catch (e) { return (e as Error).message; } })()!;
+      expect(error).toMatch(/^MCP_ENABLED_TOOLS: unknown tool "x{23}\.\.\." \(valid: convert_document, .*, get_capabilities\)$/);
+      expect(error.length).toBeLessThan(300);
     });
   });
 

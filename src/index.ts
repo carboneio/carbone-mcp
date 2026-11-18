@@ -11,6 +11,7 @@ import { registerResources } from './resources/index.js';
 import { serverInfo, serverOptionsFor } from './server/serverInfo.js';
 import { loadServedSkills, servedSkills, servesCarboneSkill } from './server/skills.js';
 import { STDIO_IO } from './tools/inputForms.js';
+import { TOOL_NAMES } from './tools/toolNames.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -41,17 +42,18 @@ async function main() {
         hint: 'Set CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true to require every client to send its own key.',
       });
     }
-    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork, allowedOriginHostnames: config.allowedOriginHostnames, openAiAppsChallenge: config.openAiAppsChallenge, museChallenge: config.museChallenge, oauth: config.oauth, tickets: config.tickets, jobStore: config.jobStore });
+    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork, allowedOriginHostnames: config.allowedOriginHostnames, openAiAppsChallenge: config.openAiAppsChallenge, museChallenge: config.museChallenge, oauth: config.oauth, tickets: config.tickets, jobStore: config.jobStore, disabledTools: config.disabledTools });
     return;
   }
 
   const skills = await loadServedSkills((message) => diagnostic(`skills: ${message}`));
   const skill = servesCarboneSkill(skills);
-  const serverOptions = serverOptionsFor({ ...STDIO_IO, skill });
 
   // stdio mode (default) — one client, key from env var. serveStdio serves both 2026-07-28 and
   // 2025-era (initialize) clients, calls the factory for each server instance it needs, and closes
   // when stdin ends so the process exits.
+  const { disabledTools } = config;
+  const serverOptions = serverOptionsFor({ ...STDIO_IO, skill }, disabledTools);
   serveStdio(() => {
     const server = new McpServer(serverInfo(version), serverOptions);
     // stdio runs locally, so writing outputPath files to disk is meaningful.
@@ -62,8 +64,8 @@ async function main() {
       allowPrivateNetwork: config.allowPrivateNetwork,
       maxFileBytes: config.maxFileBytes,
       skill,
-    });
-    registerResources(server, client);
+    }, disabledTools);
+    registerResources(server, client, disabledTools);
     skills?.attach(server);
     return server;
   }, {
@@ -78,6 +80,8 @@ async function main() {
   process.stderr.write(`Carbone MCP Server v${version} started (stdio)\n`);
   process.stderr.write(`Carbone API: ${config.carboneBaseUrl}\n`);
   process.stderr.write(`Skills: ${servedSkills(skills)}\n`);
+  // get_render_result needs a job store, which only HTTP has.
+  if (disabledTools.size) process.stderr.write(`Enabled tools: ${TOOL_NAMES.filter((tool) => !disabledTools.has(tool) && tool !== 'get_render_result').join(', ')}\n`);
 }
 
 // Exits once the line is written: to a pipe, stderr is asynchronous.

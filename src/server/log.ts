@@ -26,7 +26,7 @@ export interface RequestLog {
   user?: string;
   /** OAuth mode: the client ID the token was issued to. */
   oauthClient?: string;
-  /** Why the OAuth gate answered 401: no-token or invalid-token. */
+  /** Why the OAuth gate refused: 401 no-token or invalid-token; 400 placeholder-token or malformed-token. */
   reason?: string;
   outcome?: 'ok' | 'error';
   /** A tool or resource error's text, through errorSummary. */

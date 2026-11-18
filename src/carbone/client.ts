@@ -155,12 +155,7 @@ export class CarboneClient {
       body: JSON.stringify(body),
     }, options);
 
-    if (params.returnLink) {
-      // request() already threw on any non-2xx (errors are { success:false, error }), so a 200 here
-      // always carries data.renderId.
-      const json = await response.json() as { data: { renderId: string } };
-      return { renderId: json.data.renderId };
-    }
+    if (params.returnLink) return this.renderIdOf(response);
     return this.handleBinaryResponse(response);
   }
 
@@ -256,10 +251,7 @@ export class CarboneClient {
       return { async: true, message: json.message };
     }
 
-    if (wantsLink) {
-      const json = await response.json() as { data: { renderId: string } };
-      return { renderId: json.data.renderId };
-    }
+    if (wantsLink) return this.renderIdOf(response);
 
     return this.handleBinaryResponse(response);
   }
@@ -653,6 +645,14 @@ export class CarboneClient {
     return { buffer, filename };
   }
 
+  /** The renderId of a render without download=true. A 2xx without one (seen in production) is reported, never read as undefined. */
+  private async renderIdOf(response: Response): Promise<{ renderId: string }> {
+    const json = await response.json().catch(() => undefined) as { data?: { renderId?: unknown }; error?: unknown; code?: unknown } | undefined;
+    const renderId = json?.data?.renderId;
+    if (typeof renderId === 'string' && renderId) return { renderId };
+    if (typeof json?.error === 'string') throw new CarboneGenerationError(json.error, typeof json.code === 'string' ? json.code : undefined, json);
+    throw new CarboneError(`Carbone answered HTTP ${response.status} without a render ID`, 502, json);
+  }
   /**
    * Parse a non-2xx response into a typed CarboneError that keeps the API's own message and code (wNNN).
    * Presentation (labels, hints) is formatError's job; only the 401 advice is added here, as it depends on the transport.

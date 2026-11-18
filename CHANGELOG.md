@@ -6,10 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`MCP_ENABLED_TOOLS`**: choose which tools the AI can use, for example a read-only agent that cannot change or delete your templates. The other tools disappear completely for the AI. Unset, every tool is available, as before. See [Choosing the tools](docs/API.md#choosing-the-tools).
+
 ### Fixed
 
 - A file the server can't use (a local path, an unreachable URL, a file too large, broken JSON) now gets a clear `Invalid input` answer, instead of `Unexpected error`, which looked like a server bug.
 - Server logs no longer report these mistakes, or a render the user cancels, as errors. Real server problems are still logged as errors.
+- When Carbone answers a render or conversion without a download link, the tool now reports Carbone's error (or that Carbone gave no link) instead of `Cannot read properties of undefined`.
 
 ### Security
 

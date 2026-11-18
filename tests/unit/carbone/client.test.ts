@@ -97,6 +97,28 @@ describe('CarboneClient', () => {
     });
   });
 
+  // ── One-time link (returnLink) ───────────────────────────────────────────────
+
+  describe('returnLink: a 2xx without a renderId is reported, never read as undefined', () => {
+    test('the renderId comes back as is', async () => {
+      mockFetch({ _json: { success: true, data: { renderId: 'abc.pdf' } } });
+      await expect(client.convertDocument({ template: 'abc', convertTo: 'pdf', returnLink: true })).resolves.toEqual({ renderId: 'abc.pdf' });
+    });
+
+    test('a 2xx carrying an API error is that error', async () => {
+      mockFetch({ _json: { success: false, error: 'Format "xml" cannot be converted', code: 'w101' } });
+      const error = await client.convertDocument({ template: 'abc', convertTo: 'pdf', returnLink: true }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(CarboneGenerationError);
+      expect(error).toMatchObject({ message: 'Format "xml" cannot be converted', code: 'w101' });
+    });
+
+    test('a 2xx with neither is a Carbone fault (502), on render as on convert', async () => {
+      mockFetch({ _json: { success: true } });
+      await expect(client.renderDocument({ template: 'abc', data: {}, convertTo: 'pdf', returnLink: true } as never))
+        .rejects.toMatchObject({ statusCode: 502, message: 'Carbone answered HTTP 200 without a render ID' });
+    });
+  });
+
   // ── Stateless auth (per-call options) ────────────────────────────────────────
 
   describe('per-call apiKey (stateless auth)', () => {

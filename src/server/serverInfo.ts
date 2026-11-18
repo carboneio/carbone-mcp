@@ -3,6 +3,7 @@
 import type { McpServerOptions } from '@modelcontextprotocol/server';
 import { CARBONE_ICON_SVG, CARBONE_ICON_PNG } from './icons.js';
 import { type IoModes, STDIO_IO } from '../tools/inputForms.js';
+import { type ToolName, NO_TOOLS, withoutTools } from '../tools/toolNames.js';
 import { CARBONE_SKILL_URI } from './skills.js';
 
 export function serverInfo(version: string) {
@@ -50,9 +51,9 @@ export const SERVER_INSTRUCTIONS = serverInstructionsFor(STDIO_IO);
  * resource lists are static, so `listChanged` is not advertised: a client then has no reason to keep
  * an idle change-notification stream (`subscriptions/listen`) open.
  */
-export function serverOptionsFor(io: IoModes) {
+export function serverOptionsFor(io: IoModes, disabledTools: ReadonlySet<ToolName> = NO_TOOLS) {
   return {
-    instructions: serverInstructionsFor(io),
+    instructions: withoutTools(serverInstructionsFor(io), disabledTools),
     capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
   } satisfies McpServerOptions;
 }

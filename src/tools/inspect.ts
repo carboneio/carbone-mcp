@@ -8,10 +8,11 @@ import type { FileContext } from './output.js';
 import { TEMPLATE_XOR_MESSAGE } from './render.js';
 import { type IoModes, STDIO_IO, fieldIf, inputForms, inputFormsShort } from './inputForms.js';
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
+import type { ToolName } from './toolNames.js';
 
 // ─── inspect_template ────────────────────────────────────────────────────────
 
-export const inspectTemplateToolName = 'inspect_template';
+export const inspectTemplateToolName = 'inspect_template' satisfies ToolName;
 
 export function inspectTemplateDescriptionFor(io: IoModes): string {
   return 'List the Carbone tags a template uses and return a sample JSON dataset matching its structure. ' +
