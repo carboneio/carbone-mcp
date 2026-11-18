@@ -563,7 +563,7 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `MCP_ALLOWED_ORIGINS` | none | HTTP only. Browser `Origin` hostnames allowed in addition to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed: comma-separated, without scheme or port (e.g. `app.example.com`); `<scheme>://*` allows a browser-extension scheme (e.g. `moz-extension://*`). A request with any other `Origin` gets `403`; requests without an `Origin` are unaffected. Invalid entries stop the server at startup. |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP only. `true` requires `Authorization: Bearer <key>` on every request. Left `false`, a request with no Bearer key falls back to the server-level `CARBONE_API_KEY` (a shared-key server: anyone reaching the port can spend it, and the server warns at startup). No effect when no server key is set. |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs resolve to private and internal addresses ([URL guard](#url-guard)). Off by default to block SSRF; enable it only on a trusted deployment with internal template hosts. |
-| `MCP_DISABLED_TOOLS` | none | For a self-hosted Carbone that does not support every tool, or a read-only agent: comma-separated tool names to turn off (any tool but `get_capabilities`). A disabled tool is not callable, and its name is left out of the tool list, the resource list (its `carbone://` resources go too), the instructions and `get_capabilities`. Without `upload_template`, upload URLs are off; without `render_document` or `get_render_result`, async renders are. A read-only agent needs all three of `delete_template,upload_template,update_template_metadata`, since `expireAt` on upload or update also schedules a deletion. An unknown name stops the server at startup. |
+| `MCP_ENABLED_TOOLS` | all tools | Only the tools you list are available, comma-separated. See [Choosing the tools](#choosing-the-tools). |
 | `MCP_TICKET_SECRET` | none | HTTP only. Turns on [upload URLs](#upload-urls), and [async renders](#async-renders) with `MCP_S3_*` or `MCP_JOBS_DIR`: at least 32 random bytes, base64 (`openssl rand -base64 32`), the same on every instance. |
 | `MCP_PUBLIC_URL` | origin of `MCP_RESOURCE_URL` | HTTP only. The server's public origin (e.g. `https://mcp.example.com`), used to build upload URLs and the async render webhook. Required with `MCP_TICKET_SECRET` in API-key mode, where the server cannot know the address clients reach it at. |
 | `MCP_S3_ENDPOINT` | none | HTTP only, for [async renders](#async-renders): the S3-compatible service origin, e.g. `https://s3.us-east-1.amazonaws.com` (http on localhost only). Set all five `MCP_S3_*` variables, or none. |
@@ -574,6 +574,30 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `MCP_JOBS_DIR` | none | HTTP only, for [async renders](#async-renders), instead of `MCP_S3_*`: the absolute path of an existing, writable directory that every instance shares. |
 | `MCP_OPENAI_APPS_CHALLENGE` | none | HTTP only. The domain-verification token OpenAI gives when you submit the server to the ChatGPT plugin directory. When set, the server returns it as plain text at `/.well-known/openai-apps-challenge`. |
 | `MCP_MUSE_CHALLENGE` | none | HTTP only. The domain-verification token Meta gives when you submit the server to its connector directory (the hex string at the end of the file URL, or the whole `muse-challenge=<token>` line). When set, the server returns `muse-challenge=<token>` as plain text at `/.well-known/muse-challenge/<token>`. |
+
+### Choosing the tools
+
+By default, every tool is available. Set `MCP_ENABLED_TOOLS` to offer only some of them, for example:
+
+- an agent that must not change or delete your templates;
+- a self-hosted Carbone that does not support every tool.
+
+A read-only agent, for example, can render and convert documents and browse templates, but not upload, edit or delete them:
+
+```bash
+MCP_ENABLED_TOOLS=convert_document,render_document,get_render_result,inspect_template,list_templates,list_categories,list_tags,download_template,get_api_status
+```
+
+What to know:
+
+- **A tool you don't list is gone for the AI.** It can't be called, and the server never mentions it: not in the tool list, the instructions or `get_capabilities`. Its `carbone://` resources go with it.
+- **`get_capabilities` is always available**, listed or not: it is the overview the other tools point to.
+- **New tools stay off.** When a new version adds a tool, it is not available until you add it to the list. Check the [changelog](../CHANGELOG.md) when you upgrade.
+- **Related features follow their tools.** Upload URLs need `upload_template`. Async renders need both `render_document` and `get_render_result`.
+- **A typo stops the server.** Names are case-sensitive, and an unknown name fails at startup with the list of valid ones, so a tool is never turned off by mistake.
+- **Check what is served** in the startup log: `enabled=` over HTTP, `Enabled tools:` on stdio.
+
+Leaving the variable unset or empty makes every tool available.
 
 ### Hosted server (OAuth mode)
 

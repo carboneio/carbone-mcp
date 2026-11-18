@@ -4,6 +4,7 @@ import type { CarboneClient } from '../carbone/client.js';
 import { CarboneAuthError, CarboneError } from '../carbone/errors.js';
 import { formatError } from '../utils/errors.js';
 import { describeUpload } from '../tools/templates.js';
+import { type ToolName, NO_TOOLS, withoutTools } from '../tools/toolNames.js';
 import { AuthorizationServerUnavailableError } from '../carbone/tokenExchange.js';
 import { callerIdFrom } from './caller.js';
 import { UPLOAD_PATH, type UploadCredential, type UploadFields, type UploadTicket, type UploadTicketSealer } from './uploadTicket.js';
@@ -158,6 +159,7 @@ export function createUploadRoute(options: {
   client: CarboneClient;
   maxBytes: number;
   exchange?: (subjectToken: string, signal: AbortSignal) => Promise<string>;
+  disabledTools?: ReadonlySet<ToolName>;
 }): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   /** The tickets being uploaded on this instance, by nonce; and how many each caller has (not the server's own key). */
   const active = new Set<string>();
@@ -224,7 +226,7 @@ export function createUploadRoute(options: {
         content: verifiedBody(req, ticket, progress),
         timeoutMs: UPLOAD_TIMEOUT_MS,
       }, { apiKey, signal: gone.signal });
-      const { text, structuredContent } = describeUpload(result, ticket.fields.name);
+      const { text, structuredContent } = describeUpload(result, ticket.fields.name, options.disabledTools);
       sendJson(res, req, 200, { ...structuredContent, message: text });
     } catch (err) {
       if (res.headersSent || gone.signal.aborted) return;
@@ -240,7 +242,7 @@ export function createUploadRoute(options: {
       const status = err instanceof CarboneAuthError ? 401
         : err instanceof CarboneError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode
         : 502;
-      sendJson(res, req, status, { error: formatError(err) });
+      sendJson(res, req, status, { error: withoutTools(formatError(err), options.disabledTools ?? NO_TOOLS) });
     } finally {
       clearInterval(watchdog);
       clearTimeout(firstBytes);

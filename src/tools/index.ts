@@ -105,6 +105,30 @@ function withHiddenFields<T>(full: StandardSchemaWithJSON<T, T>, shown: Standard
   return { '~standard': { ...full['~standard'], jsonSchema: shown['~standard'].jsonSchema } };
 }
 
+type ToolConfig = { description: string; inputSchema?: StandardSchemaWithJSON; outputSchema?: StandardSchemaWithJSON };
+
+/** `schema` listed with each description passed through `edit` (an emptied one left out); validation is unchanged. */
+function withDescriptions(schema: StandardSchemaWithJSON, edit: (text: string) => string): StandardSchemaWithJSON {
+  const walk = (node: unknown): unknown => Array.isArray(node) ? node.map(walk)
+    : node && typeof node === 'object'
+      ? Object.fromEntries(Object.entries(node)
+        .map(([key, value]) => [key, key === 'description' && typeof value === 'string' ? edit(value) : walk(value)])
+        .filter(([key, value]) => !(key === 'description' && value === '')))
+      : node;
+  const { jsonSchema } = schema['~standard'];
+  return { '~standard': { ...schema['~standard'], jsonSchema: {
+    input: (options) => walk(jsonSchema.input(options)) as never,
+    output: (options) => walk(jsonSchema.output(options)) as never,
+  } } };
+}
+
+/** An error result with its texts passed through `edit` (kept as is if that leaves nothing, e.g. a file the user named after a tool). */
+function withErrorText(result: unknown, edit: (text: string) => string): unknown {
+  const { isError, content } = (result ?? {}) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
+  if (!isError || !content) return result;
+  return { ...(result as object), content: content.map((item) => (item.type === 'text' ? { ...item, text: edit(item.text!) || item.text } : item)) };
+}
+
 /**
  * The file-handling tools word their inputs per transport: local paths only resolve in stdio, so over HTTP the
  * descriptions must not offer them, nor outputPath (see inputForms.ts). Each variant is built and wrapped once,
@@ -165,7 +189,7 @@ function titled(title: string, hints: Hints) {
   return { title, annotations: { title, ...hints } };
 }
 
-/** `disabledTools` (MCP_DISABLED_TOOLS) are not registered: absent from tools/list, a call gets the SDK's unknown-tool error. */
+/** `disabledTools` (left out by MCP_ENABLED_TOOLS) are not registered: absent from tools/list, a call gets the SDK's unknown-tool error. */
 export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext, disabledTools: ReadonlySet<ToolName> = NO_TOOLS): void {
   const io: IoModes = {
     allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput,
@@ -177,12 +201,20 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
     downloadTemplateDescription, downloadTemplateInput, downloadToolHints, attachedFileMeta, attachedTemplateMeta,
   } = transportToolsFor(io);
   // Every tool records its outcome for the HTTP access line (an error's text, never arguments or results). A disabled
-  // tool is not registered, and the description sentences naming one are left out (see withoutTools).
-  const registerTool = ((name: ToolName, config: { description: string }, callback: (...args: never[]) => unknown) => {
+  // tool is not registered; what the others show (descriptions, parameters, error messages) loses what names it.
+  const cut = (text: string) => withoutTools(text, disabledTools);
+  const registerTool = ((name: ToolName, config: ToolConfig, callback: (...args: never[]) => unknown) => {
     if (disabledTools.has(name)) return undefined;
-    if (disabledTools.size) config = { ...config, description: withoutTools(config.description, disabledTools, 'sentence') };
-    return server.registerTool(name, config as never, withOutcome(callback) as never);
+    const handler = withOutcome(callback);
+    if (!disabledTools.size) return server.registerTool(name, config as never, handler as never);
+    return server.registerTool(name, {
+      ...config,
+      description: cut(config.description),
+      ...(config.inputSchema && { inputSchema: withDescriptions(config.inputSchema, cut) }),
+      ...(config.outputSchema && { outputSchema: withDescriptions(config.outputSchema, cut) }),
+    } as never, (async (...args: never[]) => withErrorText(await handler(...args), cut)) as never);
   }) as McpServer['registerTool'];
+  fileCtx = { ...fileCtx, disabledTools };
 
   // Annotations are hints (not security boundaries): they let clients show safe/destructive
   // badges and help models reason about which tools are read-only, repeatable, or destructive.

@@ -290,6 +290,7 @@ If you run [Carbone on-premise](https://carbone.io/pricing.html), point the serv
 | `MCP_ALLOWED_ORIGINS` | none (localhost is always allowed) | HTTP: browser `Origin` hostnames to allow, comma-separated |
 | `CARBONE_REQUIRE_CLIENT_AUTH_HEADER` | `false` | HTTP: `true` refuses requests that bring no Bearer key of their own |
 | `CARBONE_ALLOW_PRIVATE_NETWORK` | `false` | `true` lets URL inputs reach private and internal addresses |
+| `MCP_ENABLED_TOOLS` | all tools | Only the tools you list are available (e.g. a read-only agent); new tools stay off until listed ([details](docs/API.md#choosing-the-tools)) |
 | `MCP_TICKET_SECRET` | none | HTTP: turns on upload URLs for large templates ([details](docs/API.md#upload-urls)); generate with `openssl rand -base64 32` |
 | `MCP_PUBLIC_URL` | none | HTTP, with `MCP_TICKET_SECRET`: the public `https` origin of this server, where upload URLs and Carbone's webhook point |
 | `MCP_S3_*` | none | HTTP, with `MCP_TICKET_SECRET`: an S3-compatible bucket for async renders and batches ([details](docs/API.md#async-renders)) |

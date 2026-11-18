@@ -2,7 +2,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { callOptionsFrom, type CarboneClient } from '../carbone/client.js';
 import { withOutcome } from '../server/log.js';
-import { type ToolName, NO_TOOLS } from '../tools/toolNames.js';
+import { type ToolName, NO_TOOLS, toolOfResource, withoutTools } from '../tools/toolNames.js';
 
 import {
   TEMPLATES_URI, templatesResourceDescription, readTemplatesResource,
@@ -12,17 +12,15 @@ import { CATEGORIES_URI, categoriesResourceDescription, readCategoriesResource }
 import { TAGS_URI, tagsResourceDescription, readTagsResource } from './tags.js';
 import { STATUS_URI, statusResourceDescription, readStatusResource } from './status.js';
 
-/** The tool each resource reads through: disabled (MCP_DISABLED_TOOLS), it takes the resource with it. */
-const RESOURCE_TOOLS: Record<string, ToolName> = {
-  'carbone-templates': 'list_templates', 'carbone-template': 'list_templates', 'carbone-categories': 'list_categories',
-  'carbone-tags': 'list_tags', 'carbone-status': 'get_api_status',
-};
-
 export function registerResources(server: McpServer, client: CarboneClient, disabledTools: ReadonlySet<ToolName> = NO_TOOLS): void {
-  // Every read records its outcome for the HTTP access line, as tools do (an error's text, never the contents).
-  const registerResource = ((name: string, uri: never, config: never, callback: (...args: never[]) => unknown) =>
-    (disabledTools.has(RESOURCE_TOOLS[name]!) ? undefined
-      : server.registerResource(name, uri, config, withOutcome(callback) as never)) as never /* overloaded return type */) as McpServer['registerResource'];
+  // Every read records its outcome for the HTTP access line, as tools do (an error's text, never the contents). A
+  // resource read through a disabled tool is not registered (TOOL_RESOURCES).
+  const registerResource = ((name: string, uri: string | ResourceTemplate, config: { description: string }, callback: (...args: never[]) => unknown) => {
+    const tool = toolOfResource(typeof uri === 'string' ? uri : String(uri.uriTemplate));
+    if (tool && disabledTools.has(tool)) return undefined;
+    return server.registerResource(name, uri as never, { ...config, description: withoutTools(config.description, disabledTools) } as never,
+      withOutcome(callback) as never) as unknown;
+  }) as unknown as McpServer['registerResource'];
 
   // The Bearer token (HTTP mode) arrives on authInfo and is forwarded as the
   // per-call API key (callOptionsFrom, as in registerTools) so resources work in multi-tenant

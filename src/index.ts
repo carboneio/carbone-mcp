@@ -11,6 +11,7 @@ import { registerResources } from './resources/index.js';
 import { serverInfo, serverOptionsFor } from './server/serverInfo.js';
 import { loadServedSkills, servedSkills, servesCarboneSkill } from './server/skills.js';
 import { STDIO_IO } from './tools/inputForms.js';
+import { TOOL_NAMES } from './tools/toolNames.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -79,6 +80,8 @@ async function main() {
   process.stderr.write(`Carbone MCP Server v${version} started (stdio)\n`);
   process.stderr.write(`Carbone API: ${config.carboneBaseUrl}\n`);
   process.stderr.write(`Skills: ${servedSkills(skills)}\n`);
+  // get_render_result needs a job store, which only HTTP has.
+  if (disabledTools.size) process.stderr.write(`Enabled tools: ${TOOL_NAMES.filter((tool) => !disabledTools.has(tool) && tool !== 'get_render_result').join(', ')}\n`);
 }
 
 // Exits once the line is written: to a pipe, stderr is asynchronous.

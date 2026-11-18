@@ -41,3 +41,6 @@ carbone-mcp-specification.md
 *.tgz
 .npm/
 tmp/
+
+# Private Grafana dashboard (generator and export), not published
+grafana/

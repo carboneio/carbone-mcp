@@ -7,6 +7,7 @@ import {
 } from '../utils/file.js';
 import type { UploadIssuer } from '../server/upload.js';
 import type { Jobs } from '../server/jobs.js';
+import type { ToolName } from './toolNames.js';
 
 /** Config threaded from the server into file-producing tools (set per transport in the entry points). */
 export interface FileContext {
@@ -30,6 +31,8 @@ export interface FileContext {
   jobs?: Jobs;
   /** The Carbone Skill is served: get_capabilities names its URI. */
   skill?: boolean;
+  /** The tools MCP_ENABLED_TOOLS leaves out: a result's advice does not name them (withoutTools). */
+  disabledTools?: ReadonlySet<ToolName>;
 }
 
 /**

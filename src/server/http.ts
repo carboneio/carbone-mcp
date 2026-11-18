@@ -14,7 +14,7 @@ import { serverInfo, serverOptionsFor } from './serverInfo.js';
 import { loadServedSkills, servedSkills, servesCarboneSkill } from './skills.js';
 import type { JobStoreConfig, OAuthConfig, TicketConfig } from './config.js';
 import { createOAuthGate } from './oauth.js';
-import { type ToolName, NO_TOOLS } from '../tools/toolNames.js';
+import { type ToolName, NO_TOOLS, TOOL_NAMES } from '../tools/toolNames.js';
 import { uploadSealer as createUploadSealer, UPLOAD_PATH } from './uploadTicket.js';
 import { createJobs, JOB_TOKEN_HEADER, JOB_TTL_SECONDS, WEBHOOK_BODY_TIMEOUT_MS, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_PATH } from './jobs.js';
 import { createDirStore, createObjectStore } from './objectStore.js';
@@ -188,7 +188,7 @@ export async function startHttpServer(options: {
   tickets?: TicketConfig;
   /** With tickets: where async renders keep their results (MCP_S3_* or MCP_JOBS_DIR); async renders off when unset. */
   jobStore?: JobStoreConfig;
-  /** MCP_DISABLED_TOOLS: not registered; upload URLs and async renders are off without their tools. */
+  /** The tools MCP_ENABLED_TOOLS leaves out: not registered; upload URLs and async renders are off without their tools. */
   disabledTools?: ReadonlySet<ToolName>;
 }): Promise<Server> {
   const { client, version, port, mcpPath, maxBodyBytes, maxFileBytes, allowPrivateNetwork, allowedOriginHostnames } = options;
@@ -202,7 +202,7 @@ export async function startHttpServer(options: {
   const asyncRenders = !disabledTools.has('render_document') && !disabledTools.has('get_render_result');
   const uploadSealer = tickets && uploadUrls && createUploadSealer(tickets.secret, tickets.publicUrl);
   const uploadIssuer = uploadSealer && createUploadIssuer({ sealer: uploadSealer, publicUrl: tickets.publicUrl });
-  const handleUpload = uploadSealer && createUploadRoute({ sealer: uploadSealer, client, maxBytes: maxFileBytes, exchange: oauthGate?.exchangeForUpload });
+  const handleUpload = uploadSealer && createUploadRoute({ sealer: uploadSealer, client, maxBytes: maxFileBytes, exchange: oauthGate?.exchangeForUpload, disabledTools });
   const store = asyncRenders && jobStore && ('dir' in jobStore ? createDirStore(jobStore.dir, { maxAgeMs: JOB_TTL_SECONDS * 1000 }) : createObjectStore(jobStore));
   const jobs = tickets && store && createJobs({ secret: tickets.secret, publicUrl: tickets.publicUrl, store });
   const bodyPaths = [mcpPath, ...(handleUpload ? [UPLOAD_PATH] : []), ...(jobs ? [WEBHOOK_PATH] : [])];
@@ -399,6 +399,8 @@ export async function startHttpServer(options: {
             if (auth instanceof Response) {
               // A refused token gets an error code in its challenge; a request without one, the bare challenge.
               if (auth.status === 401) record.reason = auth.headers.get('www-authenticate')?.includes('error=') ? 'invalid-token' : 'no-token';
+              // 400: a token outside the Bearer syntax, often a config placeholder left unexpanded; the token is never logged.
+              if (auth.status === 400) record.reason = /\$\{|\{\{|<\w/.test(req.headers.authorization ?? '') ? 'placeholder-token' : 'malformed-token';
               // The body is unread: when it has not all arrived, close the connection rather than let Node drain it.
               res.writeHead(auth.status, { ...Object.fromEntries(auth.headers), ...(!req.complete && { Connection: 'close' }) });
               res.end(await auth.text());
@@ -522,7 +524,7 @@ export async function startHttpServer(options: {
   });
 
   log('info', {
-    msg: 'running in HTTP mode', version, skills: servedSkills(skills),
+    msg: 'running in HTTP mode', version, skills: servedSkills(skills), enabled: disabledTools.size ? TOOL_NAMES.filter((tool) => !disabledTools.has(tool) && (tool !== 'get_render_result' || jobs)).join(',') : undefined,
     mcp: `http://0.0.0.0:${port}${mcpPath}`, health: `http://0.0.0.0:${port}/health`,
     ...(options.oauth && { resource: options.oauth.resourceUrl, issuer: options.oauth.issuer }),
     ...(tickets && handleUpload && { uploads: new URL(UPLOAD_PATH, tickets.publicUrl).href }),
@@ -531,6 +533,10 @@ export async function startHttpServer(options: {
       ...('dir' in jobStore ? { dir: jobStore.dir } : { bucket: jobStore.bucket }),
     }),
   });
+  // A job store set up for nothing: say so, rather than let async renders be silently off.
+  if (jobStore && !asyncRenders) {
+    log('warn', { msg: 'async renders are off: MCP_ENABLED_TOOLS leaves out render_document or get_render_result, so the job store is not used' });
+  }
   if (jobs && jobStore) {
     // Reading an object that does not exist must answer "none": otherwise every pending job reads as an error.
     void store!.get('jobs/startup-check').catch((err: unknown) => log('warn', {

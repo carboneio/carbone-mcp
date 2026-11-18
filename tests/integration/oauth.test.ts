@@ -534,6 +534,18 @@ describe('logging', () => {
     await vi.waitFor(() => expect(lines().slice(before).map((line) => / reason=(\S+) /.exec(line)?.[1])).toEqual(['invalid-token', 'no-token']));
   });
 
+  test('a 400 says why: a config placeholder left unexpanded, or another malformed token, never the header itself', async () => {
+    const url = await mcpServer({ oauth: { issuer: asUrl, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, resourceUrl: RESOURCE } });
+    const lines = () => log.split('\n').filter((line) => line.includes(' status=400 '));
+    const before = lines().length;
+    for (const header of ['Bearer ${env:CARBONE_API_KEY}', 'Bearer {{CARBONE_API_KEY}}', 'Bearer <your-key>', 'Bearer two tokens']) {
+      expect((await rawToolsCall(url, { Authorization: header })).status).toBe(400);
+    }
+    await vi.waitFor(() => expect(lines().slice(before).map((line) => / reason=(\S+) /.exec(line)?.[1]))
+      .toEqual(['placeholder-token', 'placeholder-token', 'placeholder-token', 'malformed-token']));
+    expect(lines().slice(before).join('\n')).not.toMatch(/CARBONE_API_KEY|your-key|two tokens/);
+  });
+
   test('a signed-in call names the OAuth subject and client, never a token, with the user agent and protocol version', async () => {
     const url = await mcpServer({ oauth: { issuer: asUrl, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, resourceUrl: RESOURCE } });
     const client = await connect(url, grant({ sub: 'acct-7' }), { pin: MODERN });

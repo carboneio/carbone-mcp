@@ -12,8 +12,9 @@ import {
 } from './inputForms.js';
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 import { FAIL_ON_CONDITIONS, checkedOnce } from './render.js';
+import type { ToolName } from './toolNames.js';
 
-export const convertDocumentToolName = 'convert_document';
+export const convertDocumentToolName = 'convert_document' satisfies ToolName;
 
 export function convertDocumentDescriptionFor(io: IoModes): string {
   return 'Convert a file to another format, e.g. DOCX, XLSX, PPTX, HTML or Markdown to PDF, or any document to PNG. ' +

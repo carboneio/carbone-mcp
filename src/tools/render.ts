@@ -13,8 +13,9 @@ import {
 import { type ChatFile, acceptsChatAttachments, chatFileSchema, pickFile } from './attachments.js';
 import type { Jobs } from '../server/jobs.js';
 import { log } from '../server/log.js';
+import type { ToolName } from './toolNames.js';
 
-export const renderDocumentToolName = 'render_document';
+export const renderDocumentToolName = 'render_document' satisfies ToolName;
 
 /** `failOn` conditions of POST /render, shared with convert_document. */
 export const FAIL_ON_CONDITIONS = ['IMAGE_URL_ERROR'] as const;
@@ -400,7 +401,7 @@ function formatNameOf(convertTo: z.infer<typeof renderDocumentSchema.convertTo>)
 
 // ─── get_render_result ───────────────────────────────────────────────────────
 
-export const getRenderResultToolName = 'get_render_result';
+export const getRenderResultToolName = 'get_render_result' satisfies ToolName;
 
 export const getRenderResultDescription =
   'Get the result of a render_document call made with async: true: the one-time download link (give it to the user, ' +
