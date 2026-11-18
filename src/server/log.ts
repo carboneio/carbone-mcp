@@ -98,6 +98,11 @@ export function withOutcome<A extends unknown[], R>(callback: (...args: A) => R 
   };
 }
 
+/** stdio: one diagnostic line on stderr. Control characters become spaces, so a message cannot forge lines. */
+export function diagnostic(message: string): void {
+  process.stderr.write(`[carbone-mcp] ${message.replace(/\p{Cc}/gu, ' ')}\n`);
+}
+
 /**
  * Exit with `code` once stderr has written what was logged before (to a pipe, writes are asynchronous), or after 1 s if
  * it never does, so that a stuck pipe cannot keep the process alive.

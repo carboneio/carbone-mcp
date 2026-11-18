@@ -20,6 +20,11 @@ const fault = (kind: NonNullable<RequestLog['fault']>) => {
   if (record) record.fault ??= kind;
 };
 
+/** A tool argument the client got wrong (a URL, path, file or JSON it passed): not logged as a fault. */
+export class InputError extends Error {
+  name = 'InputError';
+}
+
 /** " (Carbone w101)" when the API returned an error code. */
 const codeOf = (error: CarboneError) => (error.code ? ` (Carbone ${error.code})` : '');
 
@@ -38,6 +43,10 @@ export function formatError(error: unknown): string {
       `Invalid input${codeOf(error)}: ${error.message}` +
       (/convert|format/i.test(error.message) ? `\n\nValid outputs depend on the input format: ${CONVERSION_MATRIX}` : '')
     );
+  }
+
+  if (error instanceof InputError) {
+    return `Invalid input: ${error.message}`;
   }
 
   if (error instanceof CarboneNotFoundError) {
@@ -101,6 +110,9 @@ export function formatError(error: unknown): string {
     fault('upstream');
     return 'Carbone API request timed out.';
   }
+
+  // The MCP client cancelled the call or went away: nobody reads this answer, and nothing failed.
+  if ((error as { name?: unknown } | null)?.name === 'AbortError') return 'Request cancelled.';
 
   fault('internal');
   return `Unexpected error: ${error instanceof Error ? error.message : String(error)}`;

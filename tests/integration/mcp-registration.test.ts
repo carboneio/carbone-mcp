@@ -6,7 +6,9 @@ import { McpServer, InMemoryTransport } from '@modelcontextprotocol/server';
 import { CarboneClient } from '../../src/carbone/client.js';
 import { registerTools } from '../../src/tools/index.js';
 import { registerResources } from '../../src/resources/index.js';
-import { serverInfo, SERVER_OPTIONS } from '../../src/server/serverInfo.js';
+import { serverInfo, serverOptionsFor, SERVER_OPTIONS } from '../../src/server/serverInfo.js';
+import { CARBONE_SKILL_URI, loadServedSkills, servesCarboneSkill } from '../../src/server/skills.js';
+import { STDIO_IO } from '../../src/tools/inputForms.js';
 import { OUTPUT_FORMATS } from '../../src/validation/formats.js';
 
 /**
@@ -19,7 +21,12 @@ describe('MCP registration surface (in-process, no API key)', () => {
   let client: Client;
 
   beforeAll(async () => {
-    const server = new McpServer(serverInfo('0.0.0-test'), SERVER_OPTIONS);
+    // As both transports do: load the skill first (the instructions name it), attach it before connecting.
+    const warnings: string[] = [];
+    const skills = await loadServedSkills((message) => warnings.push(message));
+    expect(warnings).toEqual([]);
+    const skill = servesCarboneSkill(skills);
+    const server = new McpServer(serverInfo('0.0.0-test'), serverOptionsFor({ ...STDIO_IO, skill }));
     // The Carbone client is never called by registration / get_capabilities, so a dummy key is fine.
     const carbone = new CarboneClient({ apiKey: 'unused', baseUrl: CarboneClient.CLOUD_API_URL });
     registerTools(server, carbone, {
@@ -27,8 +34,10 @@ describe('MCP registration surface (in-process, no API key)', () => {
       allowFileInput: true,
       allowPrivateNetwork: false,
       maxFileBytes: 100 * 1024 * 1024,
+      skill,
     });
     registerResources(server, carbone);
+    skills?.attach(server);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: 'registration-test', version: '0' });
@@ -50,8 +59,10 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(caps?.tools).toEqual({ listChanged: false });
     expect(caps?.resources).toEqual({ listChanged: false });
     expect(caps?.completions).toBeTruthy();
+    expect(caps?.extensions).toEqual({ 'io.modelcontextprotocol/skills': { directoryRead: true } });
 
     expect(client.getInstructions()).toContain('get_capabilities');
+    expect(client.getInstructions()).toContain(CARBONE_SKILL_URI);
   });
 
   test('tools/list exposes all 12 tools with titles, annotations, and outputSchema', async () => {
@@ -179,10 +190,12 @@ describe('MCP registration surface (in-process, no API key)', () => {
       'carbone://status',
       'carbone://tags',
       'carbone://templates',
+      // Only the skill's SKILL.md is listed; its other files are read by their URI (or found with skills/list).
+      CARBONE_SKILL_URI,
     ]);
 
     const { resourceTemplates } = await client.listResourceTemplates();
-    expect(resourceTemplates.some((r) => r.uriTemplate === 'carbone://templates/{id}')).toBe(true);
+    expect(resourceTemplates.map((r) => r.uriTemplate).sort()).toEqual(['carbone://templates/{id}', 'skill://{+path}']);
   });
 
   test('an oversized tags list is rejected with one error, before its items are checked', async () => {
@@ -224,6 +237,7 @@ describe('MCP registration surface (in-process, no API key)', () => {
     expect(text).toContain('Carbone');
     expect(text).toContain('convert_document');
     expect(text).toContain('carbone://templates/{id}');
+    expect(text).toContain(`- On this server:       ${CARBONE_SKILL_URI}`);
   });
 });
 

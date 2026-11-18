@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { errorSummary, exitWhenFlushed, log, requestLog, withOutcome, type RequestLog } from '../../../src/server/log.js';
+import { diagnostic, errorSummary, exitWhenFlushed, log, requestLog, withOutcome, type RequestLog } from '../../../src/server/log.js';
 
 /** The lines log() writes while `run` runs. */
 function captured(run: () => void): string[] {
@@ -120,6 +120,18 @@ describe('withOutcome', () => {
     const result = { isError: true, content: [{ type: 'text', text: 'no' }] };
     await expect(withOutcome((a: number, b: number) => ({ ...result, sum: a + b }))(1, 2)).resolves.toEqual({ ...result, sum: 3 });
     await expect(withOutcome(() => { throw new Error('thrown'); })()).rejects.toThrow('thrown');
+  });
+});
+
+describe('diagnostic (stdio)', () => {
+  test('one prefixed line: control characters become spaces, so no line is forged and no escape reaches the terminal', () => {
+    expect(captured(() => diagnostic('skills: bad\nlevel=error msg=forged \x1b[31mred\x07\r'))).toEqual([
+      '[carbone-mcp] skills: bad level=error msg=forged  [31mred  \n',
+    ]);
+  });
+
+  test('keeps any other text, accents and symbols included', () => {
+    expect(captured(() => diagnostic('modèle « facture » ✓ 請求書'))).toEqual(['[carbone-mcp] modèle « facture » ✓ 請求書\n']);
   });
 });
 

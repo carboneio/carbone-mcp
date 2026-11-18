@@ -11,6 +11,7 @@ import { isBlockedIp } from '../utils/file.js';
 import { registerTools } from '../tools/index.js';
 import { registerResources } from '../resources/index.js';
 import { serverInfo, serverOptionsFor } from './serverInfo.js';
+import { loadServedSkills, servedSkills, servesCarboneSkill } from './skills.js';
 import type { JobStoreConfig, OAuthConfig, TicketConfig } from './config.js';
 import { createOAuthGate } from './oauth.js';
 import { type ToolName, NO_TOOLS } from '../tools/toolNames.js';
@@ -179,6 +180,8 @@ export async function startHttpServer(options: {
   allowedOriginHostnames: string[];
   /** OpenAI's domain-verification token (MCP_OPENAI_APPS_CHALLENGE), served at /.well-known/openai-apps-challenge. */
   openAiAppsChallenge?: string;
+  /** Meta's connector directory domain-verification token (MCP_MUSE_CHALLENGE), served at /.well-known/muse-challenge/<token>. */
+  museChallenge?: string;
   /** OAuth mode; API-key mode when unset. */
   oauth?: OAuthConfig;
   /** Upload URLs for upload_template (MCP_TICKET_SECRET); off when unset. */
@@ -203,7 +206,9 @@ export async function startHttpServer(options: {
   const store = asyncRenders && jobStore && ('dir' in jobStore ? createDirStore(jobStore.dir, { maxAgeMs: JOB_TTL_SECONDS * 1000 }) : createObjectStore(jobStore));
   const jobs = tickets && store && createJobs({ secret: tickets.secret, publicUrl: tickets.publicUrl, store });
   const bodyPaths = [mcpPath, ...(handleUpload ? [UPLOAD_PATH] : []), ...(jobs ? [WEBHOOK_PATH] : [])];
-  const serverOptions = serverOptionsFor({ allowLocalPath: false, allowFileOutput: false, allowUploadUrl: !!uploadIssuer, allowAsync: !!jobs }, disabledTools);
+  const skills = await loadServedSkills((message) => log('warn', { msg: 'skills', error: message }));
+  const skill = servesCarboneSkill(skills);
+  const serverOptions = serverOptionsFor({ allowLocalPath: false, allowFileOutput: false, allowUploadUrl: !!uploadIssuer, allowAsync: !!jobs, skill }, disabledTools);
   /** OAuth mode: how the first MCP requests were addressed is logged, to check the client address on a new platform. */
   let addressSamples = oauthGate ? 3 : 0;
 
@@ -250,8 +255,10 @@ export async function startHttpServer(options: {
       maxFileBytes,
       ...(uploadIssuer && { uploads: uploadIssuer }),
       ...(jobs && { jobs }),
+      skill,
     }, disabledTools);
     registerResources(mcpServer, client, disabledTools);
+    skills?.attach(mcpServer);
     // 2025 era: a method this server does not handle gets the SDK's own answer (HTTP 200), with the outcome recorded
     // for the access line. 2026-07-28 answers it 404 before any handler: the access line counts that 4xx itself.
     if (era === 'legacy') {
@@ -346,6 +353,14 @@ export async function startHttpServer(options: {
           && pathname === '/.well-known/openai-apps-challenge') {
           res.writeHead(200, { 'Content-Type': 'text/plain' });
           res.end(req.method === 'HEAD' ? undefined : options.openAiAppsChallenge);
+          return;
+        }
+
+        // ── Meta connector directory domain verification (MCP_MUSE_CHALLENGE) ───
+        if (options.museChallenge && (req.method === 'GET' || req.method === 'HEAD')
+          && pathname === `/.well-known/muse-challenge/${options.museChallenge}`) {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end(req.method === 'HEAD' ? undefined : `muse-challenge=${options.museChallenge}`);
           return;
         }
 
@@ -507,7 +522,8 @@ export async function startHttpServer(options: {
   });
 
   log('info', {
-    msg: 'running in HTTP mode', version, mcp: `http://0.0.0.0:${port}${mcpPath}`, health: `http://0.0.0.0:${port}/health`,
+    msg: 'running in HTTP mode', version, skills: servedSkills(skills),
+    mcp: `http://0.0.0.0:${port}${mcpPath}`, health: `http://0.0.0.0:${port}/health`,
     ...(options.oauth && { resource: options.oauth.resourceUrl, issuer: options.oauth.issuer }),
     ...(tickets && handleUpload && { uploads: new URL(UPLOAD_PATH, tickets.publicUrl).href }),
     ...(jobs && tickets && jobStore && {

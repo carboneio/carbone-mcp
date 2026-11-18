@@ -20,6 +20,8 @@ export interface IoModes {
   allowUploadUrl?: boolean;
   /** render_document may run async with this server's own webhook (HTTP with MCP_TICKET_SECRET and an object store). */
   allowAsync?: boolean;
+  /** The Carbone Skill is served: the instructions and get_capabilities name its URI. */
+  skill?: boolean;
 }
 
 /** Wording used for the exported default schemas and anywhere a transport is not yet known. */

@@ -182,6 +182,8 @@ Items:
 
 `{d.items[i]}` … `{d.items[i+1]}` repeats a line for each item. Start with [the basics](https://carbone.io/documentation/design/substitutions/the-basics.html), or give your AI assistant the [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html), a template syntax reference for AI tools ([download .skill](https://github.com/carboneio/carbone-agent-plugin/releases/latest/download/carbone.skill) · [GitHub](https://github.com/carboneio/carbone-agent-plugin)).
 
+This server also serves the Carbone Skill itself, as `skill://carbone/SKILL.md`: MCP clients that support skills get it with the server, in the version matching its tools ([Carbone Skill](docs/API.md#carbone-skill)).
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |

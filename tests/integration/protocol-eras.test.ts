@@ -3,6 +3,7 @@ import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   Client,
@@ -13,6 +14,7 @@ import {
   type VersionNegotiationMode,
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/client/stdio';
+import { SKILLS_EXTENSION_ID, SkillsClient } from '@modelcontextprotocol/client/ext/skills';
 import { CarboneClient } from '../../src/carbone/client.js';
 import { startHttpServer } from '../../src/server/http.js';
 
@@ -28,7 +30,23 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const SERVER_KEY = 'server-key';
 const ALLOWED_ORIGIN_HOST = 'app.example.com';
 // The tool and resource lists never change, so list changes are not advertised (no idle listen streams).
-const CAPABILITIES = { tools: { listChanged: false }, resources: { listChanged: false }, completions: {} };
+const CAPABILITIES = {
+  tools: { listChanged: false }, resources: { listChanged: false }, completions: {},
+  extensions: { [SKILLS_EXTENSION_ID]: { directoryRead: true } },
+};
+
+/** What a host does: find the skill in the instructions and skills/list, then read files checked against their digests. */
+async function expectCarboneSkill(client: Client) {
+  expect(client.getInstructions()).toContain('The Carbone Skill is the reference: the skill://carbone/SKILL.md resource, or https://');
+  const skills = new SkillsClient(client);
+  expect(skills.supported).toBe(true);
+  const { skills: entries } = await skills.list();
+  expect(entries.map((s) => s.uri)).toEqual(['skill://carbone/SKILL.md']);
+  const manifest = await skills.read(entries[0]!);
+  expect(manifest).toMatchObject({ verified: true, frontmatter: { name: 'carbone' } });
+  expect(manifest.body).toContain('{d.');
+  expect(await skills.read(entries[0]!, 'references/formatters.md')).toMatchObject({ verified: true });
+}
 
 // ── Mock Carbone API: records the Authorization header of every call ────────
 const calls: { url: string; auth?: string }[] = [];
@@ -173,8 +191,12 @@ describe('HTTP transport serves both protocol eras', () => {
       expect(tools).toHaveLength(12);
     });
 
-    test(`advertises static tool and resource lists (${era === 'modern' ? 'server/discover' : 'initialize'})`, () => {
+    test(`advertises static tool and resource lists, and the skills extension (${era === 'modern' ? 'server/discover' : 'initialize'})`, () => {
       expect(client.getServerCapabilities()).toEqual(CAPABILITIES);
+    });
+
+    test('serves the Carbone Skill, every file matching its digest', async () => {
+      await expectCarboneSkill(client);
     });
 
     test('a tool call reaches the Carbone API with the client Bearer key', async () => {
@@ -353,7 +375,7 @@ describe('stdio transport serves both protocol eras', () => {
   const args = ['--import', 'tsx', 'src/index.ts'];
   const env = () => ({ ...getDefaultEnvironment(), CARBONE_API_KEY: STDIO_KEY, CARBONE_BASE_URL: mockUrl });
 
-  test.each(eras.filter((e) => e.mode !== 'auto'))('$label client connects and calls a tool with the env key', async ({ mode, era }) => {
+  test.each(eras.filter((e) => e.mode !== 'auto'))('$label client connects, calls a tool with the env key, and reads the Carbone Skill', async ({ mode, era }) => {
     const client = newClient(mode);
     await client.connect(new StdioClientTransport({ command, args, cwd: ROOT, env: env(), stderr: 'ignore' }));
     try {
@@ -364,6 +386,7 @@ describe('stdio transport serves both protocol eras', () => {
       const result = await client.callTool({ name: 'list_templates', arguments: {} });
       expect(result.structuredContent).toMatchObject({ templates: [{ id: '1' }], hasMore: false });
       expect(lastAuthFor('/templates')).toBe(`Bearer ${STDIO_KEY}`);
+      await expectCarboneSkill(client);
     } finally {
       await client.close();
     }
@@ -387,6 +410,25 @@ describe('stdio transport serves both protocol eras', () => {
       expect(Date.now() - abortedAt).toBeLessThan(2_000);
     } finally {
       await client.close();
+    }
+  }, 30_000);
+
+  test('logs its start on stderr, naming the skills served, and writes nothing else to stdout', async () => {
+    const { version } = JSON.parse(readFileSync(new URL('../../skills.lock.json', import.meta.url), 'utf8')) as { version: string };
+    const child: ChildProcess = spawn(command, args, { cwd: ROOT, env: env(), stdio: ['pipe', 'pipe', 'pipe'] });
+    try {
+      let stdout = '';
+      let stderr = '';
+      child.stdout!.on('data', (chunk) => { stdout += chunk; });
+      await new Promise<void>((resolve, reject) => {
+        child.stderr!.on('data', (chunk) => { stderr += chunk; if (/^Skills: .*\n/m.test(stderr)) resolve(); });
+        child.once('exit', (code) => reject(new Error(`server exited early (${code}): ${stderr}`)));
+      });
+      expect(stderr).toContain(`started (stdio)\nCarbone API: ${mockUrl}\nSkills: carbone@${version}\n`);
+      expect(stderr).not.toContain('skills:'); // no skills warning
+      expect(stdout).toBe('');
+    } finally {
+      child.kill();
     }
   }, 30_000);
 

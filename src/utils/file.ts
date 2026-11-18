@@ -3,6 +3,7 @@ import { lookup } from 'node:dns/promises';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
+import { InputError } from './errors.js';
 
 export type FormatArg = string | { formatName: string };
 
@@ -132,7 +133,7 @@ function isBlockedIpv6(b: number[]): boolean {
 }
 
 function refusal(target: string, address: string): Error {
-  return new Error(
+  return new InputError(
     `Refusing to fetch ${target} — it resolves to a private or internal address (${address}). ` +
     'Set CARBONE_ALLOW_PRIVATE_NETWORK=true to allow internal hosts on a trusted deployment.'
   );
@@ -158,12 +159,16 @@ export function guardedLookup(target: string, resolver: HostResolver = systemRes
         (all) => {
           const family = options.family === 4 || options.family === 6 ? options.family : 0;
           const addresses = family ? all.filter((a) => a.family === family) : all;
-          if (addresses.length === 0) throw new Error(`Could not resolve host ${target}.`);
+          if (addresses.length === 0) throw new InputError(`Could not resolve host ${target}.`);
           const blocked = all.find((a) => isBlockedIp(a.address));
           if (blocked) throw refusal(target, blocked.address);
           return addresses;
         },
-        () => { throw new Error(`Could not resolve host ${target}.`); }
+        (err: NodeJS.ErrnoException | undefined) => {
+          // A name that does not exist is the input's fault; any other resolver failure (EAI_AGAIN…) is ours.
+          if (err?.code === 'ENOTFOUND' || err?.code === 'ENODATA') throw new InputError(`Could not resolve host ${target}.`);
+          throw new Error(`Could not resolve host ${target}${typeof err?.code === 'string' ? ` (${err.code})` : ''}.`);
+        }
       )
       .then(
         (addresses) => options.all
@@ -182,7 +187,7 @@ export function guardedLookup(target: string, resolver: HostResolver = systemRes
  */
 function assertUrlAllowed(url: URL, target: string, allowPrivateNetwork: boolean): LookupFunction | undefined {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`Unsupported URL scheme for ${target} — only http and https are allowed.`);
+    throw new InputError(`Unsupported URL scheme for ${target} — only http and https are allowed.`);
   }
   if (allowPrivateNetwork) return undefined;
 
@@ -222,7 +227,7 @@ async function fetchGuarded(rawUrl: string, allowPrivateNetwork: boolean, signal
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new Error(`Invalid URL: ${rawUrl}`);
+    throw new InputError(`Invalid URL: ${rawUrl}`);
   }
   let target = `"${url.origin}"`;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -235,11 +240,11 @@ async function fetchGuarded(rawUrl: string, allowPrivateNetwork: boolean, signal
     try {
       url = new URL(location, url); // resolve relative redirects, then re-validate
     } catch {
-      throw new Error('Invalid redirect location while downloading from URL.');
+      throw new InputError('Invalid redirect location while downloading from URL.');
     }
     target = 'the redirect target';
   }
-  throw new Error(`Too many redirects (>${MAX_REDIRECTS}) while downloading from URL.`);
+  throw new InputError(`Too many redirects (>${MAX_REDIRECTS}) while downloading from URL.`);
 }
 
 /** Read a response body, aborting as soon as it grows past maxBytes (Content-Length is not trusted). */
@@ -258,7 +263,7 @@ async function readBodyWithinLimit(response: IncomingMessage, maxBytes: number, 
 function assertWithinLimit(bytes: number, maxBytes: number, isCloud: boolean): void {
   if (bytes <= maxBytes) return;
   const mb = Math.round(maxBytes / 1024 / 1024);
-  throw new Error(
+  throw new InputError(
     isCloud
       ? `File exceeds the maximum allowed size of ${mb} MB (${bytes} bytes). ` +
         'Carbone Cloud limits are 20 MB per template and 60 MB of JSON data.'
@@ -321,6 +326,9 @@ export function getMimeType(format: FormatArg): string {
   return MIME_TYPES[name.toLowerCase()] ?? 'application/octet-stream';
 }
 
+/** Network errors the remote host causes; any other code (EMFILE, ENETUNREACH, ERR_*…) points at our side. */
+const REMOTE_FAULT_CODE = /^(ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ETIMEDOUT|ENOTFOUND|EPIPE|EPROTO)$|^HPE_|CERT|^ERR_TLS_|^ERR_SSL_|^UNABLE_TO_|SELF_SIGNED/;
+
 /**
  * Resolve a file input to a base64 string. Accepts:
  *   - HTTP/HTTPS URL  → downloaded and base64-encoded
@@ -349,7 +357,7 @@ export async function resolveFileInput(input: string, options?: ResolveFileOptio
       if (status < 200 || status > 299) {
         response.destroy();
         // Status code only: the reason phrase is chosen by the remote server and is not repeated.
-        throw new Error(`Failed to download file from URL: HTTP ${status}.`);
+        throw new InputError(`Failed to download file from URL: HTTP ${status}.`);
       }
       // Reject early when the server declares an oversized body…
       const declared = Number(response.headers['content-length']);
@@ -362,14 +370,17 @@ export async function resolveFileInput(input: string, options?: ResolveFileOptio
       return buffer.toString('base64');
     } catch (err) {
       if (signal.aborted) {
-        throw new Error(
+        throw new InputError(
           `Timed out after ${URL_FETCH_TIMEOUT_MS / 1000}s downloading file from URL: ${input}`
         );
       }
       // Network, TLS and HTTP-parser errors can quote remote content (e.g. certificate names), so only
       // their fixed error code is reported. This module's own errors carry no code and pass through.
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
-      if (typeof code === 'string') throw new Error(`Could not download file from URL (${code}).`);
+      if (typeof code === 'string') {
+        const message = `Could not download file from URL (${code}).`;
+        throw REMOTE_FAULT_CODE.test(code) ? new InputError(message) : new Error(message);
+      }
       throw err;
     }
   }
@@ -386,7 +397,7 @@ export async function resolveFileInput(input: string, options?: ResolveFileOptio
     // Only stdio (server runs on the caller's own machine) may read local paths. In HTTP mode this
     // would read the server's filesystem, so it is refused — see SECURITY notes in the changelog.
     if (!allowLocalPath) {
-      throw new Error(
+      throw new InputError(
         'Reading local file paths is only supported in stdio (local) mode. ' +
         'Pass an HTTPS URL or a base64 string instead.'
       );
@@ -437,7 +448,7 @@ export async function resolveJsonInput(
   } catch {
     // Fixed text on purpose: JSON.parse errors quote the input, which may be a fetched URL body or a
     // local file — repeating it would hand that content back to the caller.
-    throw new Error(
+    throw new InputError(
       `Invalid JSON for "${field}": the content is not valid JSON. ` +
       'Pass an inline JSON object/array, or a local path / HTTPS URL / base64 string pointing to a JSON file.'
     );
@@ -459,7 +470,7 @@ export async function writeOutputFile(
     await writeFile(resolvedPath, buffer, { flag: 'wx', mode: 0o600 });
   } catch (err) {
     if ((err as NodeJS.ErrnoException | undefined)?.code === 'EEXIST') {
-      throw new Error(
+      throw new InputError(
         `Output file ${resolvedPath} already exists — refusing to overwrite it. Choose a new file name for outputPath.`
       );
     }

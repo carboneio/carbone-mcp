@@ -169,7 +169,7 @@ function titled(title: string, hints: Hints) {
 export function registerTools(server: McpServer, client: CarboneClient, fileCtx: FileContext, disabledTools: ReadonlySet<ToolName> = NO_TOOLS): void {
   const io: IoModes = {
     allowLocalPath: fileCtx.allowFileInput, allowFileOutput: fileCtx.allowFileOutput,
-    allowUploadUrl: !!fileCtx.uploads, allowAsync: !!fileCtx.jobs,
+    allowUploadUrl: !!fileCtx.uploads, allowAsync: !!fileCtx.jobs, skill: !!fileCtx.skill,
   };
   const {
     convertDocumentDescription, convertDocumentInput, renderDocumentDescription, renderDocumentInput,

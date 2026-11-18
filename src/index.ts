@@ -5,10 +5,11 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { CarboneClient } from './carbone/client.js';
 import { loadConfig } from './server/config.js';
 import { startHttpServer } from './server/http.js';
-import { exitWhenFlushed, log } from './server/log.js';
+import { diagnostic, exitWhenFlushed, log } from './server/log.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { serverInfo, serverOptionsFor } from './server/serverInfo.js';
+import { loadServedSkills, servedSkills, servesCarboneSkill } from './server/skills.js';
 import { STDIO_IO } from './tools/inputForms.js';
 
 const require = createRequire(import.meta.url);
@@ -40,15 +41,18 @@ async function main() {
         hint: 'Set CARBONE_REQUIRE_CLIENT_AUTH_HEADER=true to require every client to send its own key.',
       });
     }
-    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork, allowedOriginHostnames: config.allowedOriginHostnames, openAiAppsChallenge: config.openAiAppsChallenge, oauth: config.oauth, tickets: config.tickets, jobStore: config.jobStore, disabledTools: config.disabledTools });
+    await startHttpServer({ client, version, port: config.port, mcpPath: config.mcpPath, maxBodyBytes: config.maxBodyBytes, maxFileBytes: config.maxFileBytes, allowPrivateNetwork: config.allowPrivateNetwork, allowedOriginHostnames: config.allowedOriginHostnames, openAiAppsChallenge: config.openAiAppsChallenge, museChallenge: config.museChallenge, oauth: config.oauth, tickets: config.tickets, jobStore: config.jobStore, disabledTools: config.disabledTools });
     return;
   }
+
+  const skills = await loadServedSkills((message) => diagnostic(`skills: ${message}`));
+  const skill = servesCarboneSkill(skills);
 
   // stdio mode (default) — one client, key from env var. serveStdio serves both 2026-07-28 and
   // 2025-era (initialize) clients, calls the factory for each server instance it needs, and closes
   // when stdin ends so the process exits.
   const { disabledTools } = config;
-  const serverOptions = serverOptionsFor(STDIO_IO, disabledTools);
+  const serverOptions = serverOptionsFor({ ...STDIO_IO, skill }, disabledTools);
   serveStdio(() => {
     const server = new McpServer(serverInfo(version), serverOptions);
     // stdio runs locally, so writing outputPath files to disk is meaningful.
@@ -58,20 +62,23 @@ async function main() {
       allowFileInput: true,
       allowPrivateNetwork: config.allowPrivateNetwork,
       maxFileBytes: config.maxFileBytes,
+      skill,
     }, disabledTools);
     registerResources(server, client, disabledTools);
+    skills?.attach(server);
     return server;
   }, {
     // The SDK caps one stdio message at 10 MB (STDIO_DEFAULT_MAX_BUFFER_SIZE) and closes the session past it.
     // Use the same limit as an HTTP request body instead, so an inline base64 file accepted over HTTP works here too.
     transport: new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: config.maxBodyBytes }),
-    onerror: (error) => process.stderr.write(`[carbone-mcp] MCP error: ${error.message}\n`),
+    onerror: (error) => diagnostic(`MCP error: ${error.message}`),
   });
 
   // MCP servers communicate over stdio — use stderr for diagnostic messages
   // so they don't interfere with the MCP protocol on stdout.
   process.stderr.write(`Carbone MCP Server v${version} started (stdio)\n`);
   process.stderr.write(`Carbone API: ${config.carboneBaseUrl}\n`);
+  process.stderr.write(`Skills: ${servedSkills(skills)}\n`);
 }
 
 // Exits once the line is written: to a pipe, stderr is asynchronous.

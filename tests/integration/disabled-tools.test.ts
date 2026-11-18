@@ -12,6 +12,7 @@ import { STDIO_IO } from '../../src/tools/inputForms.js';
 import { DISABLEABLE_TOOLS, TOOL_NAMES, NO_TOOLS, type ToolName } from '../../src/tools/toolNames.js';
 import { serverInfo, serverOptionsFor } from '../../src/server/serverInfo.js';
 import { startHttpServer } from '../../src/server/http.js';
+import { loadServedSkills, servesCarboneSkill } from '../../src/server/skills.js';
 
 /**
  * MCP_DISABLED_TOOLS, for each tool on stdio and on HTTP with upload URLs and async renders: the tool and its resources
@@ -24,6 +25,8 @@ const RESOURCES_OF: Partial<Record<ToolName, string[]>> = {
   list_templates: ['carbone-templates', 'carbone-template'], list_categories: ['carbone-categories'],
   list_tags: ['carbone-tags'], get_api_status: ['carbone-status'],
 };
+/** The served Carbone Skill and the skills index: tied to no tool, so always listed. */
+const SKILL_RESOURCES = ['carbone', 'io.modelcontextprotocol/skills'];
 /** Async renders need both of their tools. */
 const goneWith = (tool: ToolName): string[] => (tool === 'render_document' ? [tool, 'get_render_result'] : [tool]);
 
@@ -44,9 +47,12 @@ async function surfaceOf(client: Client): Promise<Surface> {
 
 /** stdio, set up as src/index.ts does. */
 async function stdioClient(disabled: ReadonlySet<ToolName>, carbone = new CarboneClient({ apiKey: 'unused' })): Promise<Client> {
-  const server = new McpServer(serverInfo('0.0.0-test'), serverOptionsFor(STDIO_IO, disabled));
-  registerTools(server, carbone, { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 1024 }, disabled);
+  const skills = await loadServedSkills(() => {});
+  const skill = servesCarboneSkill(skills);
+  const server = new McpServer(serverInfo('0.0.0-test'), serverOptionsFor({ ...STDIO_IO, skill }, disabled));
+  registerTools(server, carbone, { allowFileOutput: true, allowFileInput: true, allowPrivateNetwork: false, maxFileBytes: 1024, skill }, disabled);
   registerResources(server, carbone, disabled);
+  skills?.attach(server);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'disabled-tools-test', version: '0' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -96,7 +102,7 @@ describe.each([
 
   test('without MCP_DISABLED_TOOLS: every tool and resource', () => {
     expect([...all.tools].sort()).toEqual([...expectedTools].sort());
-    expect([...all.resources].sort()).toEqual(Object.values(RESOURCES_OF).flat().sort());
+    expect([...all.resources].sort()).toEqual([...Object.values(RESOURCES_OF).flat(), ...SKILL_RESOURCES].sort());
   });
 
   test.each(DISABLEABLE_TOOLS)('%s disabled: not registered, named nowhere, no other tool name lost', async (tool) => {

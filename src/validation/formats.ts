@@ -53,18 +53,18 @@ export const INPUT_FORMATS = [
 
 /**
  * Input-format guidance shared by the file/template parameters. The tool texts below are kept short: every tool
- * description is sent to the model on each conversation, and get_capabilities holds the details (named by the
- * instructions only: a parameter description names no tool, as it is listed even when that tool is disabled).
+ * description is sent to the model on each conversation, and get_capabilities holds the details.
  */
 export const INPUT_FORMATS_DESCRIPTION =
   'Formats: ' + INPUT_FORMATS.join(', ') + '; not the legacy binary DOC, XLS or PPT (re-save them as DOCX, XLSX, PPTX).';
 
-/** Converter guidance shared by render_document and convert_document. Names no tool (MCP_DISABLED_TOOLS): their descriptions point to get_capabilities. */
+/** Converter guidance shared by render_document and convert_document; the details are in get_capabilities. */
 export const CONVERTER_DESCRIPTION =
   'Converter, used whenever the format changes. "L" LibreOffice (default): every format, and the only one with ' +
-  'PDF/A, page ranges and accessibility. "I" Carbone ICE: DOCX and ODT to PDF, the fastest (keep "L" for SmartArt, ' +
-  'complex charts, comments, form fields, equations). "O" OnlyOffice: DOCX, XLSX, PPTX to PDF. "C" Chromium: HTML ' +
-  'and SVG to PDF, PNG, JPG, WEBP.';
+  'PDF/A, page ranges and accessibility. "I" Carbone ICE: DOCX and ODT to PDF, the fastest (keep "L" for WEBP or ' +
+  'EMF/WMF images, SmartArt, complex charts, comments, form fields, equations, bookmarks, endnotes, and ODT tracked ' +
+  'changes or footnotes). "O" OnlyOffice: DOCX, XLSX, PPTX to PDF. "C" Chromium: HTML ' +
+  'and SVG to PDF, PNG, JPG, WEBP. Details: get_capabilities.';
 
 /** convertTo guidance shared by both tools. */
 export const OUTPUT_FORMAT_DESCRIPTION =
@@ -83,11 +83,11 @@ export const OutputFormatSchema = z.union([
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        // Every key below exists in the Carbone documentation; get_capabilities lists them all. Names no tool: the
-        // descriptions of render_document and convert_document point to get_capabilities.
+        // Every key below exists in the Carbone documentation; get_capabilities lists them all.
         'PDF: { "EncryptFile": true, "DocumentOpenPassword": "s3cr3t" }, { "Watermarks": [{ "text": "DRAFT", ' +
         '"opacity": 0.2 }] }, PDF/A { "SelectPdfVersion": 2 } or { "PageRange": "1-5" } (converter "L"). ' +
-        'Images: { "PixelWidth": 1200, "Scale": 2, "Quality": 80 }. CSV: { "fieldSeparator": ";" }.'
+        'Images: { "PixelWidth": 1200, "Scale": 2, "Quality": 80 }. CSV: { "fieldSeparator": ";" }. ' +
+        'All options: get_capabilities.'
       ),
   }),
 ]);

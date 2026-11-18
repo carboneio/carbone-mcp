@@ -26,6 +26,9 @@ jobs:
 
       - run: npm ci
 
+      # skills/carbone/ must match the release pinned in skills.lock.json.
+      - run: npm run skill:check
+
       - run: npm test
 
       - run: npm run build

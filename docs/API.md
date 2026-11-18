@@ -22,6 +22,7 @@ Full parameter reference for the 12 tools of the Carbone MCP server, and for run
 **Discovery**
 - [get\_api\_status](#get_api_status)
 - [get\_capabilities](#get_capabilities)
+- [Carbone Skill](#carbone-skill) (`skill://carbone/SKILL.md`)
 
 **Server**
 - [File inputs](#file-inputs)
@@ -80,7 +81,7 @@ Render this SVG chart as a sharp PNG (converter C, Scale 2) so I can check it
 
 **`converter` options** (used whenever the format changes, not only for PDF):
 - `L`: LibreOffice (default), DOCX, XLSX, PPTX, ODT, ODS, ODP, ODG, MD, PDF; the only converter supporting all PDF options
-- `I`: Carbone ICE, DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default `L` for documents with those. ODT to PDF is in beta and also ignores tracked changes and footnotes. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
+- `I`: Carbone ICE, DOCX and ODT → PDF; Carbone's own engine, 3x to 300x faster, recommended over `O` for DOCX from Carbone v5.15.0. A DOCX with tracked changes is rendered as its current version (changes accepted). It converts all content except WEBP and EMF/WMF images, SmartArt and complex charts (bar, line, area, pie and doughnut charts are drawn), comments, form fields, equations, bookmarks and endnotes: keep the default `L` for documents with those. From ODT, tracked changes and footnotes are ignored too. A missing font is replaced by Noto Sans ([Carbone's documentation](https://carbone.io/documentation/developer/http-api/generate-reports.html#converters-carbone-ice-limitations))
 - `O`: OnlyOffice, DOCX, XLSX, PPTX → PDF
 - `C`: Chromium, HTML, XHTML → PDF, PNG, JPG, WEBP with full CSS/JS, and SVG → PDF, PNG, JPG, WEBP (Carbone v5.17.0+); 100 MB max. Image size and sharpness come from `formatOptions` (see below)
 
@@ -392,6 +393,21 @@ Returns a full overview of supported formats, features, and usage examples. No p
 
 ---
 
+## Carbone Skill
+
+The server serves the [Carbone Skill](https://carbone.io/documentation/developer/ai/skills.html), the template syntax reference for AI assistants, through the MCP Skills extension (`io.modelcontextprotocol/skills`, [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension)). A client that supports the extension finds it with `skills/list` and loads it when a template needs writing or fixing, without installing anything else.
+
+| | |
+|---|---|
+| Skill | `skill://carbone/SKILL.md`, and its references under `skill://carbone/references/` |
+| Methods | `skills/list`, `skills/get`, `resources/read`, and `resources/directory/read` (`directoryRead: true`) |
+| Version | The [carbone-agent-plugin](https://github.com/carboneio/carbone-agent-plugin) release pinned in `skills.lock.json`, the same as the skill's `metadata.version`: each server release ships the skill matching its tools |
+| Transports | stdio and HTTP, both protocol eras |
+
+The skill is part of the npm package and the Docker image: nothing is downloaded at build or run time, so it works the same on mcp.carbone.io, on a self-hosted server and offline. Clients without the extension can still read `skill://carbone/SKILL.md` as an ordinary resource: the server instructions and `get_capabilities` name it before its web copy. If the skill cannot be loaded (the startup log then says `skills=none`), they name the web copy only, so a model never looks for a resource that is not there.
+
+---
+
 ## File inputs
 
 `file` (`convert_document`) and `template` (`render_document`, `inspect_template`, `upload_template`) accept three forms:
@@ -416,8 +432,8 @@ Other clients ignore `_meta`: they see an optional parameter and leave it empty.
 
 A file too large to pass as base64 can be sent outside the MCP messages, by an assistant that can run shell commands (Claude Code, Cursor, VS Code, or a code sandbox allowed to reach the server). The server must run over HTTP with `MCP_TICKET_SECRET` set.
 
-1. `upload_template` with `requestUploadUrl: { "size": <bytes>, "sha256": "<hex>" }` (and any other field: `name`, `category`, `versioning`, `expireAt`…) returns a URL, an `X-Upload-Token` header and the command to send the file. Nothing is stored yet.
-2. The file is sent with `curl -H 'X-Upload-Token: …' --data-binary @<file> <url>`. The server streams it to Carbone as it arrives and answers with the stored template, as `upload_template` would (`id`, `versionId`, …).
+1. `upload_template` with `requestUploadUrl: { "size": <bytes>, "sha256": "<hex>" }` (and any other field: `name`, `category`, `versioning`, `expireAt`…) returns `uploadUrl` and `headers` (an `X-Upload-Token`), and the command to send the file in its text. Nothing is stored yet.
+2. The file is POSTed as the raw body with those headers: `curl -H 'X-Upload-Token: …' --data-binary @<file> <uploadUrl>`. The server streams it to Carbone as it arrives and answers with the stored template, as `upload_template` would (`id`, `versionId`, …).
 
 The URL accepts only the file it was issued for: a different size or SHA-256 is refused, and nothing is stored. It is valid for 10 minutes, or until the caller's sign-in expires if that comes first. Sending the same file again within that time stores no new template when `versioning` is `false`; otherwise it stores another copy (a new Template ID, or a new version of `id` when given). It runs at most 2 uploads at once per caller (the signed-in user or the API key) and 1 per URL, and drops an upload whose first bytes take over 5 seconds, or arriving slower than 1 MiB per 30 seconds.
 
@@ -557,6 +573,7 @@ The server reads these environment variables at startup. Numbers must be positiv
 | `MCP_S3_SECRET_ACCESS_KEY` | none | Its secret key. |
 | `MCP_JOBS_DIR` | none | HTTP only, for [async renders](#async-renders), instead of `MCP_S3_*`: the absolute path of an existing, writable directory that every instance shares. |
 | `MCP_OPENAI_APPS_CHALLENGE` | none | HTTP only. The domain-verification token OpenAI gives when you submit the server to the ChatGPT plugin directory. When set, the server returns it as plain text at `/.well-known/openai-apps-challenge`. |
+| `MCP_MUSE_CHALLENGE` | none | HTTP only. The domain-verification token Meta gives when you submit the server to its connector directory (the hex string at the end of the file URL, or the whole `muse-challenge=<token>` line). When set, the server returns `muse-challenge=<token>` as plain text at `/.well-known/muse-challenge/<token>`. |
 
 ### Hosted server (OAuth mode)
 
@@ -593,7 +610,7 @@ curl http://localhost:3000/health
 **Response:**
 ```json
 {
-  "mcp":    { "version": "2.0.0" },
+  "mcp":    { "version": "2.4.1" },
   "carbone": { "version": "5.x.x" }
 }
 ```
@@ -614,7 +631,7 @@ The `carbone` field reflects backend connectivity:
 In HTTP mode, the server writes one [logfmt](https://brandur.org/logfmt) line per event on stderr, starting with `level=`, so log viewers detect the level:
 
 ```
-level=info msg="running in HTTP mode" version=2.2.0 mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
+level=info msg="running in HTTP mode" version=2.4.1 skills=carbone@x.x.x mcp=http://0.0.0.0:3000/ health=http://0.0.0.0:3000/health
 level=info msg=request method=POST path=/ status=200 ms=412 ip=203.0.113.7 mcp=tools/call tool=render_document proto=2025-11-25 ua=claude-code/2.1 user=sub:42 oauth_client=example-client outcome=ok rid=9f2c1a7b04d6e358
 level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mcp=tools/call tool=convert_document user=key:3445f6f99c76 outcome=error error_type=upstream error="Carbone API request timed out after 60 s." rid=0f7090b8c1d2e3f4
 ```
@@ -622,11 +639,12 @@ level=error msg=request method=POST path=/ status=200 ms=60012 ip=203.0.113.7 mc
 | Level | Meaning |
 |---|---|
 | `info` | A request answered, and server events. |
-| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable. |
+| `warn` | A tool or resource error; an MCP request refused (4xx, 401 excepted, which starts signing in); the `msg="HTTP error"` line of a refused body; and conditions to check: the Carbone API unreachable, the authorization server paused, the job store unreadable, a skill not served (`msg=skills`, at startup). |
 | `error` | A 5xx answer; an upstream outage or an internal bug (`error_type`); a server failure. |
 
 | Field | Meaning |
 |---|---|
+| `skills` | On the startup line: the skills served, as `name@version` ([Carbone Skill](#carbone-skill)), or `none`. |
 | `ip` | The client's address, found past the internal proxies in X-Forwarded-For. |
 | `mcp`, `tool` | The JSON-RPC method (`batch` for a batch), and the tool a `tools/call` names. |
 | `client`, `proto`, `ua` | The client's name and version (on `initialize` and on every 2026-07-28 request), its `Mcp-Protocol-Version` and its `User-Agent`. |

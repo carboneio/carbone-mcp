@@ -4,11 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [2.4.0] - 2026-11-09
+## [Unreleased]
 
 ### Added
 
 - **`MCP_DISABLED_TOOLS`** turns off the tools a self-hosted Carbone does not support, or a read-only agent must not have (e.g. `delete_template,upload_template,update_template_metadata`): they are not callable, and their names are left out of the tool and resource lists, the instructions and `get_capabilities`. See [Configuration](docs/API.md#configuration).
+
+### Fixed
+
+- A file the server can't use (a local path, an unreachable URL, a file too large, broken JSON) now gets a clear `Invalid input` answer, instead of `Unexpected error`, which looked like a server bug.
+- Server logs no longer report these mistakes, or a render the user cancels, as errors. Real server problems are still logged as errors.
+
+### Security
+
+- Updated `hono`, a dependency of the MCP SDK, to fix five moderate security advisories.
+
+---
+
+## [2.4.1] - 2026-11-12
+
+### Changed
+
+- The Carbone Skill served by the server moves to v2.3.0: new guides for CSV, TXT, XML, SVG and IDML templates, and fixes across the other references.
+
+---
+
+## [2.4.0] - 2026-11-11
+
+### Added
+
+- **The server serves the Carbone Skill** (MCP Skills extension): clients that support skills get the template syntax reference with the server, no install needed. See [Carbone Skill](docs/API.md#carbone-skill).
+- `npm run skill:sync` and `npm run skill:check` update and verify the bundled skill.
+- The startup log names the skill served (`skills=carbone@x.x.x`).
+
+### Changed
+
+- `resources/list`, the server instructions and `get_capabilities` show `skill://carbone/SKILL.md` when the skill is served.
+- Carbone ICE: the same limitations everywhere, and ODT to PDF is no longer called beta.
+- Upload URLs: `upload_template` now says how to send the file (POST, with the returned headers) and what comes back, for clients that show only the structured result.
+- Docker image: the code and the skill are read-only for the user the server runs as.
+- stdio logs strip control characters.
+
+---
+
+## [2.3.1] - 2026-11-09
+
+### Added
+
+- `MCP_MUSE_CHALLENGE`: Meta's connector directory domain-verification token, served as plain text at `/.well-known/muse-challenge/<token>`, to submit the server to the Meta directory.
 
 ---
 
@@ -463,6 +506,10 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.4.1]: https://github.com/carboneio/carbone-mcp/compare/v2.4.0...v2.4.1
+[2.4.0]: https://github.com/carboneio/carbone-mcp/compare/v2.3.1...v2.4.0
+[2.3.1]: https://github.com/carboneio/carbone-mcp/compare/v2.3.0...v2.3.1
+[2.3.0]: https://github.com/carboneio/carbone-mcp/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/carboneio/carbone-mcp/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/carboneio/carbone-mcp/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/carboneio/carbone-mcp/compare/v2.1.2...v2.1.3

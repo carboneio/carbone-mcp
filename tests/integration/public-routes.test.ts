@@ -7,7 +7,7 @@ import { startHttpServer } from '../../src/server/http.js';
 
 type Status = { version: string; message: string };
 
-// The public routes tested here: /health and /.well-known/openai-apps-challenge.
+// The public routes tested here: /health, /.well-known/openai-apps-challenge and /.well-known/muse-challenge/<token>.
 // Each test starts its own server, so a failure points at one behaviour.
 const signals = ['SIGTERM', 'SIGINT'] as const;
 let cleanup: (() => Promise<void>) | undefined;
@@ -19,7 +19,7 @@ afterEach(async () => {
   cleanup = undefined;
 });
 
-async function start(getStatus: () => Promise<Status>, extra: { openAiAppsChallenge?: string } = {}) {
+async function start(getStatus: () => Promise<Status>, extra: { openAiAppsChallenge?: string; museChallenge?: string } = {}) {
   const listenersBefore = signals.map((s) => process.listeners(s));
   const server: Server = await startHttpServer({
     client: { getStatus } as unknown as CarboneClient, version: '0.0.0-test', port: 0, mcpPath: '/mcp',
@@ -91,5 +91,38 @@ describe('GET /.well-known/openai-apps-challenge', () => {
   test('is not served when no token is configured', async () => {
     const { base } = await start(status);
     expect((await fetch(`${base}/.well-known/openai-apps-challenge`)).status).toBe(404);
+  });
+});
+
+// Meta's connector directory checks domain ownership with a file named after its token (MCP_MUSE_CHALLENGE).
+describe('GET /.well-known/muse-challenge/<token>', () => {
+  const status = async () => ({ version: '5.15.4', message: 'OK' });
+  const token = '0ad5fed1b48f79108a4966b152c4f81de317a8375bba9dbd3fc5612fd0ff2bb6';
+
+  test('serves "muse-challenge=<token>" as plain text, without a sign-in or a redirect', async () => {
+    const { base } = await start(status, { museChallenge: token });
+    const res = await fetch(`${base}/.well-known/muse-challenge/${token}`, { redirect: 'manual' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/plain');
+    expect(await res.text()).toBe(`muse-challenge=${token}`);
+  });
+
+  test('HEAD answers 200 without a body', async () => {
+    const { base } = await start(status, { museChallenge: token });
+    const res = await fetch(`${base}/.well-known/muse-challenge/${token}`, { method: 'HEAD' });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+  });
+
+  test('another token, or none, is not served', async () => {
+    const { base } = await start(status, { museChallenge: token });
+    expect((await fetch(`${base}/.well-known/muse-challenge/other`)).status).toBe(404);
+    expect((await fetch(`${base}/.well-known/muse-challenge/`)).status).toBe(404);
+    expect((await fetch(`${base}/.well-known/muse-challenge`)).status).toBe(404);
+  });
+
+  test('is not served when no token is configured', async () => {
+    const { base } = await start(status);
+    expect((await fetch(`${base}/.well-known/muse-challenge/${token}`)).status).toBe(404);
   });
 });

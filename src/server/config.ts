@@ -25,6 +25,8 @@ export interface ServerConfig {
   disabledTools: ReadonlySet<ToolName>;
   /** HTTP only: OpenAI's domain-verification token, served at /.well-known/openai-apps-challenge (MCP_OPENAI_APPS_CHALLENGE). */
   openAiAppsChallenge?: string;
+  /** HTTP only: Meta's connector directory domain-verification token, served at /.well-known/muse-challenge/<token> (MCP_MUSE_CHALLENGE). */
+  museChallenge?: string;
   /** HTTP OAuth mode (Carbone's hosted server), when every MCP_OAUTH_* variable is set; API-key mode otherwise. */
   oauth?: OAuthConfig;
   /** HTTP only, when MCP_TICKET_SECRET is set: upload_template issues upload URLs. */
@@ -303,6 +305,12 @@ export function loadConfig(): ServerConfig {
     throw new Error('Invalid MCP_OPENAI_APPS_CHALLENGE value. Paste the token exactly as OpenAI shows it, without spaces.');
   }
 
+  // The token, or the whole file contents Meta shows ("muse-challenge=<token>"). It ends up in a URL path.
+  const museChallenge = process.env['MCP_MUSE_CHALLENGE']?.trim().replace(/^muse-challenge=/, '') || undefined;
+  if (museChallenge && !/^[A-Za-z0-9_-]+$/.test(museChallenge)) {
+    throw new Error('Invalid MCP_MUSE_CHALLENGE value. Paste the token exactly as Meta shows it (letters, digits, - and _).');
+  }
+
   return {
     carboneApiKey: apiKey,
     carboneBaseUrl: baseUrl,
@@ -325,6 +333,7 @@ export function loadConfig(): ServerConfig {
     allowedOriginHostnames: parseOriginHostnames(process.env['MCP_ALLOWED_ORIGINS'], 'MCP_ALLOWED_ORIGINS'),
     disabledTools: parseDisabledTools(process.env['MCP_DISABLED_TOOLS'], 'MCP_DISABLED_TOOLS'),
     ...(openAiAppsChallenge && { openAiAppsChallenge }),
+    ...(museChallenge && { museChallenge }),
     ...(oauth && { oauth }),
     ...(tickets && { tickets }),
     ...(jobStore && { jobStore }),
