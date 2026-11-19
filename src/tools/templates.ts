@@ -212,10 +212,12 @@ export function uploadTemplateSchemaFor(io: IoModes) {
       .describe('A sample dataset stored with the template, at most one: [{ "data": { "name": "Acme" } }].'),
     deployedAt: integer()
       .optional()
-      .describe('42000000000 deploys this version now: renders by Template ID use the most recently deployed version.'),
+      .describe('42000000000 deploys this version now: renders by Template ID use the most recently deployed version. ' +
+        'Earlier versions stay stored. update_template_metadata redeploys one.'),
     expireAt: integer(0)
       .optional()
-      .describe('Delete the template at this UTC Unix time (seconds); 0 (default) never. To delete now, use delete_template.'),
+      .describe('Delete the template at this UTC Unix time (seconds); 0 (default) never. Until then, ' +
+        'update_template_metadata with expireAt 0 cancels it. To delete now, use delete_template.'),
   };
 }
 
@@ -575,7 +577,7 @@ export function downloadTemplateDescriptionFor(io: IoModes): string {
   return 'Download a stored template\'s original file (DOCX, XLSX, HTML...), or with sample: true the sample dataset ' +
     'stored with it. ' + (io.allowFileOutput
       ? 'Text and images come back inline; other files are saved to a temp file whose path is returned.'
-      : 'Text and images come back inline; other files as a base64 attachment, which some clients such as claude.ai cannot open.');
+      : 'Text and images come back inline; other files as a base64 attachment, which not every client can open.');
 }
 
 /** Default (stdio) wording. */

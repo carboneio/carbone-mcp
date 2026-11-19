@@ -69,7 +69,7 @@ export function defaultDelivery(io: IoModes): string {
 /** `asAttachment` description: the default delivery it overrides differs per transport. */
 export function asAttachmentDescription(io: IoModes): string {
   return 'If true, return the file itself as a base64 attachment, for any format, instead of the default ' +
-    (io.allowFileOutput ? '(temp file or inline).' : '(link or inline). Some clients, such as claude.ai, cannot open it.');
+    (io.allowFileOutput ? '(temp file or inline).' : '(link or inline). Not every client can open it.');
 }
 
 /** `returnLink` description; `extra` adds a tool-specific sentence. */

@@ -233,7 +233,8 @@ export function registerTools(server: McpServer, client: CarboneClient, fileCtx:
   //   downloaded), and render can post it to a webhook, so they are not read-only, nor idempotent.
   // - idempotentHint: same args produce the same effect when repeated.
   // - destructiveHint: only meaningful when readOnlyHint is false; true for delete, and for metadata updates,
-  //   which overwrite fields and can schedule a deletion (expireAt).
+  //   which overwrite fields and can schedule a deletion (expireAt). False for upload, an owner's choice: it only
+  //   adds a version (earlier ones stay and can be redeployed), and its optional expireAt can be cancelled.
   // - openWorldHint:  true for tools that reach beyond the user's Carbone account: render, convert, inspect and
   //   upload fetch user-supplied URLs, and render also downloads images listed in the data and can post the
   //   result to a webhookUrl. False for tools limited to the account, and for the local capabilities tool.

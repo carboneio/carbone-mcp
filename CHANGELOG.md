@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.5.1] - 2026-11-19
+
+### Fixed
+
+- The tool descriptions no longer name other AI clients. OpenAI's app review held back the 2.5.0 versions of `render_document` and `convert_document` because of it.
+- `upload_template` now says that its changes can be undone: earlier versions stay stored and can be deployed again, and a deletion planned with `expireAt` can be cancelled with `update_template_metadata`.
+
+---
+
 ## [2.5.0] - 2026-11-18
 
 ### Added
@@ -510,6 +519,7 @@ Initial public release.
 - Template versioning, categorization, and tagging
 - CI — automated test pipeline and npm publish workflow
 
+[2.5.1]: https://github.com/carboneio/carbone-mcp/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/carboneio/carbone-mcp/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/carboneio/carbone-mcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/carboneio/carbone-mcp/compare/v2.3.1...v2.4.0

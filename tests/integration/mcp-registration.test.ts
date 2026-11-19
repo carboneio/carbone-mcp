@@ -384,6 +384,17 @@ const STDIO_CTX = { allowFileOutput: true, allowFileInput: true, allowPrivateNet
 const HTTP_CTX = { allowFileOutput: false, allowFileInput: false, allowPrivateNetwork: false, maxFileBytes: 1024 * 1024 };
 const DOCUMENT_TOOLS = ['render_document', 'convert_document', 'download_template'];
 
+// OpenAI's directory review refuses a tool definition that compares or disparages other products: naming another
+// assistant ("some clients, such as claude.ai, cannot open it") held back render_document and convert_document.
+// Cursor is not listed: "cursor" is also a pagination parameter.
+test.each([['stdio', STDIO_CTX], ['HTTP', HTTP_CTX]])('%s: no tool definition names another AI product', async (_name, ctx) => {
+  const client = await connect(new CarboneClient({ apiKey: 'unused' }), ctx);
+  const { tools } = await client.listTools();
+  for (const tool of tools) {
+    expect(JSON.stringify(tool), tool.name).not.toMatch(/claude|anthropic|copilot|gemini|mistral|windsurf|vs ?code/i);
+  }
+});
+
 describe('tool annotations (MCP spec and the OpenAI Apps definitions)', () => {
   // render and convert create a document at Carbone (and render can post it to a webhook): never read-only.
   const generation = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
